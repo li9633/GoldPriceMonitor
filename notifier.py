@@ -1,11 +1,11 @@
-# notifier.py
+
 import requests
-import json
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from config import EMAIL_CONFIG, WECHAT_WORK_CONFIG, SYMBOL_NAME_MAP
+from message_template import MessageTemplate
 
 
 class Notifier:
@@ -13,38 +13,29 @@ class Notifier:
         self.email_config = EMAIL_CONFIG
         self.wechat_config = WECHAT_WORK_CONFIG
 
-    def send_alert(self, symbol: str, current_price: float, alert_messages: List[str]) -> bool:
+    def send_alert(self, symbol: str, current_price: float,
+                   alert_messages: List[str],
+                   suggestions: List[str] = None) -> bool:
         """统一发送报警，支持多种方式"""
-        message = self._format_message(symbol, current_price, alert_messages)
         results = []
+        suggestions = suggestions or []
 
         # 发送邮件
         if self.email_config.get("enabled", True):
+            message = MessageTemplate.format_alert(
+                symbol, current_price, alert_messages,
+                suggestions, template_type="email")
             results.append(self._send_email_alert(
                 symbol, current_price, message))
 
         # 发送企业微信
         if self.wechat_config.get("enabled", False):
+            message = MessageTemplate.format_alert(
+                symbol, current_price, alert_messages,
+                suggestions, template_type="alert")
             results.append(self._send_wechat_work_alert(message))
 
         return any(results)
-
-    def _format_message(self, symbol: str, current_price: float, alert_messages: List[str]) -> str:
-        """格式化消息内容"""
-        lines = [
-            "🚨 黄金价格监控报警",
-            f"监控品种: {SYMBOL_NAME_MAP.get(symbol, symbol)}",
-            f"当前价格: {current_price}",
-            "",
-            "🔍 触发条件:"
-        ]
-        lines.extend([f"  • {msg}" for msg in alert_messages])
-        lines.extend([
-            "",
-            f"⏰ 报警时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "📈 持续监控中..."
-        ])
-        return "\n".join(lines)
 
     def _send_email_alert(self, symbol: str, current_price: float, message: str) -> bool:
         """发送邮件"""

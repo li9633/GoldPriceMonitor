@@ -13,9 +13,26 @@ API_URL = "https://www.huilvbiao.com/api/gold_indexApi"
 # 检查间隔（秒）
 CHECK_INTERVAL = 30
 
+# 历史数据导入配置
+HISTORICAL_DATA_CONFIG = {
+    "auto_import_on_start": True,  # 启动时自动导入
+    "min_records_threshold": 100,  # 最少记录数阈值，低于此值则触发导入
+    "periods": ["60d", "1y"]  # 导入周期
+}
+
+MESSAGE_CONFIG = {
+    "include_time": True,      # 是否包含时间
+    "price_format": "¥{:.2f}",  # 价格格式
+    "max_conditions": 5,       # 最多显示条件数
+}
+
+SUGGESTION_CONFIG = {
+    "enable_suggestions": True,   # 是否启用建议
+    "suggestion_level": "medium",  # simple/medium/detailed
+    "include_stop_loss": True,    # 是否包含止损建议
+}
+
 # 报警条件配置
-
-
 class AlertConfig:
     # 绝对阈值报警
     ENABLE_ABSOLUTE_ALERT = True
@@ -25,10 +42,16 @@ class AlertConfig:
     ENABLE_RELATIVE_ALERT = True
     RELATIVE_WINDOW_HOURS = 24
 
-    # 窄幅震荡突破报警 (可选)
-    ENABLE_BREAKOUT_ALERT = False
+    # 窄幅震荡突破报警
+    ENABLE_BREAKOUT_ALERT = True  # 启用
     CONSOLIDATION_HOURS = 12
     VOLATILITY_THRESHOLD = 0.005  # 0.5%
+
+    # 趋势反转报警（新增）
+    ENABLE_TREND_ALERT = True
+
+    # 波动率异常报警（新增）
+    ENABLE_VOLATILITY_ALERT = True
 
 
 # 企业微信机器人配置

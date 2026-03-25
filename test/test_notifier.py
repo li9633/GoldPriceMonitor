@@ -1,4 +1,4 @@
-# run_notifier.py
+
 import sys
 import os
 import re
