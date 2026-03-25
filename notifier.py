@@ -1,41 +1,129 @@
 # notifier.py
+import requests
+import json
+from typing import List, Optional
+from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime
-from config import EMAIL_CONFIG, SYMBOL_NAME_MAP
+from config import EMAIL_CONFIG, WECHAT_WORK_CONFIG, SYMBOL_NAME_MAP
 
 
 class Notifier:
     def __init__(self):
-        self.config = EMAIL_CONFIG
+        self.email_config = EMAIL_CONFIG
+        self.wechat_config = WECHAT_WORK_CONFIG
 
-    def send_email_alert(self, symbol: str, current_price: float, alert_messages: list[str]):
-        """发送邮件报警"""
-        subject = f"黄金价格监控报警 - {SYMBOL_NAME_MAP.get(symbol, symbol)} - {current_price}"
+    def send_alert(self, symbol: str, current_price: float, alert_messages: List[str]) -> bool:
+        """统一发送报警，支持多种方式"""
+        message = self._format_message(symbol, current_price, alert_messages)
+        results = []
 
-        body = "\n\n".join(alert_messages)
-        body += f"\n\n检查时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        body += f"\n监控品种: {SYMBOL_NAME_MAP.get(symbol, symbol)} ({symbol})"
+        # 发送邮件
+        if self.email_config.get("enabled", True):
+            results.append(self._send_email_alert(
+                symbol, current_price, message))
 
-        msg = MIMEText(body, 'plain', 'utf-8')
-        msg['Subject'] = subject
-        msg['From'] = self.config['sender_email']
-        msg['To'] = self.config['receiver_email']
+        # 发送企业微信
+        if self.wechat_config.get("enabled", False):
+            results.append(self._send_wechat_work_alert(message))
 
+        return any(results)
+
+    def _format_message(self, symbol: str, current_price: float, alert_messages: List[str]) -> str:
+        """格式化消息内容"""
+        lines = [
+            "🚨 黄金价格监控报警",
+            f"监控品种: {SYMBOL_NAME_MAP.get(symbol, symbol)}",
+            f"当前价格: {current_price}",
+            "",
+            "🔍 触发条件:"
+        ]
+        lines.extend([f"  • {msg}" for msg in alert_messages])
+        lines.extend([
+            "",
+            f"⏰ 报警时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "📈 持续监控中..."
+        ])
+        return "\n".join(lines)
+
+    def _send_email_alert(self, symbol: str, current_price: float, message: str) -> bool:
+        """发送邮件"""
         try:
+            subject = f"黄金价格监控报警 - {SYMBOL_NAME_MAP.get(symbol, symbol)} - {current_price}"
+            msg = MIMEText(message, 'plain', 'utf-8')
+            msg['Subject'] = subject
+            msg['From'] = self.email_config['sender_email']
+            msg['To'] = self.email_config['receiver_email']
+
             server = smtplib.SMTP(
-                self.config['smtp_server'], self.config['smtp_port'])
+                self.email_config['smtp_server'], self.email_config['smtp_port'])
             server.starttls()
-            server.login(self.config['sender_email'],
-                         self.config['sender_password'])
+            server.login(
+                self.email_config['sender_email'], self.email_config['sender_password'])
             server.send_message(msg)
             server.quit()
-            print(f"[{datetime.now()}] 邮件发送成功: {subject}")
+            print(f"[{datetime.now()}] 邮件发送成功")
             return True
         except Exception as e:
             print(f"[{datetime.now()}] 邮件发送失败: {e}")
             return False
 
-    # 可在此添加其他通知方式，如微信机器人、短信等
-    # def send_wechat_alert(self, message):
-    #     pass
+    def _send_wechat_work_alert(self, message: str) -> bool:
+        """发送企业微信机器人消息"""
+        if not self.wechat_config.get("webhook_url"):
+            return False
+
+        try:
+            payload = {
+                "msgtype": "text",
+                "text": {
+                    "content": message
+                }
+            }
+
+            response = requests.post(
+                self.wechat_config["webhook_url"],
+                json=payload,
+                timeout=10
+            )
+
+            if response.status_code == 200 and response.json().get("errcode") == 0:
+                print(f"[{datetime.now()}] 企业微信消息发送成功")
+                return True
+            else:
+                print(f"[{datetime.now()}] 企业微信消息发送失败: {response.text}")
+                return False
+        except Exception as e:
+            print(f"[{datetime.now()}] 企业微信发送异常: {e}")
+            return False
+
+    def _send_wechat_work_markdown(self, message: str) -> bool:
+        """发送企业微信 markdown 格式消息"""
+        if not self.wechat_config.get("webhook_url"):
+            return False
+
+        # 修复：将 replace 操作移到 f-string 外部
+        formatted_message = message.replace('\n', '\n\n')
+        markdown_content = f"""# 🚨 黄金价格监控报警
+            
+    {formatted_message}
+        """
+
+        try:
+            payload = {
+                "msgtype": "markdown",
+                "markdown": {
+                    "content": markdown_content
+                }
+            }
+
+            response = requests.post(
+                self.wechat_config["webhook_url"],
+                json=payload,
+                timeout=10
+            )
+
+            return response.status_code == 200 and response.json().get("errcode") == 0
+        except Exception as e:
+            print(f"[{datetime.now()}] 企业微信 markdown 发送异常：{e}")
+            return False

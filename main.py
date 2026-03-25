@@ -1,4 +1,4 @@
-# main.py
+
 import time
 from datetime import datetime
 from data_fetcher import fetch_current_price

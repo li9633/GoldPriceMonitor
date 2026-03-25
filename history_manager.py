@@ -1,4 +1,4 @@
-# history_manager.py
+
 import sqlite3
 from typing import List
 from config import DB_FILE
