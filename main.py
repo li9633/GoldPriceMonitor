@@ -41,7 +41,7 @@ def main():
 
             # 4. 如果有报警，发送通知
             if alerts:
-                notifier.send_email_alert(SYMBOL, current_price, alerts)
+                notifier.send_alert(SYMBOL, current_price, alerts)
 
         except KeyboardInterrupt:
             print("\n程序被用户中断")
