@@ -43,15 +43,29 @@ class AlertConfig:
     RELATIVE_WINDOW_HOURS = 24
 
     # 窄幅震荡突破报警
-    ENABLE_BREAKOUT_ALERT = True  # 启用
+    ENABLE_BREAKOUT_ALERT = True
     CONSOLIDATION_HOURS = 12
-    VOLATILITY_THRESHOLD = 0.005  # 0.5%
+    VOLATILITY_THRESHOLD = 0.003  # 0.3%
 
-    # 趋势反转报警（新增）
+    # 趋势反转报警
     ENABLE_TREND_ALERT = True
 
-    # 波动率异常报警（新增）
+    # 波动率异常报警
     ENABLE_VOLATILITY_ALERT = True
+
+    # 均线交叉报警
+    ENABLE_MA_CROSS_ALERT = True
+    MA_SHORT_PERIOD = 12  # 短期均线周期
+    MA_LONG_PERIOD = 48   # 长期均线周期
+
+    # 连续涨跌报警
+    ENABLE_CONSECUTIVE_ALERT = True
+    CONSECUTIVE_COUNT = 5  # 连续涨跌周期数
+
+    # 快速涨跌报警
+    ENABLE_RAPID_CHANGE_ALERT = True
+    RAPID_CHANGE_THRESHOLD = 0.015  # 2% 快速变动
+    RAPID_CHANGE_WINDOW_MINUTES = 30  # 检测窗口
 
 
 # 企业微信机器人配置

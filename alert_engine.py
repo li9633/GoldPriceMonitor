@@ -18,40 +18,47 @@ class AlertEngine:
         self.price_change_threshold = 0.005  # 0.5%
 
     def check_all_conditions(self, current_price: float) -> Tuple[List[str], List[str]]:
-        """检查所有报警条件
-
-        Returns:
-            (alerts, suggestions) 报警信息列表和操作建议列表
-        """
+        """检查所有报警条件"""
         alerts = []
         suggestions = []
 
-        # 条件 1: 绝对阈值
+        # 条件 1-5: 原有报警
         result = self._check_absolute_low(current_price)
         if result[0]:
             alerts.append(result[0])
             suggestions.append(result[1])
 
-        # 条件 2: 相对低点
         result = self._check_relative_low(current_price)
         if result[0]:
             alerts.append(result[0])
             suggestions.append(result[1])
 
-        # 条件 3: 窄幅震荡突破
         result = self._check_breakout(current_price)
         if result[0]:
             alerts.append(result[0])
             suggestions.append(result[1])
 
-        # 条件 4: 趋势反转预警
         result = self._check_trend_reversal(current_price)
         if result[0]:
             alerts.append(result[0])
             suggestions.append(result[1])
 
-        # 条件 5: 波动率异常
         result = self._check_volatility_anomaly(current_price)
+        if result[0]:
+            alerts.append(result[0])
+            suggestions.append(result[1])
+
+        result = self._check_ma_cross(current_price)
+        if result[0]:
+            alerts.append(result[0])
+            suggestions.append(result[1])
+
+        result = self._check_consecutive_move(current_price)
+        if result[0]:
+            alerts.append(result[0])
+            suggestions.append(result[1])
+
+        result = self._check_rapid_price_change(current_price)
         if result[0]:
             alerts.append(result[0])
             suggestions.append(result[1])
@@ -62,7 +69,6 @@ class AlertEngine:
             self.price_history.pop(0)
 
         return alerts, suggestions
-
     def _should_send_alert(self, alert_type: str, current_price: float) -> bool:
         """判断是否应该发送报警（去重逻辑）
         
@@ -206,4 +212,132 @@ class AlertEngine:
             alert = f"波动率异常！价格偏离 24 小时均值 ({stats['avg']:.2f}) 超过 2 倍标准差"
             suggestion = "建议：市场波动加剧，注意风险控制，避免追涨杀跌"
             return alert, suggestion
+        return None, None
+
+    def _check_ma_cross(self, current_price: float) -> Tuple[Optional[str], Optional[str]]:
+        """检查均线交叉信号（金叉/死叉）"""
+        if not self.config.ENABLE_MA_CROSS_ALERT:
+            return None, None
+
+        ma_short = self.history_manager.get_moving_average(
+            self.symbol, self.config.MA_SHORT_PERIOD)
+        ma_long = self.history_manager.get_moving_average(
+            self.symbol, self.config.MA_LONG_PERIOD)
+
+        if not ma_short or not ma_long:
+            return None, None
+
+        # 获取前一周期的均线值（用于判断交叉）
+        prev_prices = self.history_manager.get_prices_in_window(
+            self.symbol, self.config.MA_SHORT_PERIOD + 1)
+
+        if len(prev_prices) < self.config.MA_SHORT_PERIOD + 1:
+            return None, None
+
+        # 计算前一周期的短期均线
+        prev_ma_short = sum(prev_prices[:self.config.MA_SHORT_PERIOD]) / \
+            self.config.MA_SHORT_PERIOD
+        prev_ma_long = ma_long  # 长期均线变化较慢，近似使用当前值
+
+        # 判断金叉：短期均线上穿长期均线
+        if prev_ma_short <= prev_ma_long and ma_short > ma_long:
+            if not self._should_send_alert('ma_golden_cross', current_price):
+                return None, None
+
+            alert = f"金叉信号！{self.config.MA_SHORT_PERIOD} 周期均线上穿 {self.config.MA_LONG_PERIOD} 周期均线"
+            suggestion = "建议：看涨信号，可考虑分批建仓，止损位设在近期低点"
+            return alert, suggestion
+
+        # 判断死叉：短期均线下穿长期均线
+        if prev_ma_short >= prev_ma_long and ma_short < ma_long:
+            if not self._should_send_alert('ma_death_cross', current_price):
+                return None, None
+
+            alert = f"死叉信号！{self.config.MA_SHORT_PERIOD} 周期均线下穿 {self.config.MA_LONG_PERIOD} 周期均线"
+            suggestion = "建议：看跌信号，注意减仓或设置止损，关注支撑位"
+            return alert, suggestion
+
+        return None, None
+
+
+    def _check_consecutive_move(self, current_price: float) -> Tuple[Optional[str], Optional[str]]:
+        """检查连续涨跌"""
+        if not self.config.ENABLE_CONSECUTIVE_ALERT:
+            return None, None
+
+        count = self.config.CONSECUTIVE_COUNT
+        recent_prices = self.history_manager.get_prices_in_window(self.symbol, 2)
+
+        if len(recent_prices) < count + 1:
+            return None, None
+
+        # 检测最后 count+1 个价格的方向
+        directions = []
+        for i in range(len(recent_prices) - count, len(recent_prices)):
+            if recent_prices[i] > recent_prices[i - 1]:
+                directions.append('up')
+            elif recent_prices[i] < recent_prices[i - 1]:
+                directions.append('down')
+            else:
+                directions.append('stable')
+
+        # 判断连续上涨
+        if all(d == 'up' for d in directions[-count:]):
+            if not self._should_send_alert('consecutive_up', current_price):
+                return None, None
+
+            change_pct = (recent_prices[-1] - recent_prices[-count-1]) / \
+                recent_prices[-count-1] * 100
+            alert = f"连续上涨报警！已持续{count} 周期上涨，累计涨幅{change_pct:.2f}%"
+            suggestion = "建议：警惕回调风险，不宜追高，可考虑部分止盈"
+            return alert, suggestion
+
+        # 判断连续下跌
+        if all(d == 'down' for d in directions[-count:]):
+            if not self._should_send_alert('consecutive_down', current_price):
+                return None, None
+
+            change_pct = (recent_prices[-count-1] - recent_prices[-1]) / \
+                recent_prices[-count-1] * 100
+            alert = f"连续下跌报警！已持续{count} 周期下跌，累计跌幅{change_pct:.2f}%"
+            suggestion = "建议：关注反弹机会，可分批建仓，设置止损位"
+            return alert, suggestion
+
+        return None, None
+
+
+    def _check_rapid_price_change(self, current_price: float) -> Tuple[Optional[str], Optional[str]]:
+        """检查快速价格变动"""
+        if not self.config.ENABLE_RAPID_CHANGE_ALERT:
+            return None, None
+
+        window_minutes = self.config.RAPID_CHANGE_WINDOW_MINUTES
+        window_hours = window_minutes / 60
+
+        recent_prices = self.history_manager.get_prices_in_window(
+            self.symbol, window_hours)
+
+        if len(recent_prices) < 2:
+            return None, None
+
+        start_price = recent_prices[0]
+        if start_price <= 0:
+            return None, None
+
+        change_pct = abs(current_price - start_price) / start_price
+
+        if change_pct >= self.config.RAPID_CHANGE_THRESHOLD:
+            if not self._should_send_alert('rapid_change', current_price):
+                return None, None
+
+            direction = "上涨" if current_price > start_price else "下跌"
+            alert = f"快速{direction}报警！{window_minutes} 分钟内价格{direction}{change_pct*100:.2f}%"
+
+            if current_price > start_price:
+                suggestion = "建议：快速上涨可能伴随回调，避免追高，等待企稳"
+            else:
+                suggestion = "建议：快速下跌可能超卖，关注支撑位，可考虑分批买入"
+
+            return alert, suggestion
+
         return None, None
