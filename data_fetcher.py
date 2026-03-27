@@ -4,6 +4,8 @@ import time
 from datetime import datetime
 from typing import Optional
 from config import API_URL, SYMBOL_NAME_MAP
+from logger import get_logger
+logger = get_logger("DataFetcher")
 
 
 def fetch_current_price(symbol: str) -> Optional[dict]:
@@ -32,5 +34,5 @@ def fetch_current_price(symbol: str) -> Optional[dict]:
                     'name': SYMBOL_NAME_MAP.get(symbol, symbol)
                 }
     except Exception as e:
-        print(f"[{datetime.now()}] 获取{symbol}价格失败: {e}")
+        logger.error(f"[{datetime.now()}] 获取{symbol}价格失败: {e}")
     return None

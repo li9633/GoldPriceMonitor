@@ -6,6 +6,8 @@ import smtplib
 from email.mime.text import MIMEText
 from config import EMAIL_CONFIG, WECHAT_WORK_CONFIG, SYMBOL_NAME_MAP
 from message_template import MessageTemplate
+from logger import get_logger
+logger = get_logger("Notifier")
 
 
 class Notifier:
@@ -19,6 +21,8 @@ class Notifier:
         """统一发送报警，支持多种方式"""
         results = []
         suggestions = suggestions or []
+
+        logger.info(f"发送报警通知，品种：{symbol}, 价格：{current_price}")
 
         # 发送邮件
         if self.email_config.get("enabled", True):
@@ -53,10 +57,10 @@ class Notifier:
                 self.email_config['sender_email'], self.email_config['sender_password'])
             server.send_message(msg)
             server.quit()
-            print(f"[{datetime.now()}] 邮件发送成功")
+            logger.info(f"[{datetime.now()}] 邮件发送成功")
             return True
         except Exception as e:
-            print(f"[{datetime.now()}] 邮件发送失败: {e}")
+            logger.error(f"[{datetime.now()}] 邮件发送失败: {e}")
             return False
 
     def _send_wechat_work_alert(self, message: str) -> bool:
@@ -79,13 +83,13 @@ class Notifier:
             )
 
             if response.status_code == 200 and response.json().get("errcode") == 0:
-                print(f"[{datetime.now()}] 企业微信消息发送成功")
+                logger.info(f"[{datetime.now()}] 企业微信消息发送成功")
                 return True
             else:
-                print(f"[{datetime.now()}] 企业微信消息发送失败: {response.text}")
+                logger.error(f"[{datetime.now()}] 企业微信消息发送失败: {response.text}")
                 return False
         except Exception as e:
-            print(f"[{datetime.now()}] 企业微信发送异常: {e}")
+            logger.error(f"[{datetime.now()}] 企业微信发送异常: {e}")
             return False
 
     def _send_wechat_work_markdown(self, message: str) -> bool:
@@ -116,5 +120,5 @@ class Notifier:
 
             return response.status_code == 200 and response.json().get("errcode") == 0
         except Exception as e:
-            print(f"[{datetime.now()}] 企业微信 markdown 发送异常：{e}")
+            logger.error(f"[{datetime.now()}] 企业微信 markdown 发送异常：{e}")
             return False

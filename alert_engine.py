@@ -2,6 +2,8 @@ from typing import List, Tuple, Optional, Dict
 from history_manager import HistoryManager
 from config import AlertConfig
 from datetime import datetime
+from logger import get_logger
+logger = get_logger("AlertEngine")
 
 
 class AlertEngine:
@@ -16,6 +18,7 @@ class AlertEngine:
         self.alert_cooldown_minutes = 30
         # 价格变化阈值（百分比）
         self.price_change_threshold = 0.005  # 0.5%
+        logger.debug(f"AlertEngine 初始化，监控品种：{symbol}")
 
     def check_all_conditions(self, current_price: float) -> Tuple[List[str], List[str]]:
         """检查所有报警条件"""
@@ -101,6 +104,7 @@ class AlertEngine:
                 last_price if last_price > 0 else 0
             if price_change < self.price_change_threshold:
                 # 价格变化不大，跳过报警
+                logger.debug(f"报警去重跳过：{alert_type}")
                 return False
 
         # 更新记录

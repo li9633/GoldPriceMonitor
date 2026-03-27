@@ -1,3 +1,12 @@
+# 日志配置
+LOG_CONFIG = {
+    "log_dir": "logs",              # 日志目录
+    "max_bytes": 10 * 1024 * 1024,  # 单个文件最大 10MB
+    "backup_count": 5,              # 保留 5 个备份文件
+    "compress_backup": True,        # 是否压缩备份
+    "console_output": True,         # 是否输出到控制台
+    "keep_days": 30                 # 日志保留天数
+}
 
 # 监控目标
 SYMBOL = "gds_AUTD"  # 监控品种代码
@@ -33,6 +42,8 @@ SUGGESTION_CONFIG = {
 }
 
 # 报警条件配置
+
+
 class AlertConfig:
     # 绝对阈值报警
     ENABLE_ABSOLUTE_ALERT = True
@@ -80,9 +91,9 @@ EMAIL_CONFIG = {
     "enabled": False,
     "smtp_server": "smtp.qq.com",
     "smtp_port": 587,
-    "sender_email": "li9633@qq.com", # 发送者邮箱
+    "sender_email": "li9633@qq.com",  # 发送者邮箱
     "sender_password": "lxzzrtlgvejyjafh",  # 授权码
-    "receiver_email": "li9633@qq.com" # 接收者邮箱
+    "receiver_email": "li9633@qq.com"  # 接收者邮箱
 }
 
 # 数据库配置
