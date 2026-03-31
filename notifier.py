@@ -35,8 +35,8 @@ class Notifier:
             logger.info("[通知策略] 尝试使用企业微信发送通知...")
             message = MessageTemplate.format_alert(
                 symbol, current_price, alert_messages,
-                suggestions, template_type="alert")
-            wechat_success = self._send_wechat_work_alert(message)
+                suggestions, template_type="markdown")
+            wechat_success = self._send_wechat_work_markdown(message)
 
             if wechat_success:
                 logger.info("[通知结果] 企业微信通知成功，无需降级邮件通知")
@@ -74,11 +74,13 @@ class Notifier:
         return final_success
 
     def _send_email_alert(self, symbol: str, current_price: float, message: str) -> bool:
-        """发送邮件通知"""
+        """发送邮件通知（HTML 格式）"""
         try:
             symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
-            subject = f"黄金价格监控报警 - {symbol_name} - {current_price}"
-            msg = MIMEText(message, 'plain', 'utf-8')
+            subject = f"🚨 黄金价格监控报警 - {symbol_name} - {current_price:.2f}"
+
+            # 使用 HTML 格式发送邮件
+            msg = MIMEText(message, 'html', 'utf-8')
             msg['Subject'] = subject
             msg['From'] = self.email_config['sender_email']
             msg['To'] = self.email_config['receiver_email']
@@ -101,8 +103,60 @@ class Notifier:
             logger.error(f"[{datetime.now()}] 邮件发送失败：{e}")
             return False
 
-    def _send_wechat_work_alert(self, message: str) -> bool:
-        """发送企业微信机器人消息"""
+    def _send_wechat_work_markdown(self, message: str) -> bool:
+        """
+        发送企业微信 markdown 格式消息
+        使用官方推荐的 markdown 消息类型
+        """
+        if not self.wechat_config.get("webhook_url"):
+            logger.warning("企业微信 webhook_url 未配置")
+            return False
+
+        try:
+            payload = {
+                "msgtype": "markdown",
+                "markdown": {
+                    "content": message
+                }
+            }
+
+            logger.debug(f"[企业微信] 发送 payload: {payload}")
+
+            response = requests.post(
+                self.wechat_config["webhook_url"],
+                json=payload,
+                timeout=10
+            )
+
+            # 记录响应详情便于排查
+            logger.debug(f"[企业微信] 响应状态码：{response.status_code}")
+            logger.debug(f"[企业微信] 响应内容：{response.text}")
+
+            if response.status_code == 200:
+                resp_json = response.json()
+                if resp_json.get("errcode") == 0:
+                    logger.info(f"[{datetime.now()}] 企业微信 markdown 消息发送成功")
+                    return True
+                else:
+                    logger.error(
+                        f"[{datetime.now()}] 企业微信消息发送失败："
+                        f"errcode={resp_json.get('errcode')}, errmsg={resp_json.get('errmsg')}"
+                    )
+                    return False
+            else:
+                logger.error(
+                    f"[{datetime.now()}] 企业微信消息发送失败："
+                    f"status_code={response.status_code}, response={response.text}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"[{datetime.now()}] 企业微信 markdown 发送异常：{e}")
+            return False
+
+    def _send_wechat_work_text(self, message: str) -> bool:
+        """
+        发送企业微信纯文本消息（降级备用）
+        """
         if not self.wechat_config.get("webhook_url"):
             logger.warning("企业微信 webhook_url 未配置")
             return False
@@ -122,53 +176,14 @@ class Notifier:
             )
 
             if response.status_code == 200 and response.json().get("errcode") == 0:
-                logger.info(f"[{datetime.now()}] 企业微信消息发送成功")
+                logger.info(f"[{datetime.now()}] 企业微信文本消息发送成功")
                 return True
             else:
                 logger.error(
-                    f"[{datetime.now()}] 企业微信消息发送失败: "
+                    f"[{datetime.now()}] 企业微信文本消息发送失败："
                     f"status_code={response.status_code}, response={response.text}"
                 )
                 return False
         except Exception as e:
-            logger.error(f"[{datetime.now()}] 企业微信发送异常：{e}")
-            return False
-
-    def _send_wechat_work_markdown(self, message: str) -> bool:
-        """发送企业微信 markdown 格式消息"""
-        if not self.wechat_config.get("webhook_url"):
-            logger.warning("企业微信 webhook_url 未配置")
-            return False
-
-        # 修复：将 replace 操作移到 f-string 外部
-        formatted_message = message.replace('\n', '\n\n')
-        markdown_content = f"""# 🚨 黄金价格监控报警
-            
-    {formatted_message}
-        """
-
-        try:
-            payload = {
-                "msgtype": "markdown",
-                "markdown": {
-                    "content": markdown_content
-                }
-            }
-
-            response = requests.post(
-                self.wechat_config["webhook_url"],
-                json=payload,
-                timeout=10
-            )
-
-            success = response.status_code == 200 and response.json().get("errcode") == 0
-            if success:
-                logger.info(f"[{datetime.now()}] 企业微信 markdown 消息发送成功")
-            else:
-                logger.error(
-                    f"[{datetime.now()}] 企业微信 markdown 消息发送失败：{response.text}"
-                )
-            return success
-        except Exception as e:
-            logger.error(f"[{datetime.now()}] 企业微信 markdown 发送异常：{e}")
+            logger.error(f"[{datetime.now()}] 企业微信文本消息发送异常：{e}")
             return False

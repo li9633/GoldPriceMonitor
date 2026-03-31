@@ -20,7 +20,7 @@ SYMBOL_NAME_MAP = {
 API_URL = "https://www.huilvbiao.com/api/gold_indexApi"
 
 # 检查间隔（秒）
-CHECK_INTERVAL = 30
+CHECK_INTERVAL = 10
 
 # 历史数据导入配置
 HISTORICAL_DATA_CONFIG = {
@@ -77,6 +77,8 @@ class AlertConfig:
     ENABLE_RAPID_CHANGE_ALERT = True
     RAPID_CHANGE_THRESHOLD = 0.015  # 2% 快速变动
     RAPID_CHANGE_WINDOW_MINUTES = 30  # 检测窗口
+
+    ENABLE_LONG_TERM_LOW_ALERT = True  # 是否启用长期最低价警报
 
 
 # 企业微信机器人配置

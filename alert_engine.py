@@ -71,6 +71,11 @@ class AlertEngine:
         if len(self.price_history) > 100:
             self.price_history.pop(0)
 
+        result = self._check_long_term_low(current_price)
+        if result[0]:
+            alerts.append(result[0])
+            suggestions.append(result[1])
+
         return alerts, suggestions
     def _should_send_alert(self, alert_type: str, current_price: float) -> bool:
         """判断是否应该发送报警（去重逻辑）
@@ -343,5 +348,39 @@ class AlertEngine:
                 suggestion = "建议：快速下跌可能超卖，关注支撑位，可考虑分批买入"
 
             return alert, suggestion
+
+        return None, None
+    
+    def _check_long_term_low(self, current_price: float) -> Tuple[Optional[str], Optional[str]]:
+        """检查是否达到长期（3 个月/6 个月）最低价"""
+        if not self.config.ENABLE_LONG_TERM_LOW_ALERT:
+            return None, None
+
+        # 检查 3 个月最低价
+        prices_3m = self.history_manager.get_prices_in_window(
+            self.symbol, 24 * 30 * 3)  # 约 90 天
+        if prices_3m and len(prices_3m) >= 10:
+            min_price_3m = min(prices_3m)
+            if current_price <= min_price_3m * 1.005:  # 允许 0.5% 的误差范围
+                if not self._should_send_alert('long_term_low_3m', current_price):
+                    return None, None
+
+                alert = f"3 个月最低价报警！当前价格 {current_price} 接近 3 个月低点 {min_price_3m:.2f}"
+                suggestion = "建议：价格处于 3 个月低位，可关注长期支撑，设置止损位 {:.2f}".format(
+                    min_price_3m * 0.97)
+                return alert, suggestion
+
+        # 检查 6 个月最低价
+        prices_6m = self.history_manager.get_prices_in_window(
+            self.symbol, 24 * 30 * 6)  # 约 180 天
+        if prices_6m and len(prices_6m) >= 10:
+            min_price_6m = min(prices_6m)
+            if current_price <= min_price_6m * 1.005:  # 允许 0.5% 的误差范围
+                if not self._should_send_alert('long_term_low_6m', current_price):
+                    return None, None
+
+                alert = f"6 个月最低价报警！当前价格 {current_price} 接近 6 个月低点 {min_price_6m:.2f}"
+                suggestion = "建议：价格处于 6 个月低位，重要长期支撑位，可考虑分批建仓"
+                return alert, suggestion
 
         return None, None
