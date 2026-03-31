@@ -88,7 +88,7 @@ WECHAT_WORK_CONFIG = {
 
 # 邮件通知配置
 EMAIL_CONFIG = {
-    "enabled": False,
+    "enabled": True,
     "smtp_server": "smtp.qq.com",
     "smtp_port": 587,
     "sender_email": "li9633@qq.com",  # 发送者邮箱

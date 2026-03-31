@@ -79,7 +79,7 @@ class Logger:
     def _add_console_handler(self):
         """添加控制台处理器"""
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)  # 控制台只显示 INFO 及以上
+        # console_handler.setLevel(logging.INFO)  # 控制台只显示 INFO 及以上
 
         formatter = logging.Formatter(
             '%(asctime)s | %(levelname)-8s | %(message)s',

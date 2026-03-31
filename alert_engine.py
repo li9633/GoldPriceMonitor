@@ -15,9 +15,9 @@ class AlertEngine:
         # 报警记录，记录每种报警类型的最后触发时间和价格
         self.alert_records: Dict[str, Dict] = {}
         # 报警冷却时间（分钟）
-        self.alert_cooldown_minutes = 30
+        self.alert_cooldown_minutes = 10
         # 价格变化阈值（百分比）
-        self.price_change_threshold = 0.005  # 0.5%
+        self.price_change_threshold = 0.003  # 0.3%
         logger.debug(f"AlertEngine 初始化，监控品种：{symbol}")
 
     def check_all_conditions(self, current_price: float) -> Tuple[List[str], List[str]]:
