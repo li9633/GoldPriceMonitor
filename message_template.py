@@ -141,7 +141,7 @@ class MessageTemplate:
                 # 邮件 HTML: 使用 CSS 类或内联样式
                 london_gold_info_str = f'<div class="london-price">伦敦金参考：¥{cny_price}/g (${usd_price})</div>'
 
-        # --- 格式化条件和建議 ---
+        # --- 格式化条件和建议 ---
         if template_type == "markdown":
             conditions_str = "\n".join(
                 [f"- {cls._escape_markdown(c)}" for c in conditions])
