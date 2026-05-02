@@ -10,11 +10,14 @@ LOG_CONFIG = {
 
 # 监控目标
 SYMBOL = "gds_AUTD"  # 监控品种代码
+MONITOR_SYMBOLS = ['gds_AUTD', 'hf_XAU']
 SYMBOL_NAME_MAP = {
     "gds_AUTD": "黄金延期",
     "hf_GC": "纽约黄金",
     "hf_XAU": "伦敦金"
 }
+USD_TO_CNY_RATE = 6.830
+OUNCE_TO_GRAM = 31.1035
 
 # 数据源
 API_URL = "https://www.huilvbiao.com/api/gold_indexApi"

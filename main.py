@@ -1,12 +1,12 @@
 import time
 import sqlite3
 from datetime import datetime
-from data_fetcher import fetch_current_price
+from data_fetcher import fetch_all_gold_prices, convert_london_gold_to_cny
 from alert_engine import AlertEngine
 from notifier import Notifier
 from history_manager import HistoryManager
 from data_importer import init_historical_data
-from config import SYMBOL, CHECK_INTERVAL, LOG_CONFIG
+from config import SYMBOL, CHECK_INTERVAL, LOG_CONFIG, MONITOR_SYMBOLS
 from logger import get_logger
 
 
@@ -53,20 +53,31 @@ def main():
     while True:
         try:
             # 1. 获取当前价格
-            price_data = fetch_current_price(SYMBOL)
-            if not price_data:
-                logger.warning(f"[{datetime.now()}] 获取价格失败，等待下次检查")
+            prices_data = fetch_all_gold_prices(MONITOR_SYMBOLS)
+
+            # 检查主监控品种是否获取成功
+            main_symbol_data = prices_data.get(SYMBOL)
+            if not main_symbol_data:
+                logger.warning(
+                    f"[{datetime.now()}] 获取主品种 {SYMBOL} 价格失败，等待下次检查")
                 time.sleep(CHECK_INTERVAL)
                 continue
 
-            current_price = price_data['price']
+            current_price = main_symbol_data['price']
             logger.debug(
-                f"[{datetime.now().strftime('%H:%M:%S')}] {price_data['name']} 价格：{current_price}")
+                f"[{datetime.now().strftime('%H:%M:%S')}] {main_symbol_data['name']} 价格：{current_price}")
 
-            # 2. 保存到历史记录
+            # 2. 保存到历史记录 (只保存主品种，或者根据需要保存所有)
             history_mgr.save_price(SYMBOL, current_price)
 
-            # 3. 检查报警条件
+            # 如果需要保存伦敦金历史数据，可以在此处添加：
+            london_data = prices_data.get('hf_XAU')
+            if london_data:
+                history_mgr.save_price('hf_XAU', london_data['price'])
+                london_data['converted_cny_price'] = convert_london_gold_to_cny(
+                    london_data['price'], None)
+
+            # 3. 检查报警条件 (基于主品种)
             alerts, suggestions = alert_engine.check_all_conditions(
                 current_price)
 
@@ -77,7 +88,21 @@ def main():
                 for alert in alerts:
                     logger.warning(f"  └─ {alert}")
 
-                notifier.send_alert(SYMBOL, current_price, alerts, suggestions)
+                # 准备额外信息：伦敦金换算价格
+                extra_info = {}
+                london_data = prices_data.get('hf_XAU')
+                if london_data:
+                    extra_info['london_gold_usd'] = london_data['price']
+                    extra_info['london_gold_cny'] = london_data.get(
+                        'converted_cny_price', 0)
+
+                notifier.send_alert(
+                    SYMBOL,
+                    current_price,
+                    alerts,
+                    suggestions,
+                    extra_info=extra_info  # 传入额外信息
+                )
             else:
                 logger.debug("  └─ 无报警")
 

@@ -17,17 +17,19 @@ class Notifier:
 
     def send_alert(self, symbol: str, current_price: float,
                    alert_messages: List[str],
-                   suggestions: List[str] = None) -> bool:
+                   suggestions: List[str] = None,
+                   extra_info: dict = None) -> bool:
         """
-        统一发送报警通知，支持降级机制
-        优先使用企业微信，失败后降级使用邮件
+        统一发送报警通知
+        :param extra_info: 额外信息，如伦敦金换算价格
         """
         suggestions = suggestions or []
         symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
 
         logger.info("========== 开始发送报警通知 ==========")
         logger.info(f"品种：{symbol_name}, 价格：{current_price}")
-        logger.info(f"报警信息：{alert_messages}")
+        if extra_info:
+            logger.info(f"额外信息：{extra_info}")
 
         # 1. 优先尝试企业微信通知
         wechat_success = False
@@ -35,11 +37,12 @@ class Notifier:
             logger.info("[通知策略] 尝试使用企业微信发送通知...")
             message = MessageTemplate.format_alert(
                 symbol, current_price, alert_messages,
-                suggestions, template_type="markdown")
+                suggestions, template_type="markdown",
+                extra_info=extra_info)  # 传入额外信息
             wechat_success = self._send_wechat_work_markdown(message)
 
             if wechat_success:
-                logger.info("[通知结果] 企业微信通知成功，无需降级邮件通知")
+                logger.info("[通知结果] 企业微信通知成功")
                 logger.info("========== 通知发送完成 ==========")
                 return True
             else:
@@ -53,7 +56,8 @@ class Notifier:
             logger.info("[通知策略] 尝试使用邮件发送通知...")
             message = MessageTemplate.format_alert(
                 symbol, current_price, alert_messages,
-                suggestions, template_type="email")
+                suggestions, template_type="email",
+                extra_info=extra_info)  # 传入额外信息
             email_success = self._send_email_alert(
                 symbol, current_price, message)
 
@@ -64,7 +68,7 @@ class Notifier:
         else:
             logger.warning("[通知策略] 邮件通知未启用")
 
-        # 3. 记录最终结果
+        # ... 后续逻辑不变 ...
         final_success = wechat_success or email_success
         if final_success:
             logger.info("========== 通知发送完成 (成功) ==========")
@@ -72,6 +76,7 @@ class Notifier:
             logger.error("========== 通知发送完成 (全部失败) ==========")
 
         return final_success
+
 
     def _send_email_alert(self, symbol: str, current_price: float, message: str) -> bool:
         """发送邮件通知（HTML 格式）"""
