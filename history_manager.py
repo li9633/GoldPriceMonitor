@@ -1,6 +1,7 @@
 import sqlite3
 from typing import List, Optional, Dict
 from config import DB_FILE
+from datetime import datetime
 
 
 class HistoryManager:
@@ -22,9 +23,10 @@ class HistoryManager:
     def save_price(self, symbol: str, price: float):
         """保存价格到数据库"""
         conn = sqlite3.connect(DB_FILE)
+        current_time = datetime.now()
         c = conn.cursor()
-        c.execute("INSERT INTO prices (symbol, price) VALUES (?, ?)",
-                  (symbol, price))
+        c.execute("INSERT INTO prices (symbol, price,timestamp) VALUES (?, ?, ?)",
+                  (symbol, price, current_time))
         conn.commit()
         conn.close()
 
