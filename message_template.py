@@ -8,10 +8,12 @@ class MessageTemplate:
     """消息模板管理 - 支持企业微信 markdown 和邮件 HTML 格式"""
 
     # 企业微信 Markdown V2 模板
+    # 修改点：在“当前价格”下方增加了 {london_gold_info} 占位符
     WECHAT_MARKDOWN_TEMPLATE = """## <font color="warning">🚨 黄金价格监控报警</font>
 
 **品种**：{symbol_name}
 **当前价格**：<font color="{price_color}">{price}</font>
+{london_gold_info}
 **报警时间**：{time}
 
 ### <font color="comment">触发条件</font>
@@ -24,6 +26,7 @@ class MessageTemplate:
 *系统持续监控中，请及时处理*"""
 
     # 邮件 HTML 模板（优化版）
+    # 修改点：在 price-box 中增加了 london_gold_row div
     EMAIL_HTML_TEMPLATE = """
     <!DOCTYPE html>
     <html>
@@ -37,6 +40,7 @@ class MessageTemplate:
             .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
             .price-box {{ background: white; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid {price_color}; }}
             .price {{ font-size: 28px; font-weight: bold; color: {price_color}; }}
+            .london-price {{ font-size: 16px; color: #1976d2; margin-top: 5px; font-weight: bold; }}
             .section {{ margin: 15px 0; }}
             .section-title {{ font-weight: bold; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 5px; }}
             .condition-item {{ background: white; padding: 10px; margin: 8px 0; border-radius: 5px; border-left: 3px solid #ff9800; }}
@@ -53,7 +57,8 @@ class MessageTemplate:
                 <div class="price-box">
                     <div><strong>品种：</strong>{symbol_name}</div>
                     <div class="price">当前价格：{price}</div>
-                    <div><strong>报警时间：</strong>{time}</div>
+                    {london_gold_info}
+                    <div style="margin-top: 10px; color: #666; font-size: 14px;"><strong>报警时间：</strong>{time}</div>
                 </div>
                 
                 <div class="section">
@@ -109,25 +114,36 @@ class MessageTemplate:
         格式化报警消息
         :param extra_info: 额外信息字典，例如 {'london_gold_usd': 2300, 'london_gold_cny': 530.5}
         """
-        template = getattr(
-            cls, f"{template_type.upper()}_TEMPLATE", cls.WECHAT_MARKDOWN_TEMPLATE)
 
-        # 计算价格颜色
+        if template_type == "email":
+            template = cls.EMAIL_HTML_TEMPLATE
+        elif template_type == "markdown":
+            template = cls.WECHAT_MARKDOWN_TEMPLATE
+        else:
+            # 默认或其他类型 fallback 到 markdown
+            template = cls.WECHAT_MARKDOWN_TEMPLATE
+
+        # 计算主价格颜色
         if avg_price is None:
             avg_price = price
         price_color = "#d32f2f" if price >= avg_price else "#1976d2"
 
-        # 构建额外信息显示字符串
-        extra_display = ""
-        if extra_info:
-            if template_type == "markdown":
-                if 'london_gold_cny' in extra_info:
-                    extra_display = f"\n**伦敦金参考价**：¥{extra_info['london_gold_cny']}/g (${extra_info.get('london_gold_usd', 'N/A')})"
-            elif template_type == "email":
-                if 'london_gold_cny' in extra_info:
-                    extra_display = f'<div style="margin-top:10px; color:#666;"><strong>伦敦金参考价：</strong>¥{extra_info["london_gold_cny"]}/g (${extra_info.get("london_gold_usd", "N/A")})</div>'
+        # --- 构建伦敦金信息显示字符串 ---
+        london_gold_info_str = ""
+        if extra_info and 'london_gold_cny' in extra_info:
+            cny_price = extra_info['london_gold_cny']
+            usd_price = extra_info.get('london_gold_usd', 'N/A')
 
-        # 根据不同模板类型格式化内容
+            if template_type == "markdown":
+                # 企业微信 Markdown: 使用 <font color="info"> 显示蓝色
+                # 注意：企业微信 Markdown 对 HTML 标签支持有限，但 font color 通常有效
+                london_gold_info_str = f"\n**伦敦金参考**：<font color=\"info\">¥{cny_price}/g</font> (${usd_price})"
+
+            elif template_type == "email":
+                # 邮件 HTML: 使用 CSS 类或内联样式
+                london_gold_info_str = f'<div class="london-price">伦敦金参考：¥{cny_price}/g (${usd_price})</div>'
+
+        # --- 格式化条件和建議 ---
         if template_type == "markdown":
             conditions_str = "\n".join(
                 [f"- {cls._escape_markdown(c)}" for c in conditions])
@@ -140,6 +156,7 @@ class MessageTemplate:
             suggestions_str = "\n".join(
                 [f'<div class="suggestion-item">{cls._escape_html(s)}</div>' for s in suggestions]) if suggestions else '<div class="suggestion-item">请密切关注市场动态</div>'
         else:
+            # 默认文本格式
             conditions_str = "\n".join([f"  - {c}" for c in conditions])
             suggestions_str = "\n".join(
                 [f"  • {s}" for s in suggestions]) if suggestions else "  • 请密切关注市场动态"
@@ -148,22 +165,16 @@ class MessageTemplate:
         # 获取品种名称
         symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
 
-        # 组装最终消息，将额外信息追加在建议之后或单独板块
-        # 这里为了简单，直接插入到模板变量中，可能需要微调模板结构
-        # 更优雅的方式是修改模板字符串包含 {extra_info} 占位符
-
-        # 临时方案：直接拼接到 suggestions 后面或者作为新字段
-        # 由于原模板没有 extra_info 占位符，我们这里动态修改模板或使用更灵活的方式
-        # 建议修改 WECHAT_MARKDOWN_TEMPLATE 增加 {extra_info}
-
+        # 最终组装
         return template.format(
             symbol_name=cls._escape_markdown(
                 symbol_name) if template_type == "markdown" else symbol_name,
             price=f"{price:.2f}" if isinstance(
                 price, (int, float)) else str(price),
             price_color=price_color,
+            london_gold_info=london_gold_info_str,  # 传入伦敦金信息
             time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             year=datetime.now().year,
             conditions=conditions_str,
-            suggestions=suggestions_str + extra_display  # 将额外信息附加在建议后
+            suggestions=suggestions_str
         )
