@@ -20,7 +20,9 @@ USD_TO_CNY_RATE = 6.830
 OUNCE_TO_GRAM = 31.1035
 
 # 数据源
-API_URL = "https://www.huilvbiao.com/api/gold_indexApi"
+GOLD_PRICE_API_URL = "https://www.huilvbiao.com/api/gold_indexApi"
+
+USD_TO_CNY_API_URL = "https://wise.com/zh-cn/currency-converter/usd-to-cny-rate"
 
 # 检查间隔（秒）
 CHECK_INTERVAL = 10

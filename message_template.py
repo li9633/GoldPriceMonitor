@@ -135,9 +135,7 @@ class MessageTemplate:
             usd_price = extra_info.get('london_gold_usd', 'N/A')
 
             if template_type == "markdown":
-                # 企业微信 Markdown: 使用 <font color="info"> 显示蓝色
-                # 注意：企业微信 Markdown 对 HTML 标签支持有限，但 font color 通常有效
-                london_gold_info_str = f"\n**伦敦金参考**：<font color=\"info\">¥{cny_price}/g</font> (${usd_price})"
+                london_gold_info_str = f"\n**伦敦金参考**：<font color=\"#1976d2\">¥{cny_price}/g</font> <font>~</font> <font color=\"#1976d2\">(${usd_price})</font>"
 
             elif template_type == "email":
                 # 邮件 HTML: 使用 CSS 类或内联样式
