@@ -1,6 +1,6 @@
-import os
 import re
 from datetime import datetime
+from pathlib import Path
 
 from config import CHINA_TZ, DEBUG, SYMBOL_NAME_MAP
 
@@ -17,10 +17,10 @@ class MessageTemplate:
 {london_gold_info}
 **报警时间**：{time}
 
-### <font color="comment">触发条件</font>
+### <font color="comment">AI 分析</font>
 {conditions}
 
-### <font color="info">操作建议</font>
+### <font color="info">AI 操作建议</font>
 {suggestions}
 {debug_notice}
 {ai_model_info}
@@ -33,8 +33,8 @@ class MessageTemplate:
     def _load_email_html_template(cls) -> str:
         if cls._email_html_template is not None:
             return cls._email_html_template
-        template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
-        template_path = os.path.join(template_dir, "email_alert.html")
+        template_dir = Path(__file__).parent.parent / "templates"
+        template_path = template_dir / "email_alert.html"
         with open(template_path, encoding="utf-8") as f:
             cls._email_html_template = f.read()
         return cls._email_html_template

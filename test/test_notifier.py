@@ -1,10 +1,9 @@
 
 import sys
-import os
-import re
+from pathlib import Path
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, '..'))
+current_dir = str(Path(__file__).resolve().parent)
+project_root = str(Path(__file__).resolve().parent.parent)
 sys.path.insert(0, project_root)
 
 from notifier import Notifier

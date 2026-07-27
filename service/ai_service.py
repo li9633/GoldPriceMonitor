@@ -12,12 +12,13 @@ class AIAnalysisService:
     """AI 行情分析服务 — 使用 GLM-4-Flash 模型"""
 
     SYSTEM_PROMPT = """你是一位资深黄金市场分析师，专注于上海黄金交易所 Au(T+D) 品种。
-请根据提供的市场数据，判断当前是否值得向投资者发送通知，并给出分析。
+系统已触发价格报警条件（见下方【触发条件】），请你结合市场数据判断是否值得向投资者发送通知。
 
-通知原则：
-- 仅在有明确交易信号或显著风险时通知（如突破关键位、趋势反转、异常波动等）
-- 市场平稳运行时不要通知，避免干扰投资者
+判断原则：
+- 系统报警条件已触发，默认应发送通知。仅在你认为报警明显不必要时（如数据异常、短暂波动后立即恢复）才设为 false
+- 如果价格确实突破了关键阈值、处于历史低位或出现趋势变化，应确认发送
 - 分析应简洁专业，建议应具体可操作
+- urgency 根据紧急程度设为 high/medium/low
 
 按以下JSON格式回复（不要包含其他内容）：
 {
@@ -35,12 +36,13 @@ class AIAnalysisService:
     def analyze(self, symbol: str, current_price: float,
                 snapshot: PriceSnapshot | None,
                 london_cny: float | None = None,
-                london_usd: float | None = None) -> dict | None:
+                london_usd: float | None = None,
+                triggered_alerts: list[str] | None = None) -> dict | None:
         if not self.enabled:
             return None
 
         prompt = self._build_prompt(
-            symbol, current_price, snapshot, london_cny, london_usd)
+            symbol, current_price, snapshot, london_cny, london_usd, triggered_alerts)
 
         try:
             result = self.model_pool.call(
@@ -67,9 +69,17 @@ class AIAnalysisService:
     def _build_prompt(self, symbol: str, current_price: float,
                       snapshot: PriceSnapshot | None,
                       london_cny: float | None = None,
-                      london_usd: float | None = None) -> str:
+                      london_usd: float | None = None,
+                      triggered_alerts: list[str] | None = None) -> str:
         symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
-        parts = [f"【当前行情】\n- 品种：{symbol_name}\n- 当前价格：¥{current_price:.2f}/克"]
+        parts = []
+
+        if triggered_alerts:
+            parts.append(
+                "【触发条件】\n系统已触发以下报警：\n" +
+                "\n".join(f"- {a}" for a in triggered_alerts))
+
+        parts.append(f"【当前行情】\n- 品种：{symbol_name}\n- 当前价格：¥{current_price:.2f}/克")
 
         if london_cny is not None and london_usd is not None:
             parts.append(f"- 伦敦金参考：¥{london_cny:.2f}/克 (${london_usd:.2f}/盎司)")
