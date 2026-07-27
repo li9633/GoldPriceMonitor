@@ -15,7 +15,7 @@ from service.alert_service import AlertService
 from service.history_import_service import init_historical_data
 from service.notification_service import NotificationService
 from service.price_service import PriceService
-from utils.logger import get_logger
+from utils.logger import cleanup_old_logs, get_log_size, get_logger
 
 
 class MonitorService:
@@ -30,6 +30,8 @@ class MonitorService:
         self.start_time = datetime.now(CHINA_TZ)
         self.check_count = 0
         self.alert_count = 0
+        self._last_notification_time: datetime | None = None
+        self._notification_cooldown_minutes = 5
 
     def run(self) -> None:
         self._print_banner()
@@ -107,8 +109,7 @@ class MonitorService:
             self.price_mapper.save_price("hf_XAU", london_data["price"])
 
     def _handle_alerts(self, prices_data: dict, current_price: float) -> None:
-        alerts, suggestions = self.alert_service.check_all_conditions(
-            current_price)
+        alerts, suggestions = self.alert_service.check_all_conditions(current_price)
 
         extra_info = self._build_extra_info(prices_data)
 
@@ -172,6 +173,15 @@ class MonitorService:
         self.notification_service.send_alert(
             SYMBOL, current_price, ai_alerts, ai_suggestions, extra_info=extra_info
         )
+        self._last_notification_time = datetime.now(CHINA_TZ)
+
+    def _is_in_cooldown(self) -> bool:
+        if self._last_notification_time is None:
+            return False
+        elapsed = (
+            datetime.now(CHINA_TZ) - self._last_notification_time
+        ).total_seconds() / 60
+        return elapsed < self._notification_cooldown_minutes
 
     def _call_ai(
         self,
@@ -180,8 +190,7 @@ class MonitorService:
         triggered_alerts: list[str] | None = None,
     ) -> dict | None:
         london_data = prices_data.get("hf_XAU")
-        london_cny = london_data.get(
-            "converted_cny_price") if london_data else None
+        london_cny = london_data.get("converted_cny_price") if london_data else None
         london_usd = london_data["price"] if london_data else None
         snapshot = self.price_mapper.get_check_snapshot(SYMBOL)
         return self.ai_service.analyze(
@@ -193,22 +202,20 @@ class MonitorService:
         london_data = prices_data.get("hf_XAU")
         if london_data:
             extra_info["london_gold_usd"] = london_data["price"]
-            extra_info["london_gold_cny"] = london_data.get(
-                "converted_cny_price", 0)
+            extra_info["london_gold_cny"] = london_data.get("converted_cny_price", 0)
         return extra_info
 
     def _log_statistics(self) -> None:
         if self.check_count % 100 != 0:
             return
-        run_time = (datetime.now(CHINA_TZ) -
-                    self.start_time).total_seconds() / 60
+        run_time = (datetime.now(CHINA_TZ) - self.start_time).total_seconds() / 60
         self.logger.info("=== 运行统计 ===")
         self.logger.info(f"运行时长：{run_time:.2f} 分钟")
         self.logger.info(f"检查次数：{self.check_count}")
         self.logger.info(f"报警次数：{self.alert_count}")
-        self.logger.info(f"日志大小：{self.logger.get_log_size() / 1024:.2f} KB")
+        self.logger.info(f"日志大小：{get_log_size() / 1024:.2f} KB")
         self.logger.info("================")
 
     def _cleanup_logs(self) -> None:
         if self.check_count % (86400 // CHECK_INTERVAL) == 0:
-            self.logger.cleanup_old_logs(LOG_CONFIG["keep_days"])
+            cleanup_old_logs(LOG_CONFIG["keep_days"])

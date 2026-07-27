@@ -10,8 +10,13 @@ logger = get_logger("PriceMapper")
 class PriceSnapshot:
     """一次查询获取所有检查所需数据，避免重复 DB 查询"""
 
-    def __init__(self, prices_with_time: list[tuple[datetime, float]],
-                 ma_prices: list[float], min_3m: float | None, min_6m: float | None):
+    def __init__(
+        self,
+        prices_with_time: list[tuple[datetime, float]],
+        ma_prices: list[float],
+        min_3m: float | None,
+        min_6m: float | None,
+    ):
         self._all = [p for _, p in prices_with_time]
         self._timestamps = [t for t, _ in prices_with_time]
         self._ma_prices = ma_prices
@@ -26,10 +31,13 @@ class PriceSnapshot:
         return self._all[-n:] if len(self._all) >= n else self._all
 
     def trend(self, hours: float) -> dict:
-        subset = [(t, p) for t, p in zip(self._timestamps, self._all)
-                  if t >= datetime.now(CHINA_TZ) - timedelta(hours=hours)]
+        subset = [
+            (t, p)
+            for t, p in zip(self._timestamps, self._all)
+            if t >= datetime.now(CHINA_TZ) - timedelta(hours=hours)
+        ]
         if len(subset) < 2:
-            return {'slope': 0, 'direction': 'stable'}
+            return {"slope": 0, "direction": "stable"}
         prices = [p for _, p in subset]
         n = len(prices)
         x_mean = n / 2
@@ -38,12 +46,12 @@ class PriceSnapshot:
         denominator = sum((i - x_mean) ** 2 for i in range(n))
         slope = numerator / denominator if denominator != 0 else 0
         if slope > 0.5:
-            direction = 'up'
+            direction = "up"
         elif slope < -0.5:
-            direction = 'down'
+            direction = "down"
         else:
-            direction = 'stable'
-        return {'slope': slope, 'direction': direction}
+            direction = "stable"
+        return {"slope": slope, "direction": direction}
 
     def percentile(self, hours: float, pct: float) -> float | None:
         prices = self.prices_in_hours(hours)
@@ -57,9 +65,16 @@ class PriceSnapshot:
         if not prices:
             return {}
         avg = sum(prices) / len(prices)
-        variance = sum((p - avg) ** 2 for p in prices) / len(prices) if len(prices) > 1 else 0
-        return {'min': min(prices), 'max': max(prices), 'avg': avg,
-                'count': len(prices), 'std': variance ** 0.5}
+        variance = (
+            sum((p - avg) ** 2 for p in prices) / len(prices) if len(prices) > 1 else 0
+        )
+        return {
+            "min": min(prices),
+            "max": max(prices),
+            "avg": avg,
+            "count": len(prices),
+            "std": variance**0.5,
+        }
 
     def ma(self, periods: int) -> float | None:
         if len(self._ma_prices) < periods:
@@ -76,14 +91,15 @@ class PriceMapper:
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_file)
             self._conn.execute("PRAGMA journal_mode=WAL")
-            self._ensure_indexes()
         return self._conn
 
-    def _ensure_indexes(self):
-        c = self._conn.cursor()
-        c.execute("CREATE INDEX IF NOT EXISTS idx_prices_symbol_ts ON prices(symbol, timestamp)")
+    def _ensure_indexes(self, conn: sqlite3.Connection) -> None:
+        c = conn.cursor()
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prices_symbol_ts ON prices(symbol, timestamp)"
+        )
         c.execute("CREATE INDEX IF NOT EXISTS idx_prices_symbol ON prices(symbol)")
-        self._conn.commit()
+        conn.commit()
 
     def close(self):
         if self._conn:
@@ -93,19 +109,21 @@ class PriceMapper:
     def init_table(self):
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS prices
+        c.execute("""CREATE TABLE IF NOT EXISTS prices
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
                       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                       symbol TEXT,
-                      price REAL)''')
+                      price REAL)""")
         conn.commit()
+        self._ensure_indexes(conn)
 
     def table_exists(self) -> bool:
         try:
             conn = self._get_connection()
             c = conn.cursor()
             c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='prices'")
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='prices'"
+            )
             exists = c.fetchone() is not None
             return exists
         except sqlite3.Error as e:
@@ -115,16 +133,20 @@ class PriceMapper:
     def save_price(self, symbol: str, price: float):
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
-                  (symbol, price, datetime.now(CHINA_TZ)))
+        c.execute(
+            "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
+            (symbol, price, datetime.now(CHINA_TZ)),
+        )
         conn.commit()
 
     def get_prices_in_window(self, symbol: str, hours: float) -> list[float]:
         cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
-                  (symbol, cutoff))
+        c.execute(
+            "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
+            (symbol, cutoff),
+        )
         prices = [row[0] for row in c.fetchall()]
         return prices
 
@@ -133,20 +155,31 @@ class PriceMapper:
         conn = self._get_connection()
         c = conn.cursor()
         cutoff_24h = datetime.now(CHINA_TZ) - timedelta(hours=24)
-        c.execute("SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
-                  (symbol, cutoff_24h))
+        c.execute(
+            "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
+            (symbol, cutoff_24h),
+        )
         rows = c.fetchall()
         if not rows:
             return None
-        prices_with_time = [(datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1]) for r in rows]
-        c.execute("SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT 48", (symbol,))
+        prices_with_time = [
+            (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1]) for r in rows
+        ]
+        c.execute(
+            "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT 48",
+            (symbol,),
+        )
         ma_prices = [row[0] for row in c.fetchall()]
         ma_prices.reverse()
-        c.execute("SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
-                  (symbol, datetime.now(CHINA_TZ) - timedelta(days=90)))
+        c.execute(
+            "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
+            (symbol, datetime.now(CHINA_TZ) - timedelta(days=90)),
+        )
         min_3m = c.fetchone()[0]
-        c.execute("SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
-                  (symbol, datetime.now(CHINA_TZ) - timedelta(days=180)))
+        c.execute(
+            "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
+            (symbol, datetime.now(CHINA_TZ) - timedelta(days=180)),
+        )
         min_6m = c.fetchone()[0]
         return PriceSnapshot(prices_with_time, ma_prices, min_3m, min_6m)
 
@@ -155,11 +188,11 @@ class PriceMapper:
         if not prices:
             return {}
         return {
-            'min': min(prices),
-            'max': max(prices),
-            'avg': sum(prices) / len(prices),
-            'count': len(prices),
-            'std': self._calculate_std(prices)
+            "min": min(prices),
+            "max": max(prices),
+            "avg": sum(prices) / len(prices),
+            "count": len(prices),
+            "std": self._calculate_std(prices),
         }
 
     def _calculate_std(self, prices: list[float]) -> float:
@@ -167,13 +200,15 @@ class PriceMapper:
             return 0
         avg = sum(prices) / len(prices)
         variance = sum((p - avg) ** 2 for p in prices) / len(prices)
-        return variance ** 0.5
+        return variance**0.5
 
     def get_moving_average(self, symbol: str, periods: int) -> float | None:
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
-                  (symbol, periods))
+        c.execute(
+            "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
+            (symbol, periods),
+        )
         prices = [row[0] for row in c.fetchall()]
         if not prices:
             return None
@@ -183,11 +218,13 @@ class PriceMapper:
         cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
-                  (symbol, cutoff))
+        c.execute(
+            "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
+            (symbol, cutoff),
+        )
         prices = [row[0] for row in c.fetchall()]
         if len(prices) < 2:
-            return {'slope': 0, 'direction': 'stable'}
+            return {"slope": 0, "direction": "stable"}
         n = len(prices)
         x_mean = n / 2
         y_mean = sum(prices) / n
@@ -195,14 +232,16 @@ class PriceMapper:
         denominator = sum((i - x_mean) ** 2 for i in range(n))
         slope = numerator / denominator if denominator != 0 else 0
         if slope > 0.5:
-            direction = 'up'
+            direction = "up"
         elif slope < -0.5:
-            direction = 'down'
+            direction = "down"
         else:
-            direction = 'stable'
-        return {'slope': slope, 'direction': direction}
+            direction = "stable"
+        return {"slope": slope, "direction": direction}
 
-    def get_percentile(self, symbol: str, hours: float, percentile: float) -> float | None:
+    def get_percentile(
+        self, symbol: str, hours: float, percentile: float
+    ) -> float | None:
         prices = self.get_prices_in_window(symbol, hours)
         if not prices:
             return None
@@ -226,13 +265,17 @@ class PriceMapper:
     def batch_insert_prices(self, records: list[tuple]) -> int:
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_prices_unique ON prices(symbol, timestamp)")
+        c.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_prices_unique ON prices(symbol, timestamp)"
+        )
         conn.commit()
         count = 0
         for symbol, price, timestamp in records:
             try:
-                c.execute("INSERT OR IGNORE INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
-                          (symbol, price, timestamp))
+                c.execute(
+                    "INSERT OR IGNORE INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
+                    (symbol, price, timestamp),
+                )
                 if c.rowcount > 0:
                     count += 1
             except sqlite3.Error as e:

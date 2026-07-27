@@ -83,8 +83,6 @@ class AlertService:
         if not self.config.ENABLE_ABSOLUTE_ALERT:
             return None, None
         if current_price < self.config.ABSOLUTE_LOW_PRICE:
-            if not self._should_send_alert("absolute_low", current_price):
-                return None, None
             alert = f"绝对低价报警！当前价格 {current_price} 低于设定阈值 {self.config.ABSOLUTE_LOW_PRICE}"
             suggestion = "建议：可能是买入机会，请结合基本面分析后决策"
             return alert, suggestion
