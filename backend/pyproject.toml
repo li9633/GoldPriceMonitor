@@ -8,6 +8,10 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "lxml>=5.0.0",
     "chinese-calendar>=1.11.0",
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "hypercorn>=0.17",
+    "python-dotenv>=1.0",
 ]
 
 [tool.uv]
