@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from config import AlertConfig
 from mapper.price_mapper import PriceMapper
@@ -46,7 +46,7 @@ class AlertService:
         return alerts, suggestions
 
     def _should_send_alert(self, alert_type: str, current_price: float) -> bool:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone(timedelta(hours=8)))
         if alert_type not in self.alert_records:
             self.alert_records[alert_type] = {
                 'last_time': now, 'last_price': current_price}

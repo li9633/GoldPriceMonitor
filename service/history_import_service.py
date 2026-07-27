@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -30,7 +30,7 @@ class HistoryImportService:
         records = []
         for item in data_list:
             try:
-                date_time = datetime.fromtimestamp(item['date_time'] / 1000, tz=timezone.utc)
+                date_time = datetime.fromtimestamp(item['date_time'] / 1000, tz=timezone(timedelta(hours=8)))
                 price = float(item['price'])
                 records.append((self.symbol, price, date_time))
             except (ValueError, KeyError, TypeError) as e:

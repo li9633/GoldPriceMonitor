@@ -2,7 +2,7 @@ import gzip
 import logging
 import os
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 
 
@@ -165,7 +165,7 @@ class Logger:
         Args:
             keep_days: 保留天数
         """
-        cutoff_time = datetime.now(timezone.utc).timestamp() - (keep_days * 24 * 60 * 60)
+        cutoff_time = datetime.now(timezone(timedelta(hours=8))).timestamp() - (keep_days * 24 * 60 * 60)
 
         for log_file in self.get_log_files():
             try:

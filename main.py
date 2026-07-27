@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from config import CHECK_INTERVAL, LOG_CONFIG, MONITOR_SYMBOLS, SYMBOL
 from mapper.price_mapper import PriceMapper
@@ -43,7 +43,7 @@ def main():
     logger.info("开始实时监控...\n")
 
     # 记录启动时间
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(timezone(timedelta(hours=8)))
     check_count = 0
     alert_count = 0
 
@@ -56,13 +56,13 @@ def main():
             main_symbol_data = prices_data.get(SYMBOL)
             if not main_symbol_data:
                 logger.warning(
-                    f"[{datetime.now(timezone.utc)}] 获取主品种 {SYMBOL} 价格失败，等待下次检查")
+                    f"[{datetime.now(timezone(timedelta(hours=8)))}] 获取主品种 {SYMBOL} 价格失败，等待下次检查")
                 time.sleep(CHECK_INTERVAL)
                 continue
 
             current_price = main_symbol_data['price']
             logger.debug(
-                f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] {main_symbol_data['name']} 价格：{current_price}")
+                f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%H:%M:%S')}] {main_symbol_data['name']} 价格：{current_price}")
 
             # 2. 保存到历史记录
             price_mapper.save_price(SYMBOL, current_price)
@@ -104,7 +104,7 @@ def main():
 
             # 每 100 次检查输出统计
             if check_count % 100 == 0:
-                run_time = (datetime.now(timezone.utc) - start_time).total_seconds() / 60
+                run_time = (datetime.now(timezone(timedelta(hours=8))) - start_time).total_seconds() / 60
                 logger.info("=== 运行统计 ===")
                 logger.info(f"运行时长：{run_time:.2f} 分钟")
                 logger.info(f"检查次数：{check_count}")

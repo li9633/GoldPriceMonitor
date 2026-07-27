@@ -1,6 +1,6 @@
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from config import SYMBOL_NAME_MAP
 
@@ -122,8 +122,8 @@ class MessageTemplate:
         symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
         display_name = cls._escape_markdown(symbol_name) if template_type == "markdown" else symbol_name
         display_price = f"{price:.2f}" if isinstance(price, (int, float)) else str(price)
-        display_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        display_year = str(datetime.now(timezone.utc).year)
+        display_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+        display_year = str(datetime.now(timezone(timedelta(hours=8))).year)
 
         # 邮件模板使用 {{placeholder}} 语法，通过 replace 渲染
         if template_type == "email":

@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from config import DB_FILE
 from utils.logger import get_logger
@@ -41,7 +41,7 @@ class PriceMapper:
 
     def save_price(self, symbol: str, price: float):
         conn = self._get_connection()
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(timezone(timedelta(hours=8)))
         c = conn.cursor()
         c.execute("INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
                   (symbol, price, current_time))

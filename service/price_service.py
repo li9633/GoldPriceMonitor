@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -36,7 +36,7 @@ class PriceService:
                 if f'var hq_str_{symbol}=' in line:
                     parts = line.split('"')
                     if len(parts) < 2:
-                        logger.warning(f"[{datetime.now(timezone.utc)}] 解析{symbol}数据格式错误")
+                        logger.warning(f"[{datetime.now(timezone(timedelta(hours=8)))}] 解析{symbol}数据格式错误")
                         continue
 
                     data_str = parts[1]
@@ -46,7 +46,7 @@ class PriceService:
                     max_index_needed = max(indices.values())
                     if len(fields) <= max_index_needed:
                         logger.warning(
-                            f"[{datetime.now(timezone.utc)}] 解析{symbol}数据字段不足 ({len(fields)})")
+                            f"[{datetime.now(timezone(timedelta(hours=8)))}] 解析{symbol}数据字段不足 ({len(fields)})")
                         continue
 
                     try:
@@ -64,11 +64,11 @@ class PriceService:
                         }
                     except (ValueError, IndexError) as e:
                         logger.error(
-                            f"[{datetime.now(timezone.utc)}] 转换{symbol}数据字段失败: {e}")
+                            f"[{datetime.now(timezone(timedelta(hours=8)))}] 转换{symbol}数据字段失败: {e}")
                         continue
 
         except requests.RequestException as e:
-            logger.error(f"[{datetime.now(timezone.utc)}] 获取{symbol}价格网络请求失败: {e}")
+            logger.error(f"[{datetime.now(timezone(timedelta(hours=8)))}] 获取{symbol}价格网络请求失败: {e}")
 
         return None
 

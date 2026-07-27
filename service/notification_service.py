@@ -1,5 +1,5 @@
 import smtplib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 
 from config import EMAIL_CONFIG, SYMBOL_NAME_MAP, WECHAT_WORK_CONFIG
@@ -82,10 +82,10 @@ class NotificationService:
                 self.email_config['sender_email'], self.email_config['sender_password'])
             server.send_message(msg)
             server.quit()
-            logger.info(f"[{datetime.now(timezone.utc)}] 邮件发送成功")
+            logger.info(f"[{datetime.now(timezone(timedelta(hours=8)))}] 邮件发送成功")
             return True
         except (smtplib.SMTPException, OSError) as e:
-            logger.error(f"[{datetime.now(timezone.utc)}] 邮件发送失败：{e}")
+            logger.error(f"[{datetime.now(timezone(timedelta(hours=8)))}] 邮件发送失败：{e}")
             return False
 
     def _send_wechat_work_markdown(self, message: str) -> bool:
@@ -100,13 +100,13 @@ class NotificationService:
         if response.status_code == 200:
             resp_json = response.json()
             if resp_json.get("errcode") == 0:
-                logger.info(f"[{datetime.now(timezone.utc)}] 企业微信 markdown 消息发送成功")
+                logger.info(f"[{datetime.now(timezone(timedelta(hours=8)))}] 企业微信 markdown 消息发送成功")
                 return True
             else:
                 logger.error(
-                    f"[{datetime.now(timezone.utc)}] 企业微信消息发送失败：errcode={resp_json.get('errcode')}, errmsg={resp_json.get('errmsg')}")
+                    f"[{datetime.now(timezone(timedelta(hours=8)))}] 企业微信消息发送失败：errcode={resp_json.get('errcode')}, errmsg={resp_json.get('errmsg')}")
                 return False
         else:
             logger.error(
-                f"[{datetime.now(timezone.utc)}] 企业微信消息发送失败：status_code={response.status_code}")
+                f"[{datetime.now(timezone(timedelta(hours=8)))}] 企业微信消息发送失败：status_code={response.status_code}")
             return False
