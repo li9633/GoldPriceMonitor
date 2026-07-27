@@ -1,9 +1,8 @@
-import os
-import logging
 import gzip
+import logging
+import os
 import shutil
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
 
@@ -105,16 +104,15 @@ class Logger:
             try:
                 # 压缩源文件
                 compressed_file = f"{dest}.gz"
-                with open(source, 'rb') as f_in:
-                    with gzip.open(compressed_file, 'wb') as f_out:
-                        shutil.copyfileobj(f_in, f_out)
+                with open(source, 'rb') as f_in, gzip.open(compressed_file, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
 
                 # 删除原始轮转文件
                 if os.path.exists(source):
                     os.remove(source)
 
                 self.logger.info(f"日志已压缩归档：{compressed_file}")
-            except Exception as e:
+            except OSError as e:
                 self.logger.error(f"日志压缩失败：{e}")
                 # 压缩失败则直接移动文件
                 if os.path.exists(source):
@@ -133,15 +131,15 @@ class Logger:
     def warning(self, msg: str):
         self.logger.warning(msg)
 
-    def error(self, msg: str, exc_info: Optional[Exception] = None):
+    def error(self, msg: str, exc_info: Exception | None = None):
         if exc_info:
-            self.logger.error(msg, exc_info=True)
+            self.logger.error(msg)
         else:
             self.logger.error(msg)
 
-    def critical(self, msg: str, exc_info: Optional[Exception] = None):
+    def critical(self, msg: str, exc_info: Exception | None = None):
         if exc_info:
-            self.logger.critical(msg, exc_info=True)
+            self.logger.critical(msg)
         else:
             self.logger.critical(msg)
 
@@ -150,7 +148,7 @@ class Logger:
         files = []
         if os.path.exists(self.log_dir):
             for f in os.listdir(self.log_dir):
-                if f.startswith(self.name) and (f.endswith('.log') or f.endswith('.log.gz')):
+                if f.startswith(self.name) and f.endswith(('.log', '.log.gz')):
                     files.append(os.path.join(self.log_dir, f))
         return sorted(files, reverse=True)
 
@@ -167,7 +165,7 @@ class Logger:
         Args:
             keep_days: 保留天数
         """
-        cutoff_time = datetime.now().timestamp() - (keep_days * 24 * 60 * 60)
+        cutoff_time = datetime.now(timezone.utc).timestamp() - (keep_days * 24 * 60 * 60)
 
         for log_file in self.get_log_files():
             try:
@@ -175,12 +173,12 @@ class Logger:
                 if file_mtime < cutoff_time:
                     os.remove(log_file)
                     self.info(f"已删除过期日志：{log_file}")
-            except Exception as e:
+            except OSError as e:
                 self.error(f"删除日志失败 {log_file}: {e}")
 
 
 # 全局日志实例
-global_logger: Optional[Logger] = None
+global_logger: Logger | None = None
 
 
 def get_logger(name: str = "GoldPriceMonitor") -> Logger:

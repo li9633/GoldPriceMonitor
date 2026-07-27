@@ -1,7 +1,7 @@
-from datetime import datetime
-from typing import List, Optional
-from config import SYMBOL_NAME_MAP
 import re
+from datetime import datetime, timezone
+
+from config import SYMBOL_NAME_MAP
 
 
 class MessageTemplate:
@@ -106,10 +106,10 @@ class MessageTemplate:
 
     @classmethod
     def format_alert(cls, symbol: str, price: float,
-                     conditions: List[str], suggestions: List[str],
+                     conditions: list[str], suggestions: list[str],
                      template_type: str = "alert",
-                     avg_price: float = None,
-                     extra_info: Optional[dict] = None) -> str:
+                     avg_price: float | None = None,
+                     extra_info: dict | None = None) -> str:
         """
         格式化报警消息
         :param extra_info: 额外信息字典，例如 {'london_gold_usd': 2300, 'london_gold_cny': 530.5}
@@ -171,8 +171,8 @@ class MessageTemplate:
                 price, (int, float)) else str(price),
             price_color=price_color,
             london_gold_info=london_gold_info_str,  # 传入伦敦金信息
-            time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            year=datetime.now().year,
+            time=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            year=datetime.now(timezone.utc).year,
             conditions=conditions_str,
             suggestions=suggestions_str
         )
