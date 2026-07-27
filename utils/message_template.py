@@ -23,6 +23,7 @@ class MessageTemplate:
 ### <font color="info">操作建议</font>
 {suggestions}
 {debug_notice}
+{ai_model_info}
 ---
 *系统持续监控中，请及时处理*"""
 
@@ -132,6 +133,14 @@ class MessageTemplate:
             elif template_type == "email":
                 debug_notice = '<div class="debug-notice">[开发环境] 此消息为测试数据，不代表最终结果</div>'
 
+        ai_model_info_str = ""
+        if extra_info and extra_info.get("ai_model_info"):
+            if template_type == "markdown":
+                ai_model_info_str = f"> <font color=\"comment\">分析模型：{extra_info['ai_model_info']}</font>"
+            elif template_type == "email":
+                ai_model_info_str = (
+                    f'<div class="model-info">分析模型：{extra_info["ai_model_info"]}</div>')
+
         # 邮件模板使用 {{placeholder}} 语法，通过 replace 渲染
         if template_type == "email":
             return (template
@@ -143,7 +152,8 @@ class MessageTemplate:
                     .replace("{{year}}", display_year)
                     .replace("{{conditions}}", conditions_str)
                     .replace("{{suggestions}}", suggestions_str)
-                    .replace("{{debug_notice}}", debug_notice))
+                    .replace("{{debug_notice}}", debug_notice)
+                    .replace("{{ai_model_info}}", ai_model_info_str))
 
         # Markdown 模板使用 {placeholder} 语法，通过 format 渲染
         return template.format(
@@ -155,5 +165,6 @@ class MessageTemplate:
             year=display_year,
             conditions=conditions_str,
             suggestions=suggestions_str,
-            debug_notice=debug_notice
+            debug_notice=debug_notice,
+            ai_model_info=ai_model_info_str
         )

@@ -1,8 +1,16 @@
 import time
 from datetime import datetime
 
-from config import CHECK_INTERVAL, CHINA_TZ, LOG_CONFIG, MONITOR_SYMBOLS, SYMBOL
+from config import (
+    AI_CONFIG,
+    CHECK_INTERVAL,
+    CHINA_TZ,
+    LOG_CONFIG,
+    MONITOR_SYMBOLS,
+    SYMBOL,
+)
 from mapper.price_mapper import PriceMapper
+from service.ai_service import AIAnalysisService
 from service.alert_service import AlertService
 from service.history_import_service import init_historical_data
 from service.notification_service import NotificationService
@@ -31,6 +39,13 @@ def main():
     price_service = PriceService()
     alert_service = AlertService(SYMBOL, price_mapper)
     notification_service = NotificationService()
+    ai_service = AIAnalysisService()
+    ai_check_interval = AI_CONFIG.get("check_interval_checks", 30)
+
+    if ai_service.enabled:
+        logger.info(f"AI 分析已启用，每 {ai_check_interval} 次检查调用一次")
+    else:
+        logger.info("AI 分析未启用（请设置环境变量 GLM_API_KEY）")
 
     # 显示当前数据库状态
     try:
@@ -76,19 +91,18 @@ def main():
                 current_price)
 
             # 4. 如果有报警，发送通知
+            extra_info = {}
+            london_data_for_alert = prices_data.get('hf_XAU')
+            if london_data_for_alert:
+                extra_info['london_gold_usd'] = london_data_for_alert['price']
+                extra_info['london_gold_cny'] = london_data_for_alert.get(
+                    'converted_cny_price', 0)
+
             if alerts:
                 alert_count += 1
                 logger.warning(f"触发 {len(alerts)} 条报警")
                 for alert in alerts:
                     logger.warning(f"  └─ {alert}")
-
-                # 准备额外信息：伦敦金换算价格
-                extra_info = {}
-                london_data = prices_data.get('hf_XAU')
-                if london_data:
-                    extra_info['london_gold_usd'] = london_data['price']
-                    extra_info['london_gold_cny'] = london_data.get(
-                        'converted_cny_price', 0)
 
                 notification_service.send_alert(
                     SYMBOL,
@@ -99,6 +113,32 @@ def main():
                 )
             else:
                 logger.debug("  └─ 无报警")
+
+            # 5. AI 分析（每 N 次检查调用一次）
+            if check_count % ai_check_interval == 0 and ai_service.enabled:
+                logger.info("正在调用 AI 分析行情...")
+                snapshot = price_mapper.get_check_snapshot(SYMBOL)
+                london_cny = london_data.get('converted_cny_price') if london_data else None
+                london_usd = london_data['price'] if london_data else None
+
+                ai_result = ai_service.analyze(
+                    SYMBOL, current_price, snapshot, london_cny, london_usd)
+                if ai_result and ai_result.get("should_alert"):
+                    alert_count += 1
+                    urgency = ai_result.get('urgency', 'unknown')
+                    analysis_preview = ai_result.get('analysis', '')[:50]
+                    logger.warning(f"AI 建议通知（{urgency}）：{analysis_preview}...")
+
+                    ai_alerts = [ai_result.get("analysis", "")]
+                    ai_suggestions = ai_result.get("suggestions", [])
+
+                    ai_extra_info = dict(extra_info)
+                    ai_extra_info["ai_model_info"] = (
+                        f"{ai_result.get('provider', '')}/{ai_result.get('model', '')}")
+
+                    notification_service.send_alert(
+                        SYMBOL, current_price, ai_alerts, ai_suggestions,
+                        extra_info=ai_extra_info)
 
             check_count += 1
 

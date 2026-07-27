@@ -117,3 +117,55 @@ EMAIL_CONFIG = {
 
 # 数据库配置
 DB_FILE = "gold_price_history.db"
+
+# AI 模型供应商池（按优先级排列，L2→L3 依次降级）
+# 添加新供应商：在列表末尾追加一个 dict，含 name/api_url/api_key/models
+AI_PROVIDERS = [
+    {
+        "name": "智谱",
+        "api_url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+        "api_key": os.getenv("GLM_API_KEY", ""),
+        "models": [
+            "glm-4.7-flash",   # L2: 优先
+            "glm-4-flash",      # L2: 降级
+            "glm-4-flash-250414"  # L3: 最后
+        ],
+        "timeout": 30,
+    },
+    {
+        "name": "硅基流动",
+        "api_url": "https://api.siliconflow.cn/v1/chat/completions",
+        "api_key": os.getenv("SILICONFLOW_API_KEY", ""),
+        "models": [
+            "Qwen/Qwen3-8B", 
+            "THUDM/GLM-4-9B-0414",
+            "THUDM/GLM-Z1-9B-0414"
+        ],
+        "timeout": 30,
+    },
+    {
+        "name": "NVIDIA NIM",
+        "api_url": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "api_key": os.getenv("NVIDIA_API_KEY", ""),
+        "models": [
+            "deepseek-ai/deepseek-v4-flash",
+            "deepseek-ai/deepseek-v4-pro",
+            "z-ai/glm-5.2",
+            "qwen/qwen3-next-80b-a3b-instruct",
+            "openai/gpt-oss-20b",
+            "openai/gpt-oss-120b"
+        ],
+        "timeout": 30,
+    }
+]
+
+# AI 全局配置
+AI_CONFIG = {
+    "enabled": True,
+    "temperature": 0.3,
+    "max_tokens": 4096,
+    "check_interval_checks": 30,       # 每 N 次检查调用一次 AI
+    "max_retries": 3,                  # L1: 单模型最大重试次数
+    "retry_base_delay": 1.0,           # L1: 指数退避基础延迟（秒）
+    "cache_ttl_minutes": 60,           # L4: 缓存有效期（分钟）
+}

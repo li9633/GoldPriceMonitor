@@ -23,23 +23,28 @@ class AlertService:
 
         snapshot = self.price_mapper.get_check_snapshot(self.symbol)
 
-        checks = [
-            self._check_absolute_low,
-            self._check_relative_low,
-            self._check_breakout,
-            self._check_trend_reversal,
-            self._check_volatility_anomaly,
-            self._check_ma_cross,
-            self._check_consecutive_move,
-            self._check_rapid_price_change,
-            self._check_long_term_low,
-        ]
+        # 绝对价格预警（底线安全，始终启用）
+        result = self._check_absolute_low(current_price, snapshot)
+        if result[0]:
+            alerts.append(result[0])
+            suggestions.append(result[1])
 
-        for check in checks:
-            result = check(current_price, snapshot)
-            if result[0]:
-                alerts.append(result[0])
-                suggestions.append(result[1])
+        # 以下算法检查已由 AI 分析替代，代码保留以便后续恢复
+        # checks = [
+        #     self._check_relative_low,
+        #     self._check_breakout,
+        #     self._check_trend_reversal,
+        #     self._check_volatility_anomaly,
+        #     self._check_ma_cross,
+        #     self._check_consecutive_move,
+        #     self._check_rapid_price_change,
+        #     self._check_long_term_low,
+        # ]
+        # for check in checks:
+        #     result = check(current_price, snapshot)
+        #     if result[0]:
+        #         alerts.append(result[0])
+        #         suggestions.append(result[1])
 
         self.price_history.append(current_price)
         if len(self.price_history) > 100:
