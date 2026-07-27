@@ -1,7 +1,9 @@
 import json
 from datetime import datetime
 
-from config import AI_CONFIG, AI_PROVIDERS, CHINA_TZ, SYMBOL_NAME_MAP
+from mapper.ai_model_pool_config_mapper import AIModelPoolConfigMapper
+
+from config import AI_CONFIG, CHINA_TZ, SYMBOL_NAME_MAP
 from mapper.price_mapper import PriceSnapshot
 from service.model_pool import ModelPool
 from utils.logger import get_logger
@@ -38,10 +40,13 @@ class AIAnalysisService:
 }"""
 
     def __init__(self):
-        self.model_pool = ModelPool(AI_PROVIDERS)
-        self.enabled = AI_CONFIG["enabled"] and any(
-            p.get("api_key") for p in AI_PROVIDERS
-        )
+        config_mapper = AIModelPoolConfigMapper()
+        config_mapper.init_tables()
+        config_mapper.seed_defaults()
+        providers = config_mapper.get_providers()
+
+        self.model_pool = ModelPool(providers)
+        self.enabled = AI_CONFIG["enabled"] and any(p.get("api_key") for p in providers)
 
     def analyze(
         self,

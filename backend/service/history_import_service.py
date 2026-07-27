@@ -3,7 +3,7 @@ from datetime import datetime
 
 import requests
 
-from config import CHINA_TZ, DB_FILE, SYMBOL
+from config import CHINA_TZ, PRICE_HISTORY_DB_FILE, SYMBOL
 from mapper.price_mapper import PriceMapper
 from utils.logger import get_logger
 
@@ -11,7 +11,7 @@ logger = get_logger("HistoryImportService")
 
 
 class HistoryImportService:
-    def __init__(self, db_file: str = DB_FILE, symbol: str = SYMBOL):
+    def __init__(self, db_file: str = PRICE_HISTORY_DB_FILE, symbol: str = SYMBOL):
         self.price_mapper = PriceMapper(db_file)
         self.symbol = symbol
 
@@ -22,7 +22,7 @@ class HistoryImportService:
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
-            logger.error(f"获取历史数据失败：{e}")  
+            logger.error(f"获取历史数据失败：{e}")
             return []
 
     def import_data(self, data_list: list[dict]) -> int:
@@ -30,8 +30,10 @@ class HistoryImportService:
         records = []
         for item in data_list:
             try:
-                date_time = datetime.fromtimestamp(item['date_time'] / 1000, tz=CHINA_TZ)
-                price = float(item['price'])
+                date_time = datetime.fromtimestamp(
+                    item["date_time"] / 1000, tz=CHINA_TZ
+                )
+                price = float(item["price"])
                 records.append((self.symbol, price, date_time))
             except (ValueError, KeyError, TypeError) as e:
                 logger.error(f"转换数据失败：{e}")
@@ -44,20 +46,20 @@ class HistoryImportService:
         data_60d = self.fetch_historical_data(period="60d")
         if data_60d:
             count_60d = self.import_data(data_60d)
-            results['60d'] = count_60d
+            results["60d"] = count_60d
             logger.info(f"60 天数据导入完成，新增 {count_60d} 条记录")
         else:
-            results['60d'] = 0
+            results["60d"] = 0
             logger.error("60 天数据获取失败")
 
         logger.info("正在导入 1 年历史数据...")
         data_1y = self.fetch_historical_data(period="1y")
         if data_1y:
             count_1y = self.import_data(data_1y)
-            results['1y'] = count_1y
+            results["1y"] = count_1y
             logger.info(f"1 年数据导入完成，新增 {count_1y} 条记录")
         else:
-            results['1y'] = 0
+            results["1y"] = 0
             logger.error("1 年数据获取失败")
 
         return results
@@ -93,5 +95,5 @@ def init_historical_data() -> bool:
         logger.info(f"历史数据初始化完成，共新增 {total} 条记录")
         return total > 0
     except (requests.RequestException, sqlite3.Error, ValueError) as e:
-            logger.error(f"历史数据导入失败：{e}")
-            return False
+        logger.error(f"历史数据导入失败：{e}")
+        return False

@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime, timedelta
 
-from config import CHINA_TZ, DB_FILE
+from config import CHINA_TZ, PRICE_HISTORY_DB_FILE
 from utils.logger import get_logger
 
 logger = get_logger("PriceMapper")
@@ -83,7 +83,7 @@ class PriceSnapshot:
 
 
 class PriceMapper:
-    def __init__(self, db_file: str = DB_FILE):
+    def __init__(self, db_file: str = PRICE_HISTORY_DB_FILE):
         self.db_file = db_file
         self._conn: sqlite3.Connection | None = None
 
