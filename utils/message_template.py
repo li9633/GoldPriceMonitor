@@ -1,3 +1,4 @@
+import os
 import re
 from datetime import datetime, timezone
 
@@ -9,7 +10,7 @@ class MessageTemplate:
 
     # 企业微信 Markdown V2 模板
     # 修改点：在“当前价格”下方增加了 {london_gold_info} 占位符
-    WECHAT_MARKDOWN_TEMPLATE = """## <font color="warning">🚨 黄金价格监控报警</font>
+    WECHAT_MARKDOWN_TEMPLATE = """## <font color="warning">[报警] 黄金价格监控</font>
 
 **品种**：{symbol_name}
 **当前价格**：<font color="{price_color}">{price}</font>
@@ -19,66 +20,23 @@ class MessageTemplate:
 ### <font color="comment">触发条件</font>
 {conditions}
 
-### <font color="info">💡 操作建议</font>
+### <font color="info">操作建议</font>
 {suggestions}
 
 ---
 *系统持续监控中，请及时处理*"""
 
-    # 邮件 HTML 模板（优化版）
-    # 修改点：在 price-box 中增加了 london_gold_row div
-    EMAIL_HTML_TEMPLATE = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; }}
-            .container {{ max-width: 600px; margin: 0 auto; }}
-            .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; }}
-            .header h1 {{ margin: 0; font-size: 24px; }}
-            .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-            .price-box {{ background: white; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid {price_color}; }}
-            .price {{ font-size: 28px; font-weight: bold; color: {price_color}; }}
-            .london-price {{ font-size: 16px; color: #1976d2; margin-top: 5px; font-weight: bold; }}
-            .section {{ margin: 15px 0; }}
-            .section-title {{ font-weight: bold; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 5px; }}
-            .condition-item {{ background: white; padding: 10px; margin: 8px 0; border-radius: 5px; border-left: 3px solid #ff9800; }}
-            .suggestion-item {{ background: #e3f2fd; padding: 10px; margin: 8px 0; border-radius: 5px; border-left: 3px solid #2196f3; }}
-            .footer {{ background: #f5f5f5; padding: 15px; text-align: center; color: #666; border-radius: 0 0 10px 10px; font-size: 12px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>🚨 黄金价格监控报警</h1>
-            </div>
-            <div class="content">
-                <div class="price-box">
-                    <div><strong>品种：</strong>{symbol_name}</div>
-                    <div class="price">当前价格：{price}</div>
-                    {london_gold_info}
-                    <div style="margin-top: 10px; color: #666; font-size: 14px;"><strong>报警时间：</strong>{time}</div>
-                </div>
-                
-                <div class="section">
-                    <div class="section-title">📋 触发条件</div>
-                    {conditions}
-                </div>
-                
-                <div class="section">
-                    <div class="section-title">💡 操作建议</div>
-                    {suggestions}
-                </div>
-            </div>
-            <div class="footer">
-                <p>系统持续监控中，请及时处理</p>
-                <p>黄金价格监控系统 © {year}</p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    _email_html_template: str | None = None
+
+    @classmethod
+    def _load_email_html_template(cls) -> str:
+        if cls._email_html_template is not None:
+            return cls._email_html_template
+        template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+        template_path = os.path.join(template_dir, "email_alert.html")
+        with open(template_path, encoding="utf-8") as f:
+            cls._email_html_template = f.read()
+        return cls._email_html_template
 
     @classmethod
     def _escape_markdown(cls, text: str) -> str:
@@ -116,7 +74,7 @@ class MessageTemplate:
         """
 
         if template_type == "email":
-            template = cls.EMAIL_HTML_TEMPLATE
+            template = cls._load_email_html_template()
         elif template_type == "markdown":
             template = cls.WECHAT_MARKDOWN_TEMPLATE
         else:
@@ -162,17 +120,31 @@ class MessageTemplate:
 
         # 获取品种名称
         symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
+        display_name = cls._escape_markdown(symbol_name) if template_type == "markdown" else symbol_name
+        display_price = f"{price:.2f}" if isinstance(price, (int, float)) else str(price)
+        display_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        display_year = str(datetime.now(timezone.utc).year)
 
-        # 最终组装
+        # 邮件模板使用 {{placeholder}} 语法，通过 replace 渲染
+        if template_type == "email":
+            return (template
+                    .replace("{{symbol_name}}", display_name)
+                    .replace("{{price}}", display_price)
+                    .replace("{{price_color}}", price_color)
+                    .replace("{{london_gold_info}}", london_gold_info_str)
+                    .replace("{{time}}", display_time)
+                    .replace("{{year}}", display_year)
+                    .replace("{{conditions}}", conditions_str)
+                    .replace("{{suggestions}}", suggestions_str))
+
+        # Markdown 模板使用 {placeholder} 语法，通过 format 渲染
         return template.format(
-            symbol_name=cls._escape_markdown(
-                symbol_name) if template_type == "markdown" else symbol_name,
-            price=f"{price:.2f}" if isinstance(
-                price, (int, float)) else str(price),
+            symbol_name=display_name,
+            price=display_price,
             price_color=price_color,
-            london_gold_info=london_gold_info_str,  # 传入伦敦金信息
-            time=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-            year=datetime.now(timezone.utc).year,
+            london_gold_info=london_gold_info_str,
+            time=display_time,
+            year=display_year,
             conditions=conditions_str,
             suggestions=suggestions_str
         )

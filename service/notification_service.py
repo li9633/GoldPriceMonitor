@@ -70,7 +70,7 @@ class NotificationService:
     def _send_email_alert(self, symbol: str, current_price: float, message: str) -> bool:
         try:
             symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
-            subject = f"🚨 黄金价格监控报警 - {symbol_name} - {current_price:.2f}"
+            subject = f"[报警] 黄金价格监控 - {symbol_name} - {current_price:.2f}"
             msg = MIMEText(message, 'html', 'utf-8')
             msg['Subject'] = subject
             msg['From'] = self.email_config['sender_email']

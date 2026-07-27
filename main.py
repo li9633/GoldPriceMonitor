@@ -15,15 +15,15 @@ def main():
     logger = get_logger("GoldPriceMonitor")
 
     logger.info("=" * 50)
-    logger.info("🏆 黄金价格智能监控系统启动")
+    logger.info("黄金价格智能监控系统启动")
     logger.info("=" * 50)
 
     # 0. 初始化历史数据（首次运行或数据不足时自动导入）
     logger.info("正在初始化历史数据...")
     init_historical_data()
 
-    logger.info(f"📌 监控品种：{SYMBOL}")
-    logger.info(f"⏱️  检查间隔：{CHECK_INTERVAL} 秒")
+    logger.info(f"监控品种：{SYMBOL}")
+    logger.info(f"检查间隔：{CHECK_INTERVAL} 秒")
     logger.info("=" * 50)
 
     # 初始化各层模块（依赖注入）
@@ -35,12 +35,12 @@ def main():
     # 显示当前数据库状态
     try:
         db_count = price_mapper.get_record_count(SYMBOL)
-        logger.info(f"📈 当前历史记录数：{db_count} 条")
+        logger.info(f"当前历史记录数：{db_count} 条")
     except Exception as e:
         logger.error(f"查询数据库失败：{e}", exc_info=e)
 
     logger.info("=" * 50)
-    logger.info("🚀 开始实时监控...\n")
+    logger.info("开始实时监控...\n")
 
     # 记录启动时间
     start_time = datetime.now(timezone.utc)
@@ -117,7 +117,7 @@ def main():
                 logger.cleanup_old_logs(LOG_CONFIG["keep_days"])
 
         except KeyboardInterrupt:
-            logger.info("\n⛔ 程序被用户中断")
+            logger.info("\n程序被用户中断")
             break
         except Exception as e:
             logger.error(f"主循环发生错误：{e}", exc_info=e)

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+        .header {
+            background: #d4a017;
+            color: #fff;
+            padding: 24px 28px;
+            border-bottom: 3px solid #b8860b;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .content {
+            padding: 24px 28px;
+        }
+        .price-box {
+            background: #fef9f0;
+            border: 1px solid #f0d78c;
+            border-radius: 6px;
+            padding: 18px 20px;
+            margin: 0 0 20px 0;
+            border-left: 4px solid #d4a017;
+        }
+        .price-box .label {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+        .price-box .value {
+            font-size: 30px;
+            font-weight: 700;
+            color: #d4a017;
+            line-height: 1.2;
+        }
+        .price-box .meta {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #999;
+        }
+        .london-price {
+            font-size: 15px;
+            color: #b8860b;
+            margin-top: 6px;
+            font-weight: 600;
+        }
+        .section {
+            margin: 20px 0;
+        }
+        .section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #555;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .condition-item {
+            background: #fff8f0;
+            padding: 10px 14px;
+            margin: 6px 0;
+            border-radius: 4px;
+            border-left: 3px solid #e8a317;
+            font-size: 14px;
+            color: #555;
+        }
+        .suggestion-item {
+            background: #f6f8fa;
+            padding: 10px 14px;
+            margin: 6px 0;
+            border-radius: 4px;
+            border-left: 3px solid #6c8ebf;
+            font-size: 14px;
+            color: #555;
+        }
+        .footer {
+            background: #fafafa;
+            padding: 16px 28px;
+            text-align: center;
+            color: #aaa;
+            font-size: 12px;
+            border-top: 1px solid #eee;
+        }
+        .footer p {
+            margin: 4px 0;
+        }
+    </style>
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>[报警] 黄金价格监控</h1>
+        </div>
+        <div class="content">
+            <div class="price-box">
+                <div class="label">品种</div>
+                <div class="value">{{symbol_name}}</div>
+                <div class="label" style="margin-top:12px;">当前价格</div>
+                <div class="value">{{price}}</div>
+                {{london_gold_info}}
+                <div class="meta">报警时间：{{time}}</div>
+            </div>
+            <div class="section">
+                <div class="section-title">触发条件</div>
+                {{conditions}}
+            </div>
+            <div class="section">
+                <div class="section-title">操作建议</div>
+                {{suggestions}}
+            </div>
+        </div>
+        <div class="footer">
+            <p>系统持续监控中，请及时处理</p>
+            <p>黄金价格监控系统 © {{year}}</p>
+        </div>
+    </div>
+</body>
+</html>
