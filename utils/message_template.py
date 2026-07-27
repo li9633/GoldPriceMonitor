@@ -1,8 +1,8 @@
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
-from config import SYMBOL_NAME_MAP
+from config import CHINA_TZ, DEBUG, SYMBOL_NAME_MAP
 
 
 class MessageTemplate:
@@ -22,7 +22,7 @@ class MessageTemplate:
 
 ### <font color="info">操作建议</font>
 {suggestions}
-
+{debug_notice}
 ---
 *系统持续监控中，请及时处理*"""
 
@@ -122,8 +122,15 @@ class MessageTemplate:
         symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
         display_name = cls._escape_markdown(symbol_name) if template_type == "markdown" else symbol_name
         display_price = f"{price:.2f}" if isinstance(price, (int, float)) else str(price)
-        display_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-        display_year = str(datetime.now(timezone(timedelta(hours=8))).year)
+        display_time = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        display_year = str(datetime.now(CHINA_TZ).year)
+
+        debug_notice = ""
+        if DEBUG:
+            if template_type == "markdown":
+                debug_notice = "> <font color=\"comment\">[开发环境] 此消息为测试数据，不代表最终结果</font>"
+            elif template_type == "email":
+                debug_notice = '<div class="debug-notice">[开发环境] 此消息为测试数据，不代表最终结果</div>'
 
         # 邮件模板使用 {{placeholder}} 语法，通过 replace 渲染
         if template_type == "email":
@@ -135,7 +142,8 @@ class MessageTemplate:
                     .replace("{{time}}", display_time)
                     .replace("{{year}}", display_year)
                     .replace("{{conditions}}", conditions_str)
-                    .replace("{{suggestions}}", suggestions_str))
+                    .replace("{{suggestions}}", suggestions_str)
+                    .replace("{{debug_notice}}", debug_notice))
 
         # Markdown 模板使用 {placeholder} 语法，通过 format 渲染
         return template.format(
@@ -146,5 +154,6 @@ class MessageTemplate:
             time=display_time,
             year=display_year,
             conditions=conditions_str,
-            suggestions=suggestions_str
+            suggestions=suggestions_str,
+            debug_notice=debug_notice
         )

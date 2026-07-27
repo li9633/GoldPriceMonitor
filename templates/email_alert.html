@@ -103,7 +103,16 @@
         .footer p {
             margin: 4px 0;
         }
-    </style>
+        .debug-notice {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 8px 14px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #856404;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -112,6 +121,7 @@
             <h1>[报警] 黄金价格监控</h1>
         </div>
         <div class="content">
+            {{debug_notice}}
             <div class="price-box">
                 <div class="label">品种</div>
                 <div class="value">{{symbol_name}}</div>

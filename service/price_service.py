@@ -1,9 +1,9 @@
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import requests
 
-from config import GOLD_PRICE_API_URL, SYMBOL_NAME_MAP
+from config import CHINA_TZ, GOLD_PRICE_API_URL, SYMBOL_NAME_MAP
 from utils.currency_utils import convert_london_gold_to_cny
 from utils.http_utils import safe_get
 from utils.logger import get_logger
@@ -36,7 +36,7 @@ class PriceService:
                 if f'var hq_str_{symbol}=' in line:
                     parts = line.split('"')
                     if len(parts) < 2:
-                        logger.warning(f"[{datetime.now(timezone(timedelta(hours=8)))}] 解析{symbol}数据格式错误")
+                        logger.warning(f"[{datetime.now(CHINA_TZ)}] 解析{symbol}数据格式错误")
                         continue
 
                     data_str = parts[1]
@@ -46,7 +46,7 @@ class PriceService:
                     max_index_needed = max(indices.values())
                     if len(fields) <= max_index_needed:
                         logger.warning(
-                            f"[{datetime.now(timezone(timedelta(hours=8)))}] 解析{symbol}数据字段不足 ({len(fields)})")
+                            f"[{datetime.now(CHINA_TZ)}] 解析{symbol}数据字段不足 ({len(fields)})")
                         continue
 
                     try:
@@ -64,11 +64,11 @@ class PriceService:
                         }
                     except (ValueError, IndexError) as e:
                         logger.error(
-                            f"[{datetime.now(timezone(timedelta(hours=8)))}] 转换{symbol}数据字段失败: {e}")
+                            f"[{datetime.now(CHINA_TZ)}] 转换{symbol}数据字段失败: {e}")
                         continue
 
         except requests.RequestException as e:
-            logger.error(f"[{datetime.now(timezone(timedelta(hours=8)))}] 获取{symbol}价格网络请求失败: {e}")
+            logger.error(f"[{datetime.now(CHINA_TZ)}] 获取{symbol}价格网络请求失败: {e}")
 
         return None
 

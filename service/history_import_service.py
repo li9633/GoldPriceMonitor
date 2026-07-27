@@ -1,9 +1,9 @@
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import requests
 
-from config import DB_FILE, SYMBOL
+from config import CHINA_TZ, DB_FILE, SYMBOL
 from mapper.price_mapper import PriceMapper
 from utils.logger import get_logger
 
@@ -22,7 +22,7 @@ class HistoryImportService:
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
-            logger.error(f"获取历史数据失败：{e}")
+            logger.error(f"获取历史数据失败：{e}")  
             return []
 
     def import_data(self, data_list: list[dict]) -> int:
@@ -30,7 +30,7 @@ class HistoryImportService:
         records = []
         for item in data_list:
             try:
-                date_time = datetime.fromtimestamp(item['date_time'] / 1000, tz=timezone(timedelta(hours=8)))
+                date_time = datetime.fromtimestamp(item['date_time'] / 1000, tz=CHINA_TZ)
                 price = float(item['price'])
                 records.append((self.symbol, price, date_time))
             except (ValueError, KeyError, TypeError) as e:

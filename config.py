@@ -1,4 +1,16 @@
+import os
+from datetime import timedelta, timezone
+
 # 日志配置
+
+# 统一时区：UTC+8（北京时间）
+CHINA_TZ = timezone(timedelta(hours=8))
+
+# 运行模式：通过环境变量 GOLD_MONITOR_DEBUG 控制（true=开发模式，false=生产模式）
+# Windows: set GOLD_MONITOR_DEBUG=true
+# Linux/Mac: export GOLD_MONITOR_DEBUG=true
+DEBUG = os.getenv("GOLD_MONITOR_DEBUG", "false").lower() == "true"
+
 LOG_CONFIG = {
     "log_dir": "logs",              # 日志目录
     "max_bytes": 10 * 1024 * 1024,  # 单个文件最大 10MB
