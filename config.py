@@ -39,6 +39,15 @@ USD_TO_CNY_API_URL = "https://wise.com/zh-cn/currency-converter/usd-to-cny-rate"
 # 检查间隔（秒）
 CHECK_INTERVAL = 10
 
+# Au(T+D) 交易时段（上海黄金交易所，北京时间）
+# 夜盘跨日：20:00 至次日 02:30
+AUTD_TRADING_HOURS = [
+    ("09:00", "11:30"),   # 日盘上午
+    ("13:30", "15:30"),   # 日盘下午
+    ("20:00", "23:59"),   # 夜盘上半段
+    ("00:00", "02:30"),   # 夜盘下半段（跨日）
+]
+
 # 历史数据导入配置
 HISTORICAL_DATA_CONFIG = {
     "auto_import_on_start": True,  # 启动时自动导入

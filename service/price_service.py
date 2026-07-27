@@ -10,13 +10,7 @@ from utils.logger import get_logger
 
 logger = get_logger("PriceService")
 
-FIELD_INDEX_MAP = {
-    'default': {
-        'price': 0,
-        'time': 6,
-        'date': 12
-    }
-}
+FIELD_INDEX_MAP = {"default": {"price": 0, "time": 6, "date": 12}}
 
 
 class PriceService:
@@ -31,44 +25,50 @@ class PriceService:
             if response is None:
                 return None
 
-            data_lines = response.text.strip().split('\n')
+            data_lines = response.text.strip().split("\n")
             for line in data_lines:
-                if f'var hq_str_{symbol}=' in line:
+                if f"var hq_str_{symbol}=" in line:
                     parts = line.split('"')
                     if len(parts) < 2:
-                        logger.warning(f"[{datetime.now(CHINA_TZ)}] 解析{symbol}数据格式错误")
+                        logger.warning(
+                            f"[{datetime.now(CHINA_TZ)}] 解析{symbol}数据格式错误"
+                        )
                         continue
 
                     data_str = parts[1]
-                    fields = data_str.split(',')
-                    indices = FIELD_INDEX_MAP.get('default')
+                    fields = data_str.split(",")
+                    indices = FIELD_INDEX_MAP["default"]
 
                     max_index_needed = max(indices.values())
                     if len(fields) <= max_index_needed:
                         logger.warning(
-                            f"[{datetime.now(CHINA_TZ)}] 解析{symbol}数据字段不足 ({len(fields)})")
+                            f"[{datetime.now(CHINA_TZ)}] 解析{symbol}数据字段不足 ({len(fields)})"
+                        )
                         continue
 
                     try:
-                        price = float(fields[indices['price']])
-                        trade_time = fields[indices['time']]
-                        trade_date = fields[indices['date']]
+                        price = float(fields[indices["price"]])
+                        trade_time = fields[indices["time"]]
+                        trade_date = fields[indices["date"]]
                         name = SYMBOL_NAME_MAP.get(symbol, symbol)
 
                         return {
-                            'symbol': symbol,
-                            'price': price,
-                            'time': trade_time,
-                            'date': trade_date,
-                            'name': name
+                            "symbol": symbol,
+                            "price": price,
+                            "time": trade_time,
+                            "date": trade_date,
+                            "name": name,
                         }
                     except (ValueError, IndexError) as e:
                         logger.error(
-                            f"[{datetime.now(CHINA_TZ)}] 转换{symbol}数据字段失败: {e}")
+                            f"[{datetime.now(CHINA_TZ)}] 转换{symbol}数据字段失败: {e}"
+                        )
                         continue
 
         except requests.RequestException as e:
-            logger.error(f"[{datetime.now(CHINA_TZ)}] 获取{symbol}价格网络请求失败: {e}")
+            logger.error(
+                f"[{datetime.now(CHINA_TZ)}] 获取{symbol}价格网络请求失败: {e}"
+            )
 
         return None
 
@@ -76,9 +76,10 @@ class PriceService:
         results = {}
         for symbol in symbols:
             data = self.fetch_current_price(symbol)
-            if data and 'hf_XAU' == symbol:
-                data['converted_cny_price'] = convert_london_gold_to_cny(
-                    data['price'], None)
+            if data and "hf_XAU" == symbol:
+                data["converted_cny_price"] = convert_london_gold_to_cny(
+                    data["price"], None
+                )
             results[symbol] = data
             if data:
                 logger.info(f"成功获取 {data['name']} ({symbol}): {data['price']}")

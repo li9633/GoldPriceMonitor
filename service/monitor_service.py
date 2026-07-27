@@ -64,7 +64,9 @@ class MonitorService:
         self.logger.info(f"监控品种：{SYMBOL}")
         self.logger.info(f"检查间隔：{CHECK_INTERVAL} 秒")
         if self.ai_service.enabled:
-            self.logger.info(f"AI 分析已启用，每 {self.ai_check_interval} 次检查调用一次")
+            self.logger.info(
+                f"AI 分析已启用，每 {self.ai_check_interval} 次检查调用一次"
+            )
         else:
             self.logger.info("AI 分析未启用（请设置环境变量 GLM_API_KEY）")
 
@@ -81,12 +83,14 @@ class MonitorService:
         main_symbol_data = prices_data.get(SYMBOL)
         if not main_symbol_data:
             self.logger.warning(
-                f"[{datetime.now(CHINA_TZ)}] 获取主品种 {SYMBOL} 价格失败，等待下次检查")
+                f"[{datetime.now(CHINA_TZ)}] 获取主品种 {SYMBOL} 价格失败，等待下次检查"
+            )
             return
 
-        current_price = main_symbol_data['price']
+        current_price = main_symbol_data["price"]
         self.logger.debug(
-            f"[{datetime.now(CHINA_TZ).strftime('%H:%M:%S')}] {main_symbol_data['name']} 价格：{current_price}")
+            f"[{datetime.now(CHINA_TZ).strftime('%H:%M:%S')}] {main_symbol_data['name']} 价格：{current_price}"
+        )
 
         self._save_prices(prices_data, current_price)
         self._handle_alerts(prices_data, current_price)
@@ -98,12 +102,13 @@ class MonitorService:
 
     def _save_prices(self, prices_data: dict, current_price: float) -> None:
         self.price_mapper.save_price(SYMBOL, current_price)
-        london_data = prices_data.get('hf_XAU')
+        london_data = prices_data.get("hf_XAU")
         if london_data:
-            self.price_mapper.save_price('hf_XAU', london_data['price'])
+            self.price_mapper.save_price("hf_XAU", london_data["price"])
 
     def _handle_alerts(self, prices_data: dict, current_price: float) -> None:
-        alerts, suggestions = self.alert_service.check_all_conditions(current_price)
+        alerts, suggestions = self.alert_service.check_all_conditions(
+            current_price)
 
         extra_info = self._build_extra_info(prices_data)
 
@@ -124,9 +129,11 @@ class MonitorService:
                     alerts[:] = [ai_result.get("analysis", "")]
                     suggestions[:] = ai_result.get("suggestions", [])
                     extra_info["ai_model_info"] = (
-                        f"{ai_result.get('provider', '')}/{ai_result.get('model', '')}")
+                        f"{ai_result.get('provider', '')}/{ai_result.get('model', '')}"
+                    )
                     self.logger.info(
-                        f"AI 确认发送通知（{ai_result.get('urgency', '')}）")
+                        f"AI 确认发送通知（{ai_result.get('urgency', '')}）"
+                    )
                 else:
                     should_send = False
                     self.logger.info("AI 判断无需发送通知，已跳过")
@@ -135,10 +142,14 @@ class MonitorService:
 
         if should_send:
             self.notification_service.send_alert(
-                SYMBOL, current_price, alerts, suggestions, extra_info=extra_info)
+                SYMBOL, current_price, alerts, suggestions, extra_info=extra_info
+            )
 
     def _periodic_ai_check(self, prices_data: dict, current_price: float) -> None:
-        if self.check_count % self.ai_check_interval != 0 or not self.ai_service.enabled:
+        if (
+            self.check_count % self.ai_check_interval != 0
+            or not self.ai_service.enabled
+        ):
             return
 
         self.logger.info("正在调用 AI 分析行情...")
@@ -147,40 +158,50 @@ class MonitorService:
             return
 
         self.alert_count += 1
-        urgency = ai_result.get('urgency', 'unknown')
-        analysis_preview = ai_result.get('analysis', '')[:50]
+        urgency = ai_result.get("urgency", "unknown")
+        analysis_preview = ai_result.get("analysis", "")[:50]
         self.logger.warning(f"AI 建议通知（{urgency}）：{analysis_preview}...")
 
         ai_alerts = [ai_result.get("analysis", "")]
         ai_suggestions = ai_result.get("suggestions", [])
         extra_info = self._build_extra_info(prices_data)
         extra_info["ai_model_info"] = (
-            f"{ai_result.get('provider', '')}/{ai_result.get('model', '')}")
+            f"{ai_result.get('provider', '')}/{ai_result.get('model', '')}"
+        )
 
         self.notification_service.send_alert(
-            SYMBOL, current_price, ai_alerts, ai_suggestions, extra_info=extra_info)
+            SYMBOL, current_price, ai_alerts, ai_suggestions, extra_info=extra_info
+        )
 
-    def _call_ai(self, prices_data: dict, current_price: float,
-                 triggered_alerts: list[str] | None = None) -> dict | None:
-        london_data = prices_data.get('hf_XAU')
-        london_cny = london_data.get('converted_cny_price') if london_data else None
-        london_usd = london_data['price'] if london_data else None
+    def _call_ai(
+        self,
+        prices_data: dict,
+        current_price: float,
+        triggered_alerts: list[str] | None = None,
+    ) -> dict | None:
+        london_data = prices_data.get("hf_XAU")
+        london_cny = london_data.get(
+            "converted_cny_price") if london_data else None
+        london_usd = london_data["price"] if london_data else None
         snapshot = self.price_mapper.get_check_snapshot(SYMBOL)
         return self.ai_service.analyze(
-            SYMBOL, current_price, snapshot, london_cny, london_usd, triggered_alerts)
+            SYMBOL, current_price, snapshot, london_cny, london_usd, triggered_alerts
+        )
 
     def _build_extra_info(self, prices_data: dict) -> dict:
         extra_info = {}
-        london_data = prices_data.get('hf_XAU')
+        london_data = prices_data.get("hf_XAU")
         if london_data:
-            extra_info['london_gold_usd'] = london_data['price']
-            extra_info['london_gold_cny'] = london_data.get('converted_cny_price', 0)
+            extra_info["london_gold_usd"] = london_data["price"]
+            extra_info["london_gold_cny"] = london_data.get(
+                "converted_cny_price", 0)
         return extra_info
 
     def _log_statistics(self) -> None:
         if self.check_count % 100 != 0:
             return
-        run_time = (datetime.now(CHINA_TZ) - self.start_time).total_seconds() / 60
+        run_time = (datetime.now(CHINA_TZ) -
+                    self.start_time).total_seconds() / 60
         self.logger.info("=== 运行统计 ===")
         self.logger.info(f"运行时长：{run_time:.2f} 分钟")
         self.logger.info(f"检查次数：{self.check_count}")
