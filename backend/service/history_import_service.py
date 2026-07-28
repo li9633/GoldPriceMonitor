@@ -5,6 +5,7 @@ import requests
 
 from config import CHINA_TZ, PRICE_HISTORY_DB_FILE, SYMBOL
 from mapper.price_mapper import PriceMapper
+from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
 
 logger = get_logger("HistoryImportService")
@@ -67,6 +68,9 @@ class HistoryImportService:
 
 def init_historical_data() -> bool:
     importer = HistoryImportService()
+    settings = SystemSettingsService()
+    monitor_config = settings.get_monitor_config()
+    min_threshold = monitor_config.get("min_records_threshold", 100)
 
     if not importer.price_mapper.table_exists():
         logger.info("数据库表不存在，开始创建并导入历史数据...")
@@ -82,8 +86,10 @@ def init_historical_data() -> bool:
             return False
 
     existing_count = importer.price_mapper.get_record_count(importer.symbol)
-    if existing_count >= 100:
-        logger.info(f"数据库已有 {existing_count} 条历史记录，跳过导入")
+    if existing_count >= min_threshold:
+        logger.info(
+            f"数据库已有 {existing_count} 条历史记录，跳过导入（阈值：{min_threshold}）"
+        )
         return True
 
     logger.info(f"数据库仅有 {existing_count} 条记录，开始导入历史数据...")

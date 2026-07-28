@@ -7,11 +7,17 @@ import { ref, onMounted, watch, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
 import { priceApi } from '@/api/modules/gold'
 import type { PriceChartPoint } from '@/api/modules/gold'
-import { formatTime } from '@/utils/format'
+import { formatTime, formatDate, formatDateTime } from '@/utils/format'
 
-const props = defineProps<{
-  symbol: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    symbol: string
+    hours?: number
+  }>(),
+  {
+    hours: 24,
+  },
+)
 
 const chartRef = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
@@ -19,7 +25,7 @@ const chartData = ref<PriceChartPoint[]>([])
 
 const fetchData = async () => {
   try {
-    chartData.value = await priceApi.getChart(props.symbol)
+    chartData.value = await priceApi.getChart(props.symbol, props.hours)
     updateChart()
   } catch {
     // handled
@@ -35,7 +41,9 @@ const initChart = () => {
 const updateChart = () => {
   if (!chart) return
 
-  const times = chartData.value.map((p) => formatTime(p.timestamp))
+  const isLongRange = props.hours >= 24
+  const labelFn = isLongRange ? formatDate : formatTime
+  const times = chartData.value.map((p) => labelFn(p.timestamp))
   const prices = chartData.value.map((p) => p.price)
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
 
@@ -68,17 +76,23 @@ const updateChart = () => {
     ],
     tooltip: {
       trigger: 'axis',
-      formatter: (params: { name: string; value: number }[] | { name: string; value: number }) => {
+      formatter: (
+        params:
+          | { name: string; value: number; dataIndex: number }[]
+          | { name: string; value: number; dataIndex: number },
+      ) => {
         const p = Array.isArray(params) ? params[0] : params
         if (!p) return ''
-        return `${p.name}<br/>¥${p.value.toFixed(2)}`
+        const raw = chartData.value[p.dataIndex]
+        const label = isLongRange && raw ? formatDateTime(raw.timestamp) : p.name
+        return `${label}<br/>¥${p.value.toFixed(2)}`
       },
     },
   })
 }
 
 watch(
-  () => props.symbol,
+  () => [props.symbol, props.hours],
   () => fetchData(),
 )
 

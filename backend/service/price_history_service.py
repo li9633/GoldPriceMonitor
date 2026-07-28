@@ -90,7 +90,7 @@ class PriceHistoryService:
     # ==================== 图表数据 ====================
 
     def get_chart_data(self, symbol: str, hours: float) -> list[PriceChartPoint]:
-        rows = self.mapper.get_price_series(symbol, hours)
+        rows = self.mapper.get_chart_series(symbol, hours)
         return [PriceChartPoint(timestamp=ts, price=p) for ts, p in rows]
 
     # ==================== 最近记录 ====================

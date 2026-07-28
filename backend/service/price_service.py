@@ -77,9 +77,12 @@ class PriceService:
         for symbol in symbols:
             data = self.fetch_current_price(symbol)
             if data and "hf_XAU" == symbol:
-                data["converted_cny_price"] = convert_london_gold_to_cny(
-                    data["price"], None
-                )
+                try:
+                    data["converted_cny_price"] = convert_london_gold_to_cny(
+                        data["price"], None
+                    )
+                except RuntimeError as e:
+                    logger.warning(f"伦敦金人民币折算失败：{e}")
             results[symbol] = data
             if data:
                 logger.info(f"成功获取 {data['name']} ({symbol}): {data['price']}")

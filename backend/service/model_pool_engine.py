@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 
 import requests
 
-from config import AI_CONFIG, CHINA_TZ
+from config import CHINA_TZ
+from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
 
 logger = get_logger("ModelPool")
@@ -55,9 +56,12 @@ class ModelPool:
 
     def __init__(self, providers: list[dict]):
         self.providers = providers
-        self.max_retries = AI_CONFIG.get("max_retries", 3)
-        self.retry_base_delay = AI_CONFIG.get("retry_base_delay", 1.0)
-        self.cache_ttl = timedelta(minutes=AI_CONFIG.get("cache_ttl_minutes", 60))
+        self.settings = SystemSettingsService()
+        ai_config = self.settings.get_ai_config()
+        self.max_retries = ai_config.get("max_retries", 3)
+        self.retry_base_delay = ai_config.get("retry_base_delay", 1.0)
+        self.cache_ttl = timedelta(minutes=ai_config.get("cache_ttl_minutes", 60))
+        self._ai_config = ai_config
         self._cache: dict[str, tuple[datetime, ModelResult]] = {}
 
     def call(
@@ -146,12 +150,12 @@ class ModelPool:
                 {"role": "user", "content": user_prompt},
             ],
             "stream": False,
-            "temperature": AI_CONFIG["temperature"],
-            "max_tokens": AI_CONFIG["max_tokens"],
+            "temperature": self._ai_config["temperature"],
+            "max_tokens": self._ai_config["max_tokens"],
         }
         label = f"[{provider['name']}]/{model}"
 
-        if AI_CONFIG["prompt_check"]:
+        if self._ai_config["prompt_check"]:
             logger.debug(
                 f"{label} 发送请求\n"
                 f"--- SystemPrompt ---\n{system_prompt}\n"

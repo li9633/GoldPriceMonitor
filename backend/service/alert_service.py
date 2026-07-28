@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from config import CHINA_TZ, AlertConfig
+from config import CHINA_TZ
 from mapper.price_mapper import PriceMapper, PriceSnapshot
+from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
 
 logger = get_logger("AlertService")
@@ -11,7 +12,8 @@ class AlertService:
     def __init__(self, symbol: str, price_mapper: PriceMapper | None = None):
         self.symbol = symbol
         self.price_mapper = price_mapper if price_mapper else PriceMapper()
-        self.config = AlertConfig
+        self.settings = SystemSettingsService()
+        self.config = self.settings.get_alert_config()
         self.price_history = []
         self.alert_records: dict[str, dict] = {}
         self.alert_cooldown_minutes = 10
@@ -80,10 +82,10 @@ class AlertService:
     def _check_absolute_low(
         self, current_price: float, snapshot: PriceSnapshot | None
     ) -> tuple[str | None, str | None]:
-        if not self.config.ENABLE_ABSOLUTE_ALERT:
+        if not self.config["enable_absolute_alert"]:
             return None, None
-        if current_price < self.config.ABSOLUTE_LOW_PRICE:
-            alert = f"绝对低价报警！当前价格 {current_price} 低于设定阈值 {self.config.ABSOLUTE_LOW_PRICE}"
+        if current_price < self.config["absolute_low_price"]:
+            alert = f"绝对低价报警！当前价格 {current_price} 低于设定阈值 {self.config['absolute_low_price']}"
             suggestion = "建议：可能是买入机会，请结合基本面分析后决策"
             return alert, suggestion
         return None, None
@@ -91,9 +93,9 @@ class AlertService:
     def _check_relative_low(
         self, current_price: float, snapshot: PriceSnapshot | None
     ) -> tuple[str | None, str | None]:
-        if not self.config.ENABLE_RELATIVE_ALERT or snapshot is None:
+        if not self.config["enable_relative_alert"] or snapshot is None:
             return None, None
-        window_hours = self.config.RELATIVE_WINDOW_HOURS
+        window_hours = self.config["relative_window_hours"]
         threshold = snapshot.percentile(window_hours, 10)
         if threshold and current_price <= threshold:
             if not self._should_send_alert("relative_low", current_price):
@@ -106,9 +108,9 @@ class AlertService:
     def _check_breakout(
         self, current_price: float, snapshot: PriceSnapshot | None
     ) -> tuple[str | None, str | None]:
-        if not self.config.ENABLE_BREAKOUT_ALERT or snapshot is None:
+        if not self.config["enable_breakout_alert"] or snapshot is None:
             return None, None
-        hours = self.config.CONSOLIDATION_HOURS
+        hours = self.config["consolidation_hours"]
         prices = snapshot.prices_in_hours(hours)
         if len(prices) < 10:
             return None, None
@@ -116,7 +118,7 @@ class AlertService:
         low = min(prices)
         avg = sum(prices) / len(prices)
         volatility = (high - low) / avg if avg > 0 else 0
-        is_consolidation = volatility < self.config.VOLATILITY_THRESHOLD
+        is_consolidation = volatility < self.config["volatility_threshold"]
         is_breakout = current_price < low * 0.995
         if is_consolidation and is_breakout:
             if not self._should_send_alert("breakout", current_price):
@@ -169,30 +171,30 @@ class AlertService:
     def _check_ma_cross(
         self, current_price: float, snapshot: PriceSnapshot | None
     ) -> tuple[str | None, str | None]:
-        if not self.config.ENABLE_MA_CROSS_ALERT or snapshot is None:
+        if not self.config["enable_ma_cross_alert"] or snapshot is None:
             return None, None
-        ma_short = snapshot.ma(self.config.MA_SHORT_PERIOD)
-        ma_long = snapshot.ma(self.config.MA_LONG_PERIOD)
+        ma_short = snapshot.ma(self.config["ma_short_period"])
+        ma_long = snapshot.ma(self.config["ma_long_period"])
         if not ma_short or not ma_long:
             return None, None
-        prev_prices = snapshot.prices_last_n(self.config.MA_SHORT_PERIOD + 1)
-        if len(prev_prices) < self.config.MA_SHORT_PERIOD + 1:
+        prev_prices = snapshot.prices_last_n(self.config["ma_short_period"] + 1)
+        if len(prev_prices) < self.config["ma_short_period"] + 1:
             return None, None
         prev_ma_short = (
-            sum(prev_prices[: self.config.MA_SHORT_PERIOD])
-            / self.config.MA_SHORT_PERIOD
+            sum(prev_prices[: self.config["ma_short_period"]])
+            / self.config["ma_short_period"]
         )
         prev_ma_long = ma_long
         if prev_ma_short <= prev_ma_long and ma_short > ma_long:
             if not self._should_send_alert("ma_golden_cross", current_price):
                 return None, None
-            alert = f"金叉信号！{self.config.MA_SHORT_PERIOD} 周期均线上穿 {self.config.MA_LONG_PERIOD} 周期均线"
+            alert = f"金叉信号！{self.config['ma_short_period']} 周期均线上穿 {self.config['ma_long_period']} 周期均线"
             suggestion = "建议：看涨信号，可考虑分批建仓，止损位设在近期低点"
             return alert, suggestion
         if prev_ma_short >= prev_ma_long and ma_short < ma_long:
             if not self._should_send_alert("ma_death_cross", current_price):
                 return None, None
-            alert = f"死叉信号！{self.config.MA_SHORT_PERIOD} 周期均线下穿 {self.config.MA_LONG_PERIOD} 周期均线"
+            alert = f"死叉信号！{self.config['ma_short_period']} 周期均线下穿 {self.config['ma_long_period']} 周期均线"
             suggestion = "建议：看跌信号，注意减仓或设置止损，关注支撑位"
             return alert, suggestion
         return None, None
@@ -200,9 +202,9 @@ class AlertService:
     def _check_consecutive_move(
         self, current_price: float, snapshot: PriceSnapshot | None
     ) -> tuple[str | None, str | None]:
-        if not self.config.ENABLE_CONSECUTIVE_ALERT or snapshot is None:
+        if not self.config["enable_consecutive_alert"] or snapshot is None:
             return None, None
-        count = self.config.CONSECUTIVE_COUNT
+        count = self.config["consecutive_count"]
         recent_prices = snapshot.prices_in_hours(2)
         if len(recent_prices) < count + 1:
             return None, None
@@ -241,9 +243,9 @@ class AlertService:
     def _check_rapid_price_change(
         self, current_price: float, snapshot: PriceSnapshot | None
     ) -> tuple[str | None, str | None]:
-        if not self.config.ENABLE_RAPID_CHANGE_ALERT or snapshot is None:
+        if not self.config["enable_rapid_change_alert"] or snapshot is None:
             return None, None
-        window_hours = self.config.RAPID_CHANGE_WINDOW_MINUTES / 60
+        window_hours = self.config["rapid_change_window_minutes"] / 60
         recent_prices = snapshot.prices_in_hours(window_hours)
         if len(recent_prices) < 2:
             return None, None
@@ -251,11 +253,11 @@ class AlertService:
         if start_price <= 0:
             return None, None
         change_pct = abs(current_price - start_price) / start_price
-        if change_pct >= self.config.RAPID_CHANGE_THRESHOLD:
+        if change_pct >= self.config["rapid_change_threshold"]:
             if not self._should_send_alert("rapid_change", current_price):
                 return None, None
             direction = "上涨" if current_price > start_price else "下跌"
-            alert = f"快速{direction}报警！{self.config.RAPID_CHANGE_WINDOW_MINUTES} 分钟内价格{direction}{change_pct * 100:.2f}%"
+            alert = f"快速{direction}报警！{self.config['rapid_change_window_minutes']} 分钟内价格{direction}{change_pct * 100:.2f}%"
             if current_price > start_price:
                 suggestion = "建议：快速上涨可能伴随回调，避免追高，等待企稳"
             else:
@@ -266,7 +268,7 @@ class AlertService:
     def _check_long_term_low(
         self, current_price: float, snapshot: PriceSnapshot | None
     ) -> tuple[str | None, str | None]:
-        if not self.config.ENABLE_LONG_TERM_LOW_ALERT or snapshot is None:
+        if not self.config["enable_long_term_low_alert"] or snapshot is None:
             return None, None
         if snapshot.min_3m is not None and current_price <= snapshot.min_3m * 1.005:
             if not self._should_send_alert("long_term_low_3m", current_price):

@@ -2,7 +2,6 @@ import time
 from datetime import datetime
 
 from config import (
-    AI_CONFIG,
     CHECK_INTERVAL,
     CHINA_TZ,
     LOG_CONFIG,
@@ -15,6 +14,7 @@ from service.alert_service import AlertService
 from service.history_import_service import init_historical_data
 from service.notification_service import NotificationService
 from service.price_service import PriceService
+from service.system_settings_service import SystemSettingsService
 from utils.logger import cleanup_old_logs, get_log_size, get_logger
 
 
@@ -26,7 +26,10 @@ class MonitorService:
         self.alert_service = AlertService(SYMBOL, self.price_mapper)
         self.notification_service = NotificationService()
         self.ai_service = AIAnalysisService()
-        self.ai_check_interval = AI_CONFIG.get("check_interval_checks", 30)
+        self.settings = SystemSettingsService()
+        self.ai_check_interval = self.settings.get_ai_config().get(
+            "check_interval_checks", 30
+        )
         self.start_time = datetime.now(CHINA_TZ)
         self.check_count = 0
         self.alert_count = 0

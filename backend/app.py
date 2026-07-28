@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from controller.model_pool_controller import router as model_pool_router
 from controller.price_history_controller import router as price_history_router
+from controller.system_settings_controller import router as settings_router
 
 app = FastAPI(
     title="黄金价格智能监控系统",
@@ -11,6 +12,7 @@ app = FastAPI(
 
 app.include_router(model_pool_router, prefix="/api")
 app.include_router(price_history_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")
 
 
 @app.get("/health", tags=["系统"])

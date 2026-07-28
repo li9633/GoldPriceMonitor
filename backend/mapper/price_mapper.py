@@ -248,7 +248,7 @@ class PriceMapper:
     def get_price_series(
         self, symbol: str, hours: float
     ) -> list[tuple[datetime, float]]:
-        """获取带时间戳的价格序列，用于图表渲染"""
+        """获取原始价格序列，用于最近记录等需要精确数据的场景"""
         cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
         conn = self._get_connection()
         c = conn.cursor()
@@ -258,6 +258,25 @@ class PriceMapper:
         )
         return [
             (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1])
+            for r in c.fetchall()
+        ]
+
+    def get_chart_series(
+        self, symbol: str, hours: float
+    ) -> list[tuple[datetime, float]]:
+        """获取聚合后的价格序列，按时间范围自动降采样，用于图表渲染"""
+        cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
+        bucket_sql = _resolve_bucket(hours)
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute(
+            f"SELECT {bucket_sql} AS bucket, AVG(price) AS price "
+            "FROM prices WHERE symbol = ? AND timestamp > ? "
+            "GROUP BY bucket ORDER BY bucket",
+            (symbol, cutoff),
+        )
+        return [
+            (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), round(r[1], 2))
             for r in c.fetchall()
         ]
 
@@ -323,3 +342,22 @@ class PriceMapper:
                 continue
         conn.commit()
         return count
+
+
+def _resolve_bucket(hours: float) -> str:
+    """根据时间范围返回 strftime 聚合表达式"""
+    if hours <= 24:
+        return "strftime('%Y-%m-%d %H:%M:%S', timestamp)"
+    if hours <= 168:
+        return (
+            "strftime('%Y-%m-%d %H:', timestamp) || "
+            "printf('%02d', CAST(strftime('%M', timestamp) AS INTEGER) / 10 * 10) || ':00'"
+        )
+    if hours <= 720:
+        return "strftime('%Y-%m-%d %H:00:00', timestamp)"
+    if hours <= 2160:
+        return (
+            "strftime('%Y-%m-%d ', timestamp) || "
+            "printf('%02d', CAST(strftime('%H', timestamp) AS INTEGER) / 4 * 4) || ':00:00'"
+        )
+    return "strftime('%Y-%m-%d', timestamp)"

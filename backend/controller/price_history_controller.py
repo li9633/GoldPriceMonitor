@@ -63,7 +63,10 @@ def get_dashboard():
 def get_chart_data(
     symbol: str = Query(default=SYMBOL, description="品种代码"),
     hours: float = Query(
-        default=24, ge=1, le=720, description="图表时间范围（小时，最长30天）"
+        default=24,
+        ge=1,
+        le=8760,
+        description="图表时间范围（小时，最长365天 | 720=30天 2160=90天 4380=半年 8760=1年）",
     ),
 ):
     return ApiResponse.ok(service.get_chart_data(symbol, hours))

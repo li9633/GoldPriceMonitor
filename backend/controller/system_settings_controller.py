@@ -1,0 +1,123 @@
+from fastapi import APIRouter
+
+from models.response import ApiResponse
+from models.system_settings import (
+    AIConfigModel,
+    AlertConfigModel,
+    EmailConfigModel,
+    ExchangeRateModel,
+    MessageConfigModel,
+    MonitorConfigModel,
+    WechatConfigModel,
+)
+from service.system_settings_service import SystemSettingsService
+
+router = APIRouter(prefix="/settings", tags=["系统设置"])
+service = SystemSettingsService()
+
+
+@router.get("/alert", response_model=ApiResponse[AlertConfigModel])
+def get_alert_config():
+    return ApiResponse.ok(AlertConfigModel(**service.get_alert_config()))
+
+
+@router.put("/alert", response_model=ApiResponse[AlertConfigModel])
+def update_alert_config(data: AlertConfigModel):
+    service.update_alert_config(**data.model_dump())
+    return ApiResponse.ok(
+        AlertConfigModel(**service.get_alert_config()), message="报警配置已更新"
+    )
+
+
+@router.get("/ai", response_model=ApiResponse[AIConfigModel])
+def get_ai_config():
+    return ApiResponse.ok(AIConfigModel(**service.get_ai_config()))
+
+
+@router.put("/ai", response_model=ApiResponse[AIConfigModel])
+def update_ai_config(data: AIConfigModel):
+    service.update_ai_config(**data.model_dump())
+    return ApiResponse.ok(
+        AIConfigModel(**service.get_ai_config()), message="AI 配置已更新"
+    )
+
+
+@router.get("/wechat", response_model=ApiResponse[WechatConfigModel])
+def get_wechat_config():
+    return ApiResponse.ok(WechatConfigModel(**service.get_wechat_config()))
+
+
+@router.put("/wechat", response_model=ApiResponse[WechatConfigModel])
+def update_wechat_config(data: WechatConfigModel):
+    service.update_wechat_config(**data.model_dump())
+    return ApiResponse.ok(
+        WechatConfigModel(**service.get_wechat_config()), message="企业微信配置已更新"
+    )
+
+
+@router.get("/email", response_model=ApiResponse[EmailConfigModel])
+def get_email_config():
+    return ApiResponse.ok(EmailConfigModel(**service.get_email_config()))
+
+
+@router.put("/email", response_model=ApiResponse[EmailConfigModel])
+def update_email_config(data: EmailConfigModel):
+    service.update_email_config(**data.model_dump())
+    return ApiResponse.ok(
+        EmailConfigModel(**service.get_email_config()), message="邮件配置已更新"
+    )
+
+
+@router.get("/monitor", response_model=ApiResponse[MonitorConfigModel])
+def get_monitor_config():
+    return ApiResponse.ok(MonitorConfigModel(**service.get_monitor_config()))
+
+
+@router.put("/monitor", response_model=ApiResponse[MonitorConfigModel])
+def update_monitor_config(data: MonitorConfigModel):
+    service.update_monitor_config(**data.model_dump())
+    return ApiResponse.ok(
+        MonitorConfigModel(**service.get_monitor_config()), message="监控配置已更新"
+    )
+
+
+@router.get("/message", response_model=ApiResponse[MessageConfigModel])
+def get_message_config():
+    return ApiResponse.ok(MessageConfigModel(**service.get_message_config()))
+
+
+@router.put("/message", response_model=ApiResponse[MessageConfigModel])
+def update_message_config(data: MessageConfigModel):
+    service.update_message_config(**data.model_dump())
+    return ApiResponse.ok(
+        MessageConfigModel(**service.get_message_config()), message="消息配置已更新"
+    )
+
+
+@router.post("/reload", response_model=ApiResponse[dict])
+def reload_settings():
+    service.reload()
+    return ApiResponse.ok({}, message="设置已刷新")
+
+
+@router.get("/exchange-rate", response_model=ApiResponse[ExchangeRateModel])
+def get_exchange_rate():
+    row = service.mapper.get_exchange_rate()
+    if row:
+        return ApiResponse.ok(
+            ExchangeRateModel(rate=row["rate"], updated_at=row["updated_at"])
+        )
+    return ApiResponse.ok(ExchangeRateModel(rate=None, updated_at=None))
+
+
+@router.put("/exchange-rate/{rate}", response_model=ApiResponse[ExchangeRateModel])
+def update_exchange_rate(rate: float):
+    service.set_cached_exchange_rate(rate)
+    row = service.mapper.get_exchange_rate()
+    return ApiResponse.ok(
+        ExchangeRateModel(
+            rate=row["rate"] if row else None,
+            updated_at=row["updated_at"] if row else None,
+        ),
+        message="汇率已更新",
+    )
