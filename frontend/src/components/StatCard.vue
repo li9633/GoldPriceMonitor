@@ -1,7 +1,9 @@
 <template>
   <el-card class="stat-card" shadow="hover">
     <div class="stat-label">{{ label }}</div>
-    <div class="stat-value" :class="{ 'price-color': highlight }">{{ value }}</div>
+    <div class="stat-value" :class="{ 'price-color': highlight }">
+      <slot name="value" :value="value">{{ value }}</slot>
+    </div>
     <div v-if="sub" class="stat-sub" :class="subClass">{{ sub }}</div>
   </el-card>
 </template>
@@ -9,7 +11,7 @@
 <script setup lang="ts">
 defineProps<{
   label: string
-  value: string
+  value?: string
   sub?: string
   subClass?: string
   highlight?: boolean

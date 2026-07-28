@@ -85,13 +85,11 @@ class PriceSnapshot:
 class PriceMapper:
     def __init__(self, db_file: str = PRICE_HISTORY_DB_FILE):
         self.db_file = db_file
-        self._conn: sqlite3.Connection | None = None
 
     def _get_connection(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = sqlite3.connect(self.db_file, check_same_thread=False)
-            self._conn.execute("PRAGMA journal_mode=WAL")
-        return self._conn
+        conn = sqlite3.connect(self.db_file, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
 
     def _ensure_indexes(self, conn: sqlite3.Connection) -> None:
         c = conn.cursor()
@@ -102,9 +100,7 @@ class PriceMapper:
         conn.commit()
 
     def close(self):
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        pass
 
     def init_table(self):
         conn = self._get_connection()

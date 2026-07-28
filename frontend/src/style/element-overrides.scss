@@ -1,15 +1,14 @@
+// ========== Element Plus 全局样式覆盖 ==========
+// 颜色由 theme.scss 中的 --el-* 变量统一控制，此文件仅做结构性定制
+
 // ========== ElButton ==========
-.el-button--primary {
-  --el-button-bg-color: var(--color-primary);
-  --el-button-border-color: var(--color-primary);
-  --el-button-hover-bg-color: var(--color-primary-dark);
-  --el-button-hover-border-color: var(--color-primary-dark);
-  --el-button-active-bg-color: var(--color-primary-dark);
-  --el-button-active-border-color: var(--color-primary-dark);
+.el-button {
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.25s;
 }
 
 // ========== ElMenu（侧边栏） ==========
-// 白色主导 + 金色点缀：hover/active 时背景变金，文字变白
 .el-menu {
   --el-menu-bg-color: var(--sidebar-bg);
   --el-menu-text-color: var(--sidebar-text);
@@ -49,6 +48,105 @@
   --el-card-bg-color: var(--card-bg);
   --el-card-border-color: var(--card-border);
   border-radius: 8px;
+
+  .el-card__header {
+    border-bottom-color: var(--border-color);
+  }
+}
+
+// ========== ElTable ==========
+.el-table {
+  --el-table-bg-color: var(--card-bg);
+  --el-table-tr-bg-color: var(--card-bg);
+  --el-table-header-bg-color: var(--bg-secondary);
+  --el-table-row-hover-bg-color: var(--color-primary-bg);
+  --el-table-border-color: var(--border-color);
+  --el-table-header-text-color: var(--text-primary);
+  --el-table-text-color: var(--text-primary);
+
+  th.el-table__cell {
+    font-weight: 600;
+  }
+}
+
+// ========== ElDialog ==========
+.el-dialog {
+  --el-dialog-bg-color: var(--card-bg);
+  --el-dialog-title-font-size: 17px;
+  border-radius: 10px;
+
+  .el-dialog__header {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 16px;
+    margin-right: 0;
+  }
+
+  .el-dialog__footer {
+    border-top: 1px solid var(--border-color);
+    padding-top: 14px;
+  }
+}
+
+// ========== ElTag ==========
+.el-tag {
+  border-radius: 4px;
+  font-weight: 500;
+
+  &.el-tag--warning.el-tag--plain {
+    --el-tag-text-color: var(--color-warning);
+    --el-tag-border-color: rgba(245, 158, 11, 0.3);
+    --el-tag-bg-color: rgba(245, 158, 11, 0.08);
+  }
+}
+
+// ========== ElRadio / ElCheckbox ==========
+.el-radio__input.is-checked .el-radio__inner,
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
+
+// ========== ElPagination ==========
+.el-pagination {
+  --el-pagination-button-bg-color: var(--el-fill-color-blank);
+  --el-pagination-hover-color: var(--el-color-primary);
+
+  .el-pager li.is-active {
+    background-color: var(--el-color-primary);
+    color: #fff;
+  }
+}
+
+// ========== ElInput / ElInputNumber ==========
+.el-input__wrapper,
+.el-input-number__decrease,
+.el-input-number__increase {
+  background-color: var(--el-fill-color-blank);
+  box-shadow: 0 0 0 1px var(--el-border-color) inset;
+  border-radius: 6px;
+}
+
+.el-input__inner {
+  color: var(--el-text-color-primary);
+}
+
+.el-input-number {
+  .el-input-number__decrease,
+  .el-input-number__increase {
+    color: var(--el-text-color-regular);
+    background-color: var(--el-fill-color-light);
+    border-color: var(--el-border-color);
+
+    &:hover {
+      color: var(--el-color-primary);
+    }
+  }
+}
+
+// ========== ElDropdown ==========
+.el-dropdown-menu {
+  --el-dropdown-menuItem-hover-fill: var(--color-primary-bg);
+  --el-dropdown-menuItem-hover-color: var(--el-color-primary);
 }
 
 // ========== ElBreadcrumb ==========
@@ -62,16 +160,33 @@
 
 // ========== ElSwitch ==========
 .el-switch {
-  --el-switch-on-color: var(--color-primary);
-  --el-switch-off-color: var(--text-muted);
+  --el-switch-on-color: var(--el-color-primary);
+  --el-switch-off-color: var(--el-text-color-placeholder);
 }
 
-// ========== ElInput ==========
-.el-input__wrapper {
-  background-color: var(--bg-primary);
-  box-shadow: 0 0 0 1px var(--border-color) inset;
+// ========== ElMessage / ElNotification ==========
+.el-message,
+.el-notification {
+  --el-message-bg-color: var(--el-bg-color-overlay);
+  --el-message-text-color: var(--el-text-color-primary);
+  border-radius: 8px;
+  box-shadow: var(--el-box-shadow);
 }
 
-.el-input__inner {
-  color: var(--text-primary);
+// ========== ElPopconfirm / ElTooltip ==========
+.el-popconfirm,
+.el-tooltip__content {
+  --el-popconfirm-bg-color: var(--el-bg-color-overlay);
+  --el-popconfirm-text-color: var(--el-text-color-primary);
+  border-radius: 8px;
+}
+
+// ========== ElDivider ==========
+.el-divider {
+  --el-divider-border-color: var(--el-border-color);
+}
+
+// ========== ElLoading ==========
+.el-loading-mask {
+  background-color: var(--el-overlay-color-light);
 }

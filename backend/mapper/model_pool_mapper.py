@@ -1,6 +1,10 @@
+import os
 import sqlite3
 
 from config import MODEL_POOL_DB_FILE
+from utils.logger import get_logger
+
+logger = get_logger("ModelPoolMapper")
 
 
 class ModelPoolMapper:
@@ -8,12 +12,11 @@ class ModelPoolMapper:
 
     def __init__(self, db_file: str = MODEL_POOL_DB_FILE):
         self.db_file = db_file
-        self._conn: sqlite3.Connection | None = None
 
     def _get_connection(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        return self._conn
+        conn = sqlite3.connect(self.db_file, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
 
     def init_tables(self) -> None:
         conn = self._get_connection()
@@ -37,6 +40,16 @@ class ModelPoolMapper:
 
     # ==================== 供应商 CRUD ====================
 
+    @staticmethod
+    def _resolve_api_key(provider_name: str, env_var: str) -> str:
+        """从环境变量中获取 API Key，未设置时返回空字符串并记录警告"""
+        api_key = os.getenv(env_var, "")
+        if not api_key:
+            logger.warning(
+                f"供应商 [{provider_name}] 的环境变量 {env_var} 未设置或为空，将跳过该供应商"
+            )
+        return api_key
+
     def get_providers(self) -> list[dict]:
         conn = self._get_connection()
         c = conn.cursor()
@@ -56,7 +69,7 @@ class ModelPoolMapper:
                     "id": row[0],
                     "name": row[1],
                     "api_url": row[2],
-                    "api_key": row[3],
+                    "api_key": self._resolve_api_key(row[1], row[3]),
                     "timeout": row[4],
                     "sort_order": row[5],
                     "models": models,
@@ -84,7 +97,7 @@ class ModelPoolMapper:
             "id": row[0],
             "name": row[1],
             "api_url": row[2],
-            "api_key": row[3],
+            "api_key": self._resolve_api_key(row[1], row[3]),
             "timeout": row[4],
             "sort_order": row[5],
             "models": models,
@@ -183,6 +196,4 @@ class ModelPoolMapper:
         return c.rowcount > 0
 
     def close(self) -> None:
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        pass

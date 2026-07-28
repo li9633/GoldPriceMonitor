@@ -36,6 +36,12 @@ class ModelResult:
     model: str | None = None
     from_cache: bool = False
     error: str | None = None
+    retryable: bool = True
+    """
+    是否可重试。
+    False 表示错误是确定性的（内容被审核、API Key 无效、权限不足等），
+    重试也不会成功，应直接跳到下一个模型。
+    """
 
 
 class ModelPool:
@@ -107,6 +113,11 @@ class ModelPool:
                             f"[{provider['name']}]/{model} 第 {attempt} 次重试成功"
                         )
                     return result
+                if not result.retryable:
+                    logger.warning(
+                        f"[{provider['name']}]/{model} 错误不可重试，跳过该模型"
+                    )
+                    return result
                 last_error = result.error
             except Exception as e:  # noqa: BLE001
                 last_error = str(e)
@@ -140,6 +151,12 @@ class ModelPool:
         }
         label = f"[{provider['name']}]/{model}"
 
+        logger.debug(
+            f"{label} 发送请求\n"
+            f"--- SystemPrompt ---\n{system_prompt}\n"
+            f"--- UserPrompt ---\n{user_prompt}"
+        )
+
         try:
             resp = requests.post(
                 provider["api_url"],
@@ -169,6 +186,7 @@ class ModelPool:
                     return ModelResult(
                         success=False,
                         error=f"API 业务错误(code={err_code}): {err_msg}",
+                        retryable=False,
                     )
                 choice = data["choices"][0]
                 finish_reason = choice.get("finish_reason", "")
@@ -201,9 +219,11 @@ class ModelPool:
                 except ValueError:
                     pass
 
+            retryable = resp.status_code not in (400, 401, 403, 404)
             return ModelResult(
                 success=False,
                 error=f"HTTP {resp.status_code} ({status_desc}): {body_preview}",
+                retryable=retryable,
             )
 
         except requests.Timeout:

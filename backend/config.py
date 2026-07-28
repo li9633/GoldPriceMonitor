@@ -124,42 +124,6 @@ EMAIL_CONFIG = {
 PRICE_HISTORY_DB_FILE = "data/prices.db"  # 价格历史数据
 MODEL_POOL_DB_FILE = "data/model_pool.db"  # AI 模型池配置（与价格数据分离）
 
-# AI 模型供应商池（按优先级排列，L2→L3 依次降级）
-# 添加新供应商：在列表末尾追加一个 dict，含 name/api_url/api_key/models
-AI_PROVIDERS = [
-    {
-        "name": "智谱",
-        "api_url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-        "api_key": os.getenv("GLM_API_KEY", ""),
-        "models": [
-            "glm-4.7-flash",  # L2: 优先
-            "glm-4-flash",  # L2: 降级
-            "glm-4-flash-250414",  # L3: 最后
-        ],
-        "timeout": 30,
-    },
-    {
-        "name": "硅基流动",
-        "api_url": "https://api.siliconflow.cn/v1/chat/completions",
-        "api_key": os.getenv("SILICONFLOW_API_KEY", ""),
-        "models": ["Qwen/Qwen3-8B", "THUDM/GLM-4-9B-0414", "THUDM/GLM-Z1-9B-0414"],
-        "timeout": 30,
-    },
-    {
-        "name": "NVIDIA NIM",
-        "api_url": "https://integrate.api.nvidia.com/v1/chat/completions",
-        "api_key": os.getenv("NVIDIA_API_KEY", ""),
-        "models": [
-            "deepseek-ai/deepseek-v4-flash",
-            "deepseek-ai/deepseek-v4-pro",
-            "z-ai/glm-5.2",
-            "qwen/qwen3-next-80b-a3b-instruct",
-            "openai/gpt-oss-20b",
-            "openai/gpt-oss-120b",
-        ],
-        "timeout": 30,
-    },
-]
 
 # AI 全局配置
 AI_CONFIG = {

@@ -25,3 +25,4 @@ if __name__ == "__main__":
     logger.info("价格监控服务已在后台启动")
 
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    logger.info("API 服务已启动，监听端口 http://0.0.0.0:8000")

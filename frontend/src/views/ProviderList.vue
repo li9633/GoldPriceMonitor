@@ -7,23 +7,18 @@
       </el-button>
     </div>
 
-    <el-card v-for="provider in providers" :key="provider.id" class="provider-card">
-      <template #header>
-        <div class="provider-header">
-          <span class="provider-name">{{ provider.name }}</span>
-          <div class="provider-actions">
-            <el-button text type="primary" @click="openEditDialog(provider)">编辑</el-button>
-            <el-button text type="danger" @click="handleDelete(provider)">删除</el-button>
-          </div>
-        </div>
-      </template>
-      <div class="provider-info">
-        <el-tag v-for="model in provider.models" :key="model" size="small" class="model-tag">
-          {{ model }}
-        </el-tag>
-        <span v-if="!provider.models.length" class="no-model">暂无模型</span>
-      </div>
-    </el-card>
+    <ProviderCard
+      v-for="provider in providers"
+      :key="provider.id"
+      :provider="provider"
+      :models="getProviderModels(provider.name)"
+      @edit="openEditDialog"
+      @delete="handleDelete"
+      @add-model="handleAddModel"
+      @edit-model="handleEditModel"
+      @delete-model="handleDeleteModel"
+      @move-model="handleMoveModel"
+    />
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑供应商' : '新增供应商'" width="500px">
       <el-form :model="form" label-width="100px">
@@ -33,8 +28,8 @@
         <el-form-item label="API 地址">
           <el-input v-model="form.api_url" />
         </el-form-item>
-        <el-form-item label="API 密钥">
-          <el-input v-model="form.api_key" />
+        <el-form-item label="环境变量名">
+          <el-input v-model="form.api_key" placeholder="如：GLM_API_KEY" />
         </el-form-item>
         <el-form-item label="超时(秒)">
           <el-input-number v-model="form.timeout" :min="1" :max="120" />
@@ -56,11 +51,20 @@ import { ref, onMounted } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faServer, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { providerApi } from '@/api/modules/aiProvider'
-import type { ModelProvider, ProviderCreate, ProviderUpdate } from '@/api/modules/aiProvider'
+import type {
+  ModelProvider,
+  ProviderModel,
+  ProviderCreate,
+  ProviderUpdate,
+  ProviderModelCreate,
+  ProviderModelUpdate,
+} from '@/api/modules/aiProvider'
+import ProviderCard from '@/components/ProviderCard.vue'
 
 library.add(faServer, faPlus)
 
 const providers = ref<ModelProvider[]>([])
+const modelsMap = ref<Record<string, ProviderModel[]>>({})
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingName = ref('')
@@ -73,8 +77,19 @@ const form = ref<ProviderCreate>({
   sort_order: 0,
 })
 
-const loadProviders = async () => {
+const getProviderModels = (name: string): ProviderModel[] => {
+  return modelsMap.value[name] ?? []
+}
+
+const loadAll = async () => {
   providers.value = await providerApi.list()
+  const map: Record<string, ProviderModel[]> = {}
+  await Promise.all(
+    providers.value.map(async (p) => {
+      map[p.name] = await providerApi.listModels(p.name)
+    }),
+  )
+  modelsMap.value = map
 }
 
 const openCreateDialog = () => {
@@ -109,7 +124,7 @@ const handleSubmit = async () => {
     await providerApi.create(form.value)
   }
   dialogVisible.value = false
-  loadProviders()
+  loadAll()
 }
 
 const handleDelete = async (provider: ModelProvider) => {
@@ -119,13 +134,71 @@ const handleDelete = async (provider: ModelProvider) => {
     })
     await providerApi.remove(provider.name)
     ElMessage.success('删除成功')
-    loadProviders()
+    loadAll()
   } catch {
     // 取消操作
   }
 }
 
-onMounted(loadProviders)
+const handleAddModel = async (providerName: string, data: ProviderModelCreate) => {
+  await providerApi.createModel(providerName, data)
+  ElMessage.success('模型添加成功')
+  modelsMap.value[providerName] = await providerApi.listModels(providerName)
+}
+
+const handleEditModel = async (
+  providerName: string,
+  modelId: number,
+  data: ProviderModelUpdate,
+) => {
+  await providerApi.updateModel(providerName, modelId, data)
+  ElMessage.success('模型更新成功')
+  modelsMap.value[providerName] = await providerApi.listModels(providerName)
+}
+
+const handleDeleteModel = async (model: ProviderModel) => {
+  try {
+    await ElMessageBox.confirm(`确定删除模型「${model.model_name}」？`, '确认删除', {
+      type: 'warning',
+    })
+    await providerApi.removeModel(model.provider_name, model.id)
+    ElMessage.success('删除成功')
+    modelsMap.value[model.provider_name] = await providerApi.listModels(model.provider_name)
+  } catch {
+    // 取消操作
+  }
+}
+
+const handleMoveModel = async (modelId: number, direction: 'up' | 'down') => {
+  const model = findModelById(modelId)
+  if (!model) return
+
+  const models = modelsMap.value[model.provider_name] ?? []
+  const sorted = [...models].sort((a, b) => a.sort_order - b.sort_order)
+  const idx = sorted.findIndex((m) => m.id === modelId)
+  if (idx === -1) return
+
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+  if (targetIdx < 0 || targetIdx >= sorted.length) return
+
+  const target = sorted[targetIdx]
+  if (!target) return
+
+  await providerApi.updateModel(model.provider_name, model.id, { sort_order: target.sort_order })
+  await providerApi.updateModel(model.provider_name, target.id, { sort_order: model.sort_order })
+
+  modelsMap.value[model.provider_name] = await providerApi.listModels(model.provider_name)
+}
+
+const findModelById = (id: number): ProviderModel | null => {
+  for (const models of Object.values(modelsMap.value)) {
+    const found = models.find((m) => m.id === id)
+    if (found) return found
+  }
+  return null
+}
+
+onMounted(loadAll)
 </script>
 
 <style lang="scss" scoped>
@@ -144,41 +217,6 @@ onMounted(loadProviders)
     font-size: 22px;
     color: var(--text-primary);
     margin: 0;
-  }
-}
-
-.provider-card {
-  margin-bottom: 16px;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-
-  .provider-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .provider-name {
-    font-weight: bold;
-    font-size: 15px;
-    color: var(--text-primary);
-  }
-
-  .provider-actions {
-    display: flex;
-    gap: 4px;
-  }
-}
-
-.provider-info {
-  .model-tag {
-    margin-right: 8px;
-    margin-bottom: 4px;
-  }
-
-  .no-model {
-    color: var(--text-muted);
-    font-size: 13px;
   }
 }
 </style>

@@ -7,7 +7,7 @@ class ModelProviderBase(BaseModel):
 
     name: str = Field(..., description="供应商名称", examples=["智谱"])
     api_url: str = Field(..., description="API 地址")
-    api_key: str = Field(..., description="API 密钥")
+    api_key: str = Field(..., description="API Key 对应的环境变量名，如 GLM_API_KEY")
     timeout: int = Field(default=30, ge=1, description="请求超时（秒）")
     sort_order: int = Field(default=0, ge=0, description="排序权重，越小越优先")
 
@@ -21,7 +21,9 @@ class ModelProviderUpdate(BaseModel):
 
     name: str | None = Field(default=None, description="供应商名称")
     api_url: str | None = Field(default=None, description="API 地址")
-    api_key: str | None = Field(default=None, description="API 密钥")
+    api_key: str | None = Field(
+        default=None, description="API Key 对应的环境变量名，如 GLM_API_KEY"
+    )
     timeout: int | None = Field(default=None, ge=1, description="请求超时（秒）")
     sort_order: int | None = Field(default=None, ge=0, description="排序权重")
 

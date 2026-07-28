@@ -22,14 +22,24 @@ class ModelPoolService:
 
     # ==================== 供应商 ====================
 
+    @staticmethod
+    def _mask_api_key(key: str) -> str:
+        """脱敏：已设置则显示 ****，未设置则显示提示"""
+        return "****" if key else "未设置"
+
     def list_providers(self) -> list[ModelProviderWithModels]:
         rows = self.mapper.get_providers()
-        return [ModelProviderWithModels(**r) for r in rows]
+        result: list[ModelProviderWithModels] = []
+        for r in rows:
+            r["api_key"] = self._mask_api_key(r["api_key"])
+            result.append(ModelProviderWithModels(**r))
+        return result
 
     def get_provider(self, name: str) -> ModelProviderWithModels | None:
         row = self.mapper.get_provider_by_name(name)
         if not row:
             return None
+        row["api_key"] = self._mask_api_key(row["api_key"])
         return ModelProviderWithModels(**row)
 
     def create_provider(self, data: ModelProviderCreate) -> ModelProviderResponse:

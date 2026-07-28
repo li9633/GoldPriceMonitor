@@ -33,6 +33,7 @@ def _init() -> None:
         "certifi",
         "fastapi",
         "uvicorn",
+        "asyncio",
     ):
         logging.getLogger(lib).setLevel(logging.WARNING)
 

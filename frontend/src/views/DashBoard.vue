@@ -45,16 +45,11 @@
         <StatCard label="24h 数据量" :value="String(snapshot?.statistics_24h?.count ?? '--')" />
       </el-col>
       <el-col :span="6">
-        <StatCard
-          label="趋势"
-          :value="
-            snapshot?.trend_24h?.direction === 'up'
-              ? '📈'
-              : snapshot?.trend_24h?.direction === 'down'
-                ? '📉'
-                : '➡️'
-          "
-        />
+        <StatCard label="趋势">
+          <template #value>
+            <TrendBadge :direction="snapshot?.trend_24h?.direction ?? 'stable'" />
+          </template>
+        </StatCard>
       </el-col>
     </el-row>
   </div>
