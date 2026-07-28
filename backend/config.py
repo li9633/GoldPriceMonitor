@@ -121,8 +121,8 @@ EMAIL_CONFIG = {
 }
 
 # 数据库配置
-PRICE_HISTORY_DB_FILE = "prices.db"  # 价格历史数据
-MODEL_POOL_DB_FILE = "model_pool.db"  # AI 模型池配置（与价格数据分离）
+PRICE_HISTORY_DB_FILE = "data/prices.db"  # 价格历史数据
+MODEL_POOL_DB_FILE = "data/model_pool.db"  # AI 模型池配置（与价格数据分离）
 
 # AI 模型供应商池（按优先级排列，L2→L3 依次降级）
 # 添加新供应商：在列表末尾追加一个 dict，含 name/api_url/api_key/models

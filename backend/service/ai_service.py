@@ -1,11 +1,10 @@
 import json
 from datetime import datetime
 
-from mapper.ai_model_pool_config_mapper import AIModelPoolConfigMapper
-
 from config import AI_CONFIG, CHINA_TZ, SYMBOL_NAME_MAP
+from mapper.model_pool_mapper import ModelPoolMapper
 from mapper.price_mapper import PriceSnapshot
-from service.model_pool import ModelPool
+from service.model_pool_engine import ModelPool
 from utils.logger import get_logger
 from utils.trading_utils import get_trading_status_text
 
@@ -40,13 +39,22 @@ class AIAnalysisService:
 }"""
 
     def __init__(self):
-        config_mapper = AIModelPoolConfigMapper()
+        config_mapper = ModelPoolMapper()
         config_mapper.init_tables()
-        config_mapper.seed_defaults()
         providers = config_mapper.get_providers()
 
-        self.model_pool = ModelPool(providers)
-        self.enabled = AI_CONFIG["enabled"] and any(p.get("api_key") for p in providers)
+        if not providers:
+            self.model_pool = None
+            self.enabled = False
+            logger.warning(
+                "AI 模型池未配置，AI 分析已禁用。"
+                "请尽快在 model_pool.db 中添加供应商和模型信息后重启程序。"
+            )
+        else:
+            self.model_pool = ModelPool(providers)
+            self.enabled = AI_CONFIG["enabled"] and any(
+                p.get("api_key") for p in providers
+            )
 
     def analyze(
         self,
@@ -57,7 +65,7 @@ class AIAnalysisService:
         london_usd: float | None = None,
         triggered_alerts: list[str] | None = None,
     ) -> dict | None:
-        if not self.enabled:
+        if not self.enabled or self.model_pool is None:
             return None
 
         prompt = self._build_prompt(

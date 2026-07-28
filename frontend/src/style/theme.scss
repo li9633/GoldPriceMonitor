@@ -1,0 +1,99 @@
+@use './variables.scss' as *;
+
+// ========== 浅色主题：白色主导 + 金色点缀 ==========
+:root,
+[data-theme='light'] {
+  // 背景 — 白色系
+  --bg-primary: #{$pure-white};
+  --bg-secondary: #{$warm-white};
+  --bg-page: #{$white-200};
+
+  // 侧边栏 — 白色底，金色点缀
+  --sidebar-bg: #{$pure-white};
+  --sidebar-text: #{$gray-600};
+  --sidebar-text-hover: #{$pure-white};
+  --sidebar-active: #{$gold-500};
+  --sidebar-hover-bg: #{$gold-300};
+  --sidebar-active-bg: #{$gold-500};
+  --sidebar-logo-color: #{$gold-500};
+  --sidebar-border: #{$white-300};
+
+  // 顶栏 — 白色
+  --titlebar-bg: #{$pure-white};
+  --titlebar-border: #{$white-300};
+
+  // 文字
+  --text-primary: #{$gray-800};
+  --text-secondary: #{$gray-500};
+  --text-muted: #{$gray-400};
+
+  // 强调色 — 金色系
+  --color-primary: #{$gold-500};
+  --color-primary-light: #{$gold-200};
+  --color-primary-dark: #{$gold-600};
+  --color-primary-bg: #{$gold-50};
+
+  // 语义色
+  --color-success: #{$success-500};
+  --color-warning: #{$warning-500};
+  --color-danger: #{$danger-500};
+  --color-info: #{$info-500};
+
+  // 边框 & 阴影
+  --border-color: #{$white-300};
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+
+  // 卡片
+  --card-bg: #{$pure-white};
+  --card-border: #{$white-300};
+
+  // 金价
+  --price-color: #{$gold-500};
+  --price-up: #{$danger-500};
+  --price-down: #{$success-600};
+}
+
+// ========== 深色主题：深色底 + 金色点缀 ==========
+[data-theme='dark'] {
+  --bg-primary: #{$ink-200};
+  --bg-secondary: #{$ink-300};
+  --bg-page: #{$ink-400};
+
+  --sidebar-bg: #{$ink-300};
+  --sidebar-text: #{$gray-400};
+  --sidebar-text-hover: #{$pure-white};
+  --sidebar-active: #{$gold-400};
+  --sidebar-hover-bg: rgba(232, 183, 48, 0.18);
+  --sidebar-active-bg: rgba(197, 150, 12, 0.28);
+  --sidebar-logo-color: #{$gold-400};
+  --sidebar-border: #{$ink-50};
+
+  --titlebar-bg: #{$ink-200};
+  --titlebar-border: #{$ink-50};
+
+  --text-primary: #{$gold-50};
+  --text-secondary: #{$gray-400};
+  --text-muted: #{$gray-500};
+
+  --color-primary: #{$gold-400};
+  --color-primary-light: #{$gold-300};
+  --color-primary-dark: #{$gold-600};
+  --color-primary-bg: rgba(212, 160, 23, 0.12);
+
+  --color-success: #{$success-500};
+  --color-warning: #{$warning-500};
+  --color-danger: #{$danger-500};
+  --color-info: #{$info-500};
+
+  --border-color: #{$ink-50};
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  --card-bg: #{$ink-50};
+  --card-border: #{$ink-100};
+
+  --price-color: #{$gold-300};
+  --price-up: #{$danger-500};
+  --price-down: #{$success-500};
+}

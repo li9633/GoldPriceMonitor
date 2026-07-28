@@ -3,8 +3,30 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
-    name: 'home',
-    component: () => import('@/views/Home.vue'),
+    component: () => import('@/layout/AppLayout.vue'),
+    redirect: '/dashboard',
+    children: [
+      {
+        path: 'dashboard',
+        name: 'dashboard',
+        component: () => import('@/views/DashBoard.vue'),
+      },
+      {
+        path: 'price-history',
+        name: 'price-history',
+        component: () => import('@/views/PriceHistory.vue'),
+      },
+      {
+        path: 'providers',
+        name: 'providers',
+        component: () => import('@/views/ProviderList.vue'),
+      },
+      {
+        path: 'settings',
+        name: 'settings',
+        component: () => import('@/views/SystemSettings.vue'),
+      },
+    ],
   },
 ]
 

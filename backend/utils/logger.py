@@ -26,7 +26,14 @@ def _init() -> None:
     root.setLevel(logging.DEBUG)
 
     # 抑制第三方库的 DEBUG 日志
-    for lib in ("urllib3", "requests", "charset_normalizer", "certifi"):
+    for lib in (
+        "urllib3",
+        "requests",
+        "charset_normalizer",
+        "certifi",
+        "fastapi",
+        "uvicorn",
+    ):
         logging.getLogger(lib).setLevel(logging.WARNING)
 
     # 文件处理器 — 所有日志写入同一个文件

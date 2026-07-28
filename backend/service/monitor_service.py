@@ -69,8 +69,14 @@ class MonitorService:
             self.logger.info(
                 f"AI 分析已启用，每 {self.ai_check_interval} 次检查调用一次"
             )
+        elif self.ai_service.model_pool is None:
+            self.logger.warning(
+                "AI 分析未启用：模型池为空，请尽快在 model_pool.db 中添加供应商配置"
+            )
         else:
-            self.logger.info("AI 分析未启用（请设置环境变量 GLM_API_KEY）")
+            self.logger.info(
+                "AI 分析未启用（请检查 AI_CONFIG.enabled 和 API_KEY 配置）"
+            )
 
     def _show_db_status(self) -> None:
         try:

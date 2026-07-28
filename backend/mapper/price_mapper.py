@@ -89,7 +89,7 @@ class PriceMapper:
 
     def _get_connection(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self.db_file)
+            self._conn = sqlite3.connect(self.db_file, check_same_thread=False)
             self._conn.execute("PRAGMA journal_mode=WAL")
         return self._conn
 
@@ -248,6 +248,22 @@ class PriceMapper:
         prices.sort()
         index = int(len(prices) * percentile / 100)
         return prices[index]
+
+    def get_price_series(
+        self, symbol: str, hours: float
+    ) -> list[tuple[datetime, float]]:
+        """获取带时间戳的价格序列，用于图表渲染"""
+        cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute(
+            "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
+            (symbol, cutoff),
+        )
+        return [
+            (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1])
+            for r in c.fetchall()
+        ]
 
     def get_record_count(self, symbol: str) -> int:
         try:

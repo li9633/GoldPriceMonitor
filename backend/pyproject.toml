@@ -12,6 +12,3 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "python-dotenv>=1.0",
 ]
-
-[tool.uv]
-dev-dependencies = []

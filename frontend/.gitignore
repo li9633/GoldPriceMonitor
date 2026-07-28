@@ -39,3 +39,4 @@ __screenshots__/
 *.timestamp-*-*.mjs
 
 auto-imports.d.ts
+components.d.ts

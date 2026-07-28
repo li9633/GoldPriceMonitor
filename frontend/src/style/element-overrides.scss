@@ -1,0 +1,77 @@
+// ========== ElButton ==========
+.el-button--primary {
+  --el-button-bg-color: var(--color-primary);
+  --el-button-border-color: var(--color-primary);
+  --el-button-hover-bg-color: var(--color-primary-dark);
+  --el-button-hover-border-color: var(--color-primary-dark);
+  --el-button-active-bg-color: var(--color-primary-dark);
+  --el-button-active-border-color: var(--color-primary-dark);
+}
+
+// ========== ElMenu（侧边栏） ==========
+// 白色主导 + 金色点缀：hover/active 时背景变金，文字变白
+.el-menu {
+  --el-menu-bg-color: var(--sidebar-bg);
+  --el-menu-text-color: var(--sidebar-text);
+  --el-menu-hover-bg-color: var(--sidebar-hover-bg);
+  --el-menu-active-color: var(--sidebar-active);
+  --el-menu-border-color: transparent;
+
+  .el-menu-item {
+    margin: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.25s;
+
+    &.is-active {
+      background-color: var(--sidebar-active-bg) !important;
+      color: var(--sidebar-text-hover) !important;
+    }
+
+    &:hover {
+      background-color: var(--sidebar-hover-bg) !important;
+      color: var(--sidebar-text-hover) !important;
+    }
+  }
+
+  .el-sub-menu__title {
+    margin: 4px 8px;
+    border-radius: 6px;
+
+    &:hover {
+      background-color: var(--sidebar-hover-bg) !important;
+      color: var(--sidebar-text-hover) !important;
+    }
+  }
+}
+
+// ========== ElCard ==========
+.el-card {
+  --el-card-bg-color: var(--card-bg);
+  --el-card-border-color: var(--card-border);
+  border-radius: 8px;
+}
+
+// ========== ElBreadcrumb ==========
+.el-breadcrumb__inner {
+  color: var(--text-secondary) !important;
+
+  &:hover {
+    color: var(--color-primary) !important;
+  }
+}
+
+// ========== ElSwitch ==========
+.el-switch {
+  --el-switch-on-color: var(--color-primary);
+  --el-switch-off-color: var(--text-muted);
+}
+
+// ========== ElInput ==========
+.el-input__wrapper {
+  background-color: var(--bg-primary);
+  box-shadow: 0 0 0 1px var(--border-color) inset;
+}
+
+.el-input__inner {
+  color: var(--text-primary);
+}

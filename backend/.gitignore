@@ -18,6 +18,9 @@ build/
 # IDEs
 .idea/
 .vscode/
+
+# Database files
+data/
 *.swp
 *.swo
 *~

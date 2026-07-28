@@ -9,6 +9,24 @@ from utils.logger import get_logger
 
 logger = get_logger("ModelPool")
 
+# HTTP 状态码 → 可读含义
+_HTTP_STATUS_MAP: dict[int, str] = {
+    400: "请求参数错误",
+    401: "API Key 无效或未授权",
+    403: "访问被禁止（权限不足或账户欠费）",
+    404: "API 端点不存在",
+    408: "请求超时",
+    429: "请求频率超限（Rate Limit）",
+    500: "服务器内部错误",
+    502: "网关错误",
+    503: "服务不可用（临时过载或维护中）",
+    504: "网关超时",
+}
+
+
+def _describe_http_status(code: int) -> str:
+    return _HTTP_STATUS_MAP.get(code, "未知 HTTP 错误")
+
 
 @dataclass
 class ModelResult:
@@ -77,7 +95,7 @@ class ModelPool:
             if attempt > 0:
                 delay = self.retry_base_delay * (2 ** (attempt - 1))
                 logger.warning(
-                    f"[{provider['name']}]/{model} 第 {attempt} 次重试，等待 {delay:.1f}s"
+                    f"[{provider['name']}]/{model} 第 {attempt}/{self.max_retries} 次重试，等待 {delay:.1f}s"
                 )
                 time.sleep(delay)
 
@@ -92,8 +110,14 @@ class ModelPool:
                 last_error = result.error
             except Exception as e:  # noqa: BLE001
                 last_error = str(e)
-                logger.warning(f"[{provider['name']}]/{model} 异常：{e}")
+                logger.warning(
+                    f"[{provider['name']}]/{model} 未捕获异常 | 类型={type(e).__name__} | 详情={e}"
+                )
 
+        logger.error(
+            f"[{provider['name']}]/{model} 全部 {self.max_retries + 1} 次尝试均失败"
+            f" | 最后错误={last_error}"
+        )
         return ModelResult(success=False, error=last_error or "未知错误")
 
     def _call_single(
@@ -114,6 +138,7 @@ class ModelPool:
             "temperature": AI_CONFIG["temperature"],
             "max_tokens": AI_CONFIG["max_tokens"],
         }
+        label = f"[{provider['name']}]/{model}"
 
         try:
             resp = requests.post(
@@ -126,14 +151,31 @@ class ModelPool:
             if resp.status_code == 200:
                 data = resp.json()
                 if "error" in data:
+                    err_detail = data["error"]
+                    err_msg = (
+                        err_detail.get("message", "unknown")
+                        if isinstance(err_detail, dict)
+                        else str(err_detail)
+                    )
+                    err_code = (
+                        err_detail.get("code", "")
+                        if isinstance(err_detail, dict)
+                        else ""
+                    )
+                    logger.warning(
+                        f"{label} [API] 返回业务错误"
+                        f" | code={err_code} | message={err_msg}"
+                    )
                     return ModelResult(
                         success=False,
-                        error=f"API error: {data['error'].get('message', 'unknown')}",
+                        error=f"API 业务错误(code={err_code}): {err_msg}",
                     )
                 choice = data["choices"][0]
                 finish_reason = choice.get("finish_reason", "")
                 if finish_reason == "length":
-                    logger.warning("AI 响应因长度限制被截断，考虑增大 max_tokens")
+                    logger.warning(
+                        f"{label} AI 响应因长度限制被截断，考虑增大 max_tokens"
+                    )
                 return ModelResult(
                     success=True,
                     content=choice["message"]["content"],
@@ -141,22 +183,57 @@ class ModelPool:
                     model=model,
                 )
 
+            # 非 200 响应
+            status_desc = _describe_http_status(resp.status_code)
+            body_preview = resp.text[:200].replace("\n", " ")
+            logger.warning(
+                f"{label} [HTTP {resp.status_code}] {status_desc}"
+                f" | 响应体={body_preview}"
+            )
+
             # 尊重 Retry-After
             retry_after = resp.headers.get("Retry-After")
             if retry_after:
                 try:
                     wait = int(retry_after)
-                    logger.info(f"服务端要求等待 {wait}s (Retry-After)")
+                    logger.info(f"{label} 服务端要求等待 {wait}s (Retry-After)")
                     time.sleep(wait)
                 except ValueError:
                     pass
 
             return ModelResult(
-                success=False, error=f"HTTP {resp.status_code}: {resp.text[:200]}"
+                success=False,
+                error=f"HTTP {resp.status_code} ({status_desc}): {body_preview}",
+            )
+
+        except requests.Timeout:
+            logger.warning(
+                f"{label} [TIMEOUT] 请求超时"
+                f" | URL={provider['api_url']}"
+                f" | 超时设置={provider.get('timeout', 30)}s"
+            )
+            return ModelResult(
+                success=False,
+                error=f"请求超时({provider.get('timeout', 30)}s)",
+            )
+
+        except requests.ConnectionError as e:
+            logger.error(
+                f"{label} [NETWORK] 网络连接失败 | URL={provider['api_url']} | 原因={e}"
+            )
+            return ModelResult(
+                success=False,
+                error=f"网络连接失败: {e}",
             )
 
         except requests.RequestException as e:
-            return ModelResult(success=False, error=str(e))
+            logger.error(
+                f"{label} [REQUEST] 请求异常 | 类型={type(e).__name__} | 详情={e}"
+            )
+            return ModelResult(
+                success=False,
+                error=f"请求异常({type(e).__name__}): {e}",
+            )
 
     def _update_cache(self, key: str, result: ModelResult):
         self._cache[key] = (datetime.now(CHINA_TZ), result)
@@ -166,11 +243,20 @@ class ModelPool:
         if cache_key in self._cache:
             cached_time, cached_result = self._cache[cache_key]
             if datetime.now(CHINA_TZ) - cached_time < self.cache_ttl:
-                logger.warning("所有模型均不可用，返回缓存结果")
+                age = (datetime.now(CHINA_TZ) - cached_time).total_seconds()
+                logger.warning(
+                    f"[L4] 所有模型均不可用，返回缓存结果"
+                    f" | 缓存年龄={age:.0f}s"
+                    f" | 原始来源={cached_result.provider}/{cached_result.model}"
+                )
                 cached_result.from_cache = True
                 return cached_result
 
-        logger.error("所有模型均不可用且无有效缓存，AI 分析暂不可用")
+        logger.error(
+            "[L4] 所有模型均不可用且无有效缓存，AI 分析暂不可用"
+            f" | 已尝试供应商数={len(self.providers)}"
+            f" | 缓存 TTL={self.cache_ttl}"
+        )
         return ModelResult(
             success=False, error="AI 分析暂不可用：所有模型供应商均调用失败"
         )
