@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from config import AI_CONFIG, CHINA_TZ, SYMBOL_NAME_MAP
+from config import CHINA_TZ, SYMBOL_NAME_MAP
 from mapper.model_pool_mapper import ModelPoolMapper
 from mapper.price_mapper import PriceSnapshot
 from service.model_pool_engine import ModelPool
@@ -39,22 +39,40 @@ class AIAnalysisService:
 }"""
 
     def __init__(self):
+        self.model_pool: ModelPool | None = None
+        self._providers_fingerprint: str = ""
+
+    @property
+    def enabled(self) -> bool:
+        return self.model_pool is not None
+
+    def _ensure_model_pool(self) -> bool:
         config_mapper = ModelPoolMapper()
         config_mapper.init_tables()
         providers = config_mapper.get_providers()
 
         if not providers:
-            self.model_pool = None
-            self.enabled = False
-            logger.warning(
-                "AI 模型池未配置，AI 分析已禁用。"
-                "请尽快在 model_pool.db 中添加供应商和模型信息后重启程序。"
-            )
+            if self.model_pool is not None:
+                logger.warning("AI 模型池配置已被清空，AI 分析已禁用")
+                self.model_pool = None
+            return False
+
+        import json
+
+        current = json.dumps(providers, sort_keys=True, default=str)
+        if self.model_pool is not None and current == self._providers_fingerprint:
+            return True
+
+        self.model_pool = ModelPool(providers)
+        self._providers_fingerprint = current
+        has_api_key = any(p.get("api_key") for p in providers)
+        if has_api_key:
+            logger.info(f"AI 模型池已就绪，共 {len(providers)} 个供应商")
         else:
-            self.model_pool = ModelPool(providers)
-            self.enabled = AI_CONFIG["enabled"] and any(
-                p.get("api_key") for p in providers
+            logger.warning(
+                f"AI 模型池已加载 {len(providers)} 个供应商，但均未配置 API Key，AI 分析仍不可用"
             )
+        return has_api_key
 
     def analyze(
         self,
@@ -65,8 +83,10 @@ class AIAnalysisService:
         london_usd: float | None = None,
         triggered_alerts: list[str] | None = None,
     ) -> dict | None:
-        if not self.enabled or self.model_pool is None:
+        if not self._ensure_model_pool():
             return None
+
+        assert self.model_pool is not None
 
         prompt = self._build_prompt(
             symbol, current_price, snapshot, london_cny, london_usd, triggered_alerts
