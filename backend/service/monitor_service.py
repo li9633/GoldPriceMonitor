@@ -65,18 +65,10 @@ class MonitorService:
     def _init_modules(self) -> None:
         self.logger.info(f"监控品种：{SYMBOL}")
         self.logger.info(f"检查间隔：{CHECK_INTERVAL} 秒")
-        if self.ai_service.enabled:
-            self.logger.info(
-                f"AI 分析已启用，每 {self.ai_check_interval} 次检查调用一次"
-            )
-        elif self.ai_service.model_pool is None:
-            self.logger.warning(
-                "AI 分析未启用：模型池为空，请尽快在 model_pool.db 中添加供应商配置"
-            )
-        else:
-            self.logger.info(
-                "AI 分析未启用（请检查 AI_CONFIG.enabled 和 API_KEY 配置）"
-            )
+        self.logger.info(
+            f"AI 分析：每 {self.ai_check_interval} 次检查调用一次"
+            "（模型池配置由 AI 服务自行管理，首次调用时自动加载）"
+        )
 
     def _show_db_status(self) -> None:
         try:
@@ -129,23 +121,20 @@ class MonitorService:
             self.logger.warning(f"  └─ {alert}")
 
         should_send = True
-        if self.ai_service.enabled:
-            ai_result = self._call_ai(prices_data, current_price, alerts)
-            if ai_result is not None:
-                if ai_result.get("should_alert"):
-                    alerts[:] = [ai_result.get("analysis", "")]
-                    suggestions[:] = ai_result.get("suggestions", [])
-                    extra_info["ai_model_info"] = (
-                        f"{ai_result.get('provider', '')}/{ai_result.get('model', '')}"
-                    )
-                    self.logger.info(
-                        f"AI 确认发送通知（{ai_result.get('urgency', '')}）"
-                    )
-                else:
-                    should_send = False
-                    self.logger.info("AI 判断无需发送通知，已跳过")
+        ai_result = self._call_ai(prices_data, current_price, alerts)
+        if ai_result is not None:
+            if ai_result.get("should_alert"):
+                alerts[:] = [ai_result.get("analysis", "")]
+                suggestions[:] = ai_result.get("suggestions", [])
+                extra_info["ai_model_info"] = (
+                    f"{ai_result.get('provider', '')}/{ai_result.get('model', '')}"
+                )
+                self.logger.info(f"AI 确认发送通知（{ai_result.get('urgency', '')}）")
             else:
-                self.logger.warning("AI 分析失败，回退到原始报警逻辑")
+                should_send = False
+                self.logger.info("AI 判断无需发送通知，已跳过")
+        else:
+            self.logger.warning("AI 分析不可用，回退到原始报警逻辑")
 
         if should_send:
             self.notification_service.send_alert(
@@ -153,10 +142,7 @@ class MonitorService:
             )
 
     def _periodic_ai_check(self, prices_data: dict, current_price: float) -> None:
-        if (
-            self.check_count % self.ai_check_interval != 0
-            or not self.ai_service.enabled
-        ):
+        if self.check_count % self.ai_check_interval != 0:
             return
 
         self.logger.info("正在调用 AI 分析行情...")
