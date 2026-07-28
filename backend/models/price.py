@@ -70,3 +70,25 @@ class PriceSnapshotResponse(BaseModel):
     min_3m: float | None = Field(default=None, description="近90日最低")
     min_6m: float | None = Field(default=None, description="近180日最低")
     recent_prices: list[float] = Field(default_factory=list, description="最近5个价格")
+
+
+# ==================== 仪表盘 ====================
+
+
+class SymbolDashboardItem(BaseModel):
+    """各品种仪表盘项"""
+
+    symbol: str = Field(..., description="品种代码")
+    name: str = Field(..., description="品种中文名")
+    count: int = Field(..., description="该品种记录数")
+    latest_price: float | None = Field(default=None, description="最新价格")
+    latest_time: datetime | None = Field(default=None, description="最新记录时间")
+
+
+class DashboardResponse(BaseModel):
+    """仪表盘总览"""
+
+    total_records: int = Field(..., description="数据库总记录数")
+    symbols: list[SymbolDashboardItem] = Field(
+        default_factory=list, description="各品种统计"
+    )

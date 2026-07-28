@@ -274,6 +274,34 @@ class PriceMapper:
             logger.error(f"查询数据条数失败：{e}")
             return 0
 
+    def get_dashboard_data(self) -> dict:
+        """仪表盘数据：总记录数 + 各品种记录数及最新价格"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM prices")
+        total = c.fetchone()[0]
+
+        c.execute(
+            "SELECT symbol, COUNT(*) as cnt FROM prices GROUP BY symbol ORDER BY cnt DESC"
+        )
+        symbol_data = []
+        for symbol, count in c.fetchall():
+            c2 = conn.cursor()
+            c2.execute(
+                "SELECT price, timestamp FROM prices WHERE symbol=? ORDER BY timestamp DESC LIMIT 1",
+                (symbol,),
+            )
+            row = c2.fetchone()
+            symbol_data.append(
+                {
+                    "symbol": symbol,
+                    "count": count,
+                    "latest_price": row[0] if row else None,
+                    "latest_time": row[1] if row else None,
+                }
+            )
+        return {"total_records": total, "symbols": symbol_data}
+
     def batch_insert_prices(self, records: list[tuple]) -> int:
         conn = self._get_connection()
         c = conn.cursor()

@@ -1,10 +1,13 @@
+from config import SYMBOL_NAME_MAP
 from mapper.price_mapper import PriceMapper
 from models.price import (
+    DashboardResponse,
     PriceChartPoint,
     PriceRecordResponse,
     PriceSnapshotResponse,
     PriceStatistics,
     PriceTrend,
+    SymbolDashboardItem,
 )
 from utils.logger import get_logger
 
@@ -66,6 +69,23 @@ class PriceHistoryService:
             min_6m=snapshot.min_6m,
             recent_prices=snapshot.prices_last_n(5),
         )
+
+    # ==================== 仪表盘 ====================
+
+    def get_dashboard(self) -> DashboardResponse:
+        raw = self.mapper.get_dashboard_data()
+        symbols = []
+        for item in raw["symbols"]:
+            symbols.append(
+                SymbolDashboardItem(
+                    symbol=item["symbol"],
+                    name=SYMBOL_NAME_MAP.get(item["symbol"], str(item["symbol"])),
+                    count=item["count"],
+                    latest_price=item["latest_price"],
+                    latest_time=item["latest_time"],
+                )
+            )
+        return DashboardResponse(total_records=raw["total_records"], symbols=symbols)
 
     # ==================== 图表数据 ====================
 

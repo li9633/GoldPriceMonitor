@@ -5,27 +5,38 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
+import { priceApi } from '@/api/modules/gold'
 import type { PriceChartPoint } from '@/api/modules/gold'
 import { formatTime } from '@/utils/format'
 
 const props = defineProps<{
-  data: PriceChartPoint[]
+  symbol: string
 }>()
 
 const chartRef = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
+const chartData = ref<PriceChartPoint[]>([])
+
+const fetchData = async () => {
+  try {
+    chartData.value = await priceApi.getChart(props.symbol)
+    updateChart()
+  } catch {
+    // handled
+  }
+}
 
 const initChart = () => {
   if (!chartRef.value) return
   chart = echarts.init(chartRef.value)
-  updateChart()
+  fetchData()
 }
 
 const updateChart = () => {
   if (!chart) return
 
-  const times = props.data.map((p) => formatTime(p.timestamp))
-  const prices = props.data.map((p) => p.price)
+  const times = chartData.value.map((p) => formatTime(p.timestamp))
+  const prices = chartData.value.map((p) => p.price)
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
 
   chart.setOption({
@@ -66,7 +77,10 @@ const updateChart = () => {
   })
 }
 
-watch(() => props.data, updateChart, { deep: true })
+watch(
+  () => props.symbol,
+  () => fetchData(),
+)
 
 onMounted(initChart)
 onUnmounted(() => chart?.dispose())

@@ -151,11 +151,12 @@ class ModelPool:
         }
         label = f"[{provider['name']}]/{model}"
 
-        logger.debug(
-            f"{label} 发送请求\n"
-            f"--- SystemPrompt ---\n{system_prompt}\n"
-            f"--- UserPrompt ---\n{user_prompt}"
-        )
+        if AI_CONFIG["prompt_check"]:
+            logger.debug(
+                f"{label} 发送请求\n"
+                f"--- SystemPrompt ---\n{system_prompt}\n"
+                f"--- UserPrompt ---\n{user_prompt}"
+            )
 
         try:
             resp = requests.post(

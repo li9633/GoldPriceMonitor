@@ -1,19 +1,18 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { priceApi } from '@/api/modules/gold'
-import type { PriceSnapshot } from '@/api/modules/gold'
+import type { DashboardResponse } from '@/api/modules/gold'
 
-const DEFAULT_SYMBOL = 'gds_AUTD'
 const POLL_INTERVAL = 10000
 
-export function usePriceData(symbol = DEFAULT_SYMBOL) {
-  const snapshot = ref<PriceSnapshot | null>(null)
+export function usePriceData() {
+  const dashboard = ref<DashboardResponse | null>(null)
   const loading = ref(false)
   let timer: ReturnType<typeof setInterval> | null = null
 
-  const fetchSnapshot = async () => {
+  const fetchDashboard = async () => {
     loading.value = true
     try {
-      snapshot.value = await priceApi.getSnapshot(symbol)
+      dashboard.value = await priceApi.getDashboard()
     } catch {
       // 错误已在 request 拦截器中处理
     } finally {
@@ -22,8 +21,8 @@ export function usePriceData(symbol = DEFAULT_SYMBOL) {
   }
 
   const startPolling = () => {
-    fetchSnapshot()
-    timer = setInterval(fetchSnapshot, POLL_INTERVAL)
+    fetchDashboard()
+    timer = setInterval(fetchDashboard, POLL_INTERVAL)
   }
 
   const stopPolling = () => {
@@ -36,5 +35,5 @@ export function usePriceData(symbol = DEFAULT_SYMBOL) {
   onMounted(startPolling)
   onUnmounted(stopPolling)
 
-  return { snapshot, loading, fetchSnapshot }
+  return { dashboard, loading, fetchDashboard }
 }

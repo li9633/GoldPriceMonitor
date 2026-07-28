@@ -8,7 +8,7 @@
       <template #header>
         <div class="chart-header">
           <span>价格走势</span>
-          <el-radio-group v-model="timeRange" @change="loadChart">
+          <el-radio-group v-model="timeRange">
             <el-radio-button :value="1">1小时</el-radio-button>
             <el-radio-button :value="6">6小时</el-radio-button>
             <el-radio-button :value="24">24小时</el-radio-button>
@@ -16,7 +16,7 @@
           </el-radio-group>
         </div>
       </template>
-      <PriceChart :data="chartData" />
+      <PriceChart :symbol="symbol" :hours="timeRange" />
     </el-card>
 
     <el-card class="recent-card">
@@ -46,26 +46,21 @@ import { ref, onMounted } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faHistory } from '@fortawesome/free-solid-svg-icons'
 import { priceApi } from '@/api/modules/gold'
-import type { PriceChartPoint, PriceRecord } from '@/api/modules/gold'
+import type { PriceRecord } from '@/api/modules/gold'
 import { formatPrice, formatDateTime } from '@/utils/format'
 import PriceChart from '@/components/PriceChart.vue'
 
 library.add(faHistory)
 
+const symbol = 'gds_AUTD'
 const timeRange = ref(24)
-const chartData = ref<PriceChartPoint[]>([])
 const recentRecords = ref<PriceRecord[]>([])
 
-const loadChart = async () => {
-  chartData.value = await priceApi.getChart('gds_AUTD', timeRange.value)
-}
-
 const loadRecent = async () => {
-  recentRecords.value = await priceApi.getRecent('gds_AUTD', 20)
+  recentRecords.value = await priceApi.getRecent(symbol, 20)
 }
 
 onMounted(() => {
-  loadChart()
   loadRecent()
 })
 </script>

@@ -5,67 +5,96 @@
       <p class="page-subtitle">实时追踪黄金价格，智能分析市场趋势</p>
     </div>
 
-    <div v-if="snapshot" class="snapshot-area">
-      <div class="price-main">
-        <span class="current-price">{{ formatPrice(snapshot.current_price) }}</span>
-        <TrendBadge v-if="snapshot.trend_6h" :direction="snapshot.trend_6h.direction" />
-      </div>
-      <div class="price-detail">
-        <span>24h 最高 {{ formatPrice(snapshot.statistics_24h?.max ?? 0) }}</span>
-        <span class="divider">|</span>
-        <span>24h 最低 {{ formatPrice(snapshot.statistics_24h?.min ?? 0) }}</span>
-        <span class="divider">|</span>
-        <span>24h 均价 {{ formatPrice(snapshot.statistics_24h?.avg ?? 0) }}</span>
-      </div>
-    </div>
-
+    <!-- 数据库总览 -->
     <el-row :gutter="20" class="stat-row">
       <el-col :span="6">
-        <StatCard label="MA5" :value="formatPrice(snapshot?.ma_5 ?? 0)" highlight />
+        <StatCard label="数据库总记录" :value="String(dashboard?.total_records ?? '--')" />
       </el-col>
       <el-col :span="6">
-        <StatCard label="MA10" :value="formatPrice(snapshot?.ma_10 ?? 0)" highlight />
-      </el-col>
-      <el-col :span="6">
-        <StatCard label="MA20" :value="formatPrice(snapshot?.ma_20 ?? 0)" highlight />
-      </el-col>
-      <el-col :span="6">
-        <StatCard label="波动率" :value="snapshot?.statistics_24h?.std?.toFixed(2) ?? '--'" />
+        <StatCard label="监控品种数" :value="String(dashboard?.symbols?.length ?? '--')" />
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" class="stat-row">
-      <el-col :span="6">
-        <StatCard label="近90日最低" :value="formatPrice(snapshot?.min_3m ?? 0)" highlight />
-      </el-col>
-      <el-col :span="6">
-        <StatCard label="近180日最低" :value="formatPrice(snapshot?.min_6m ?? 0)" highlight />
-      </el-col>
-      <el-col :span="6">
-        <StatCard label="24h 数据量" :value="String(snapshot?.statistics_24h?.count ?? '--')" />
-      </el-col>
-      <el-col :span="6">
-        <StatCard label="趋势">
-          <template #value>
-            <TrendBadge :direction="snapshot?.trend_24h?.direction ?? 'stable'" />
-          </template>
-        </StatCard>
+    <!-- 品种卡片 -->
+    <el-row :gutter="20" class="symbol-row">
+      <el-col :span="12" v-for="item in dashboard?.symbols" :key="item.symbol">
+        <el-card class="symbol-card" shadow="hover">
+          <div class="symbol-header">
+            <span class="symbol-name">{{ item.name }}</span>
+            <el-tag size="small" type="info">{{ item.symbol }}</el-tag>
+            <el-tag
+              size="small"
+              :type="selectedSymbol === item.symbol ? 'primary' : 'info'"
+              effect="plain"
+              class="chart-tag"
+              @click="selectSymbol(item.symbol)"
+            >
+              <font-awesome-icon icon="chart-simple" /> 走势
+            </el-tag>
+          </div>
+          <div class="symbol-body">
+            <div class="symbol-price">
+              <span class="price-value">
+                {{ item.latest_price ? formatPrice(item.latest_price) : '暂无数据' }}
+              </span>
+              <TrendBadge
+                v-if="item.latest_price"
+                :direction="item.latest_price >= (item.latest_price ?? 0) ? 'stable' : 'stable'"
+              />
+            </div>
+            <div class="symbol-meta">
+              <span>记录数：{{ item.count.toLocaleString() }}</span>
+              <span class="divider">|</span>
+              <span>
+                最新时间：{{ item.latest_time ? formatTime(item.latest_time) : '暂无' }}
+              </span>
+            </div>
+          </div>
+        </el-card>
       </el-col>
     </el-row>
+
+    <!-- 走势图 -->
+    <el-card v-if="selectedSymbol" class="chart-card" shadow="hover">
+      <template #header>
+        <span class="chart-title">
+          <font-awesome-icon icon="chart-simple" />
+          {{ selectedSymbol }} 走势图
+        </span>
+      </template>
+      <PriceChart :symbol="selectedSymbol" />
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faChartLine } from '@fortawesome/free-solid-svg-icons'
+import { faChartLine, faChartSimple } from '@fortawesome/free-solid-svg-icons'
 import { usePriceData } from '@/composables/usePriceData'
 import { formatPrice } from '@/utils/format'
 import StatCard from '@/components/StatCard.vue'
 import TrendBadge from '@/components/TrendBadge.vue'
+import PriceChart from '@/components/PriceChart.vue'
 
-library.add(faChartLine)
+library.add(faChartLine, faChartSimple)
 
-const { snapshot } = usePriceData()
+const { dashboard } = usePriceData()
+const selectedSymbol = ref<string | null>(null)
+
+function selectSymbol(symbol: string) {
+  selectedSymbol.value = selectedSymbol.value === symbol ? null : symbol
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -91,41 +120,72 @@ const { snapshot } = usePriceData()
   }
 }
 
-.snapshot-area {
-  text-align: center;
-  margin-bottom: 28px;
-  padding: 24px;
+.stat-row {
+  margin-bottom: 20px;
+}
+
+.symbol-row {
+  margin-bottom: 20px;
+}
+
+.symbol-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 12px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 10px;
 
-  .price-main {
+  .symbol-header {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 16px;
-    margin-bottom: 10px;
+    gap: 10px;
+    margin-bottom: 16px;
+
+    .symbol-name {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .chart-tag {
+      margin-left: auto;
+      cursor: pointer;
+    }
   }
 
-  .current-price {
-    font-size: 42px;
-    font-weight: bold;
-    color: var(--price-color);
-  }
+  .symbol-body {
+    .symbol-price {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
 
-  .price-detail {
-    font-size: 13px;
-    color: var(--text-secondary);
+      .price-value {
+        font-size: 32px;
+        font-weight: bold;
+        color: var(--price-color);
+      }
+    }
 
-    .divider {
-      margin: 0 12px;
-      color: var(--border-color);
+    .symbol-meta {
+      font-size: 13px;
+      color: var(--text-secondary);
+
+      .divider {
+        margin: 0 10px;
+        color: var(--border-color);
+      }
     }
   }
 }
 
-.stat-row {
-  margin-bottom: 20px;
+.chart-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+
+  .chart-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
 }
 </style>

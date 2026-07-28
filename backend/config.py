@@ -128,6 +128,7 @@ MODEL_POOL_DB_FILE = "data/model_pool.db"  # AI 模型池配置（与价格数�
 # AI 全局配置
 AI_CONFIG = {
     "enabled": True,
+    "prompt_check": False,  # 为 True 时,将在DEBUG级别下打印SystemPrompt和UserPrompt
     "temperature": 0.3,
     "max_tokens": 4096,
     "check_interval_checks": 30,  # 每 N 次检查调用一次 AI

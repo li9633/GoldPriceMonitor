@@ -2,9 +2,9 @@ from fastapi import APIRouter, Query
 
 from config import SYMBOL
 from models.price import (
+    DashboardResponse,
     PriceChartPoint,
     PriceRecordResponse,
-    PriceSnapshotResponse,
     PriceStatistics,
     PriceTrend,
 )
@@ -48,17 +48,12 @@ def get_trend(
     return ApiResponse.ok(service.get_trend(symbol, hours))
 
 
-# ==================== 快照 ====================
+# ==================== 仪表盘 ====================
 
 
-@router.get("/snapshot", response_model=ApiResponse[PriceSnapshotResponse])
-def get_snapshot(
-    symbol: str = Query(default=SYMBOL, description="品种代码"),
-):
-    result = service.get_snapshot(symbol)
-    if not result:
-        return ApiResponse.fail(f"品种 [{symbol}] 暂无数据", code=404)
-    return ApiResponse.ok(result)
+@router.get("/dashboard", response_model=ApiResponse[DashboardResponse])
+def get_dashboard():
+    return ApiResponse.ok(service.get_dashboard())
 
 
 # ==================== 图表数据 ====================

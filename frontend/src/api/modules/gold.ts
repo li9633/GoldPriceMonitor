@@ -18,18 +18,17 @@ export interface PriceChartPoint {
   price: number
 }
 
-export interface PriceSnapshot {
+export interface SymbolDashboardItem {
   symbol: string
-  current_price: number
-  statistics_24h: PriceStatistics | null
-  trend_6h: PriceTrend | null
-  trend_24h: PriceTrend | null
-  ma_5: number | null
-  ma_10: number | null
-  ma_20: number | null
-  min_3m: number | null
-  min_6m: number | null
-  recent_prices: number[]
+  name: string
+  count: number
+  latest_price: number | null
+  latest_time: string | null
+}
+
+export interface DashboardResponse {
+  total_records: number
+  symbols: SymbolDashboardItem[]
 }
 
 export interface PriceRecord {
@@ -40,10 +39,8 @@ export interface PriceRecord {
 }
 
 export const priceApi = {
-  getSnapshot(symbol: string) {
-    return request.get<PriceSnapshot>('/prices/snapshot', {
-      params: { symbol },
-    })
+  getDashboard() {
+    return request.get<DashboardResponse>('/prices/dashboard')
   },
   getStatistics(symbol: string, hours = 24) {
     return request.get<PriceStatistics>('/prices/statistics', { params: { symbol, hours } })
