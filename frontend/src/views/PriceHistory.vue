@@ -74,14 +74,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, defineAsyncComponent } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faHistory } from '@fortawesome/free-solid-svg-icons'
 import { priceApi } from '@/api/modules/gold'
 import type { PriceRecord, PriceStatistics } from '@/api/modules/gold'
 import { formatPrice, formatDateTime } from '@/utils/format'
 import { usePriceData } from '@/composables/usePriceData'
-import PriceChart from '@/components/PriceChart.vue'
+const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vue'))
 import StatCard from '@/components/StatCard.vue'
 
 library.add(faHistory)

@@ -68,14 +68,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, defineAsyncComponent } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faChartLine, faChartSimple } from '@fortawesome/free-solid-svg-icons'
 import { usePriceData } from '@/composables/usePriceData'
 import { formatPrice } from '@/utils/format'
 import StatCard from '@/components/StatCard.vue'
 import TrendBadge from '@/components/TrendBadge.vue'
-import PriceChart from '@/components/PriceChart.vue'
+const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vue'))
 
 library.add(faChartLine, faChartSimple)
 

@@ -39,4 +39,11 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: true,
+      },
+    },
+  },
 })

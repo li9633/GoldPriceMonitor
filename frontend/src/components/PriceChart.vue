@@ -4,10 +4,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, onUnmounted } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { priceApi } from '@/api/modules/gold'
 import type { PriceChartPoint } from '@/api/modules/gold'
 import { formatTime, formatDate, formatDateTime } from '@/utils/format'
+
+echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const props = withDefaults(
   defineProps<{
