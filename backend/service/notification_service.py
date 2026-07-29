@@ -92,13 +92,14 @@ class NotificationService:
             msg["Subject"] = subject
             msg["From"] = email_config["sender_email"]
             msg["To"] = email_config["receiver_email"]
-            server = smtplib.SMTP(
+            with smtplib.SMTP(
                 email_config["smtp_server"], email_config["smtp_port"]
-            )
-            server.starttls()
-            server.login(email_config["sender_email"], email_config["sender_password"])
-            server.send_message(msg)
-            server.quit()
+            ) as server:
+                server.starttls()
+                server.login(
+                    email_config["sender_email"], email_config["sender_password"]
+                )
+                server.send_message(msg)
             logger.info(f"[{datetime.now(CHINA_TZ)}] 邮件发送成功")
             return True
         except (smtplib.SMTPException, OSError) as e:

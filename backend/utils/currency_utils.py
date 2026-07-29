@@ -30,7 +30,7 @@ def get_exchange_rate() -> float:
     cached = settings.get_cached_exchange_rate()
 
     if cached is not None:
-        row = settings.mapper.get_exchange_rate()
+        row = settings.get_exchange_rate_row()
         if row and row.get("updated_at"):
             updated = datetime.strptime(row["updated_at"], "%Y-%m-%d %H:%M:%S").replace(
                 tzinfo=CHINA_TZ

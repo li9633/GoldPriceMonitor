@@ -89,7 +89,8 @@ class ModelPool:
                     self._update_cache(cache_key, result)
                     self._log_call(result, start_time)
                     return result
-                # L2: 同平台下一个模型
+                # L2: 同平台下一个模型（先记录本次失败）
+                self._log_call(result, start_time)
                 logger.warning(
                     f"[{provider_cfg['name']}]/{model} 失败 → 尝试同平台下一个模型"
                 )
@@ -141,7 +142,12 @@ class ModelPool:
             f"[{provider['name']}]/{model} 全部 {self.max_retries + 1} 次尝试均失败"
             f" | 最后错误={last_error}"
         )
-        return ModelResult(success=False, error=last_error or "未知错误")
+        return ModelResult(
+            success=False,
+            provider=provider["name"],
+            model=model,
+            error=last_error or "未知错误",
+        )
 
     def _call_single(
         self, provider: dict, model: str, system_prompt: str, user_prompt: str
@@ -198,6 +204,8 @@ class ModelPool:
                     )
                     return ModelResult(
                         success=False,
+                        provider=provider["name"],
+                        model=model,
                         error=f"API 业务错误(code={err_code}): {err_msg}",
                         retryable=False,
                     )
@@ -235,6 +243,8 @@ class ModelPool:
             retryable = resp.status_code not in (400, 401, 403, 404)
             return ModelResult(
                 success=False,
+                provider=provider["name"],
+                model=model,
                 error=f"HTTP {resp.status_code} ({status_desc}): {body_preview}",
                 retryable=retryable,
             )
@@ -247,6 +257,8 @@ class ModelPool:
             )
             return ModelResult(
                 success=False,
+                provider=provider["name"],
+                model=model,
                 error=f"请求超时({provider.get('timeout', 30)}s)",
             )
 
@@ -256,6 +268,8 @@ class ModelPool:
             )
             return ModelResult(
                 success=False,
+                provider=provider["name"],
+                model=model,
                 error=f"网络连接失败: {e}",
             )
 
@@ -265,6 +279,8 @@ class ModelPool:
             )
             return ModelResult(
                 success=False,
+                provider=provider["name"],
+                model=model,
                 error=f"请求异常({type(e).__name__}): {e}",
             )
 

@@ -127,15 +127,17 @@ class SystemSettingsMapper:
             updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )""")
         conn.commit()
+        self._ensure_default_rows(conn)
+        self._migrate_monitor_config(conn)
+        self._migrate_log_config(conn)
+        self._migrate_ai_config(conn)
+        self._seed_symbol_config(conn)
         conn.close()
-        self._ensure_default_rows()
-        self._migrate_monitor_config()
-        self._migrate_log_config()
-        self._migrate_ai_config()
-        self._seed_symbol_config()
 
-    def _ensure_default_rows(self) -> None:
-        conn = self._get_connection()
+    def _ensure_default_rows(self, conn: sqlite3.Connection | None = None) -> None:
+        own = conn is None
+        if own:
+            conn = self._get_connection()
         c = conn.cursor()
         for table in [
             "alert_config",
@@ -148,11 +150,14 @@ class SystemSettingsMapper:
         ]:
             c.execute(f"INSERT OR IGNORE INTO {table} (id) VALUES (1)")
         conn.commit()
-        conn.close()
+        if own:
+            conn.close()
 
-    def _migrate_ai_config(self) -> None:
+    def _migrate_ai_config(self, conn: sqlite3.Connection | None = None) -> None:
         new_columns = {"check_interval_minutes": "INTEGER DEFAULT 5"}
-        conn = self._get_connection()
+        own = conn is None
+        if own:
+            conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(ai_config)")}
         for col_name, col_def in new_columns.items():
@@ -162,11 +167,14 @@ class SystemSettingsMapper:
                 except sqlite3.OperationalError:
                     pass
         conn.commit()
-        conn.close()
+        if own:
+            conn.close()
 
-    def _migrate_log_config(self) -> None:
+    def _migrate_log_config(self, conn: sqlite3.Connection | None = None) -> None:
         new_columns = {"log_level": "TEXT DEFAULT 'DEBUG'"}
-        conn = self._get_connection()
+        own = conn is None
+        if own:
+            conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(log_config)")}
         for col_name, col_def in new_columns.items():
@@ -176,9 +184,10 @@ class SystemSettingsMapper:
                 except sqlite3.OperationalError:
                     pass
         conn.commit()
-        conn.close()
+        if own:
+            conn.close()
 
-    def _migrate_monitor_config(self) -> None:
+    def _migrate_monitor_config(self, conn: sqlite3.Connection | None = None) -> None:
         """为旧版 monitor_config 表补充新增列"""
         new_columns = {
             "main_symbol": "TEXT DEFAULT 'gds_AUTD'",
@@ -186,7 +195,9 @@ class SystemSettingsMapper:
             "trading_hours": 'TEXT DEFAULT \'[["09:00","11:30"],["13:30","15:30"],["20:00","23:59"],["00:00","02:30"]]\'',
             "ounce_to_gram": "REAL DEFAULT 31.1035",
         }
-        conn = self._get_connection()
+        own = conn is None
+        if own:
+            conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(monitor_config)")}
         for col_name, col_def in new_columns.items():
@@ -198,11 +209,14 @@ class SystemSettingsMapper:
                 except sqlite3.OperationalError:
                     pass
         conn.commit()
-        conn.close()
+        if own:
+            conn.close()
 
-    def _seed_symbol_config(self) -> None:
+    def _seed_symbol_config(self, conn: sqlite3.Connection | None = None) -> None:
         """初始化品种名称映射默认数据"""
-        conn = self._get_connection()
+        own = conn is None
+        if own:
+            conn = self._get_connection()
         c = conn.cursor()
         defaults = [
             ("gds_AUTD", "黄金延期", 1),
@@ -214,7 +228,8 @@ class SystemSettingsMapper:
             defaults,
         )
         conn.commit()
-        conn.close()
+        if own:
+            conn.close()
 
     # ==================== 通用 Upsert/Query ====================
 

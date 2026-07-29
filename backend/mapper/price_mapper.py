@@ -99,85 +99,81 @@ class PriceMapper:
         c.execute("CREATE INDEX IF NOT EXISTS idx_prices_symbol ON prices(symbol)")
         conn.commit()
 
-    def close(self):
-        pass
-
     def init_table(self):
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute("""CREATE TABLE IF NOT EXISTS prices
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                      symbol TEXT,
-                      price REAL)""")
-        conn.commit()
-        self._ensure_indexes(conn)
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("""CREATE TABLE IF NOT EXISTS prices
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                          symbol TEXT,
+                          price REAL)""")
+            conn.commit()
+            self._ensure_indexes(conn)
 
     def table_exists(self) -> bool:
         try:
-            conn = self._get_connection()
-            c = conn.cursor()
-            c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='prices'"
-            )
-            exists = c.fetchone() is not None
-            return exists
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='prices'"
+                )
+                return c.fetchone() is not None
         except sqlite3.Error as e:
             logger.error(f"检查表结构失败：{e}")
             return False
 
     def save_price(self, symbol: str, price: float):
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
-            (symbol, price, datetime.now(CHINA_TZ)),
-        )
-        conn.commit()
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
+                (symbol, price, datetime.now(CHINA_TZ)),
+            )
+            conn.commit()
 
     def get_prices_in_window(self, symbol: str, hours: float) -> list[float]:
         cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
-            (symbol, cutoff),
-        )
-        prices = [row[0] for row in c.fetchall()]
-        return prices
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
+                (symbol, cutoff),
+            )
+            return [row[0] for row in c.fetchall()]
 
     def get_check_snapshot(self, symbol: str) -> PriceSnapshot | None:
         """一次查询获取所有检查所需数据"""
-        conn = self._get_connection()
-        c = conn.cursor()
-        cutoff_24h = datetime.now(CHINA_TZ) - timedelta(hours=24)
-        c.execute(
-            "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
-            (symbol, cutoff_24h),
-        )
-        rows = c.fetchall()
-        if not rows:
-            return None
-        prices_with_time = [
-            (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1]) for r in rows
-        ]
-        c.execute(
-            "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT 48",
-            (symbol,),
-        )
-        ma_prices = [row[0] for row in c.fetchall()]
-        ma_prices.reverse()
-        c.execute(
-            "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
-            (symbol, datetime.now(CHINA_TZ) - timedelta(days=90)),
-        )
-        min_3m = c.fetchone()[0]
-        c.execute(
-            "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
-            (symbol, datetime.now(CHINA_TZ) - timedelta(days=180)),
-        )
-        min_6m = c.fetchone()[0]
-        return PriceSnapshot(prices_with_time, ma_prices, min_3m, min_6m)
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            cutoff_24h = datetime.now(CHINA_TZ) - timedelta(hours=24)
+            c.execute(
+                "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
+                (symbol, cutoff_24h),
+            )
+            rows = c.fetchall()
+            if not rows:
+                return None
+            prices_with_time = [
+                (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1])
+                for r in rows
+            ]
+            c.execute(
+                "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT 48",
+                (symbol,),
+            )
+            ma_prices = [row[0] for row in c.fetchall()]
+            ma_prices.reverse()
+            c.execute(
+                "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
+                (symbol, datetime.now(CHINA_TZ) - timedelta(days=90)),
+            )
+            min_3m = c.fetchone()[0]
+            c.execute(
+                "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
+                (symbol, datetime.now(CHINA_TZ) - timedelta(days=180)),
+            )
+            min_6m = c.fetchone()[0]
+            return PriceSnapshot(prices_with_time, ma_prices, min_3m, min_6m)
 
     def get_price_statistics(self, symbol: str, hours: float) -> dict:
         prices = self.get_prices_in_window(symbol, hours)
@@ -199,26 +195,26 @@ class PriceMapper:
         return variance**0.5
 
     def get_moving_average(self, symbol: str, periods: int) -> float | None:
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
-            (symbol, periods),
-        )
-        prices = [row[0] for row in c.fetchall()]
-        if not prices:
-            return None
-        return sum(prices) / len(prices)
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
+                (symbol, periods),
+            )
+            prices = [row[0] for row in c.fetchall()]
+            if not prices:
+                return None
+            return sum(prices) / len(prices)
 
     def get_price_trend(self, symbol: str, hours: float) -> dict:
         cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
-            (symbol, cutoff),
-        )
-        prices = [row[0] for row in c.fetchall()]
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
+                (symbol, cutoff),
+            )
+            prices = [row[0] for row in c.fetchall()]
         if len(prices) < 2:
             return {"slope": 0, "direction": "stable"}
         n = len(prices)
@@ -250,16 +246,16 @@ class PriceMapper:
     ) -> list[tuple[datetime, float]]:
         """获取原始价格序列，用于最近记录等需要精确数据的场景"""
         cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
-            (symbol, cutoff),
-        )
-        return [
-            (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1])
-            for r in c.fetchall()
-        ]
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
+                (symbol, cutoff),
+            )
+            return [
+                (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1])
+                for r in c.fetchall()
+            ]
 
     def get_chart_series(
         self, symbol: str, hours: float
@@ -267,26 +263,25 @@ class PriceMapper:
         """获取聚合后的价格序列，按时间范围自动降采样，用于图表渲染"""
         cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
         bucket_sql = _resolve_bucket(hours)
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            f"SELECT {bucket_sql} AS bucket, AVG(price) AS price "
-            "FROM prices WHERE symbol = ? AND timestamp > ? "
-            "GROUP BY bucket ORDER BY bucket",
-            (symbol, cutoff),
-        )
-        return [
-            (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), round(r[1], 2))
-            for r in c.fetchall()
-        ]
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"SELECT {bucket_sql} AS bucket, AVG(price) AS price "
+                "FROM prices WHERE symbol = ? AND timestamp > ? "
+                "GROUP BY bucket ORDER BY bucket",
+                (symbol, cutoff),
+            )
+            return [
+                (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), round(r[1], 2))
+                for r in c.fetchall()
+            ]
 
     def get_record_count(self, symbol: str) -> int:
         try:
-            conn = self._get_connection()
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM prices WHERE symbol = ?", (symbol,))
-            count = c.fetchone()[0]
-            return count
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT COUNT(*) FROM prices WHERE symbol = ?", (symbol,))
+                return c.fetchone()[0]
         except sqlite3.OperationalError:
             return 0
         except sqlite3.Error as e:
@@ -295,53 +290,53 @@ class PriceMapper:
 
     def get_dashboard_data(self) -> dict:
         """仪表盘数据：总记录数 + 各品种记录数及最新价格"""
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM prices")
-        total = c.fetchone()[0]
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM prices")
+            total = c.fetchone()[0]
 
-        c.execute(
-            "SELECT symbol, COUNT(*) as cnt FROM prices GROUP BY symbol ORDER BY cnt DESC"
-        )
-        symbol_data = []
-        for symbol, count in c.fetchall():
-            c2 = conn.cursor()
-            c2.execute(
-                "SELECT price, timestamp FROM prices WHERE symbol=? ORDER BY timestamp DESC LIMIT 1",
-                (symbol,),
+            c.execute(
+                "SELECT symbol, COUNT(*) as cnt FROM prices GROUP BY symbol ORDER BY cnt DESC"
             )
-            row = c2.fetchone()
-            symbol_data.append(
-                {
-                    "symbol": symbol,
-                    "count": count,
-                    "latest_price": row[0] if row else None,
-                    "latest_time": row[1] if row else None,
-                }
-            )
-        return {"total_records": total, "symbols": symbol_data}
+            symbol_data = []
+            for symbol, count in c.fetchall():
+                c2 = conn.cursor()
+                c2.execute(
+                    "SELECT price, timestamp FROM prices WHERE symbol=? ORDER BY timestamp DESC LIMIT 1",
+                    (symbol,),
+                )
+                row = c2.fetchone()
+                symbol_data.append(
+                    {
+                        "symbol": symbol,
+                        "count": count,
+                        "latest_price": row[0] if row else None,
+                        "latest_time": row[1] if row else None,
+                    }
+                )
+            return {"total_records": total, "symbols": symbol_data}
 
     def batch_insert_prices(self, records: list[tuple]) -> int:
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_prices_unique ON prices(symbol, timestamp)"
-        )
-        conn.commit()
-        count = 0
-        for symbol, price, timestamp in records:
-            try:
-                c.execute(
-                    "INSERT OR IGNORE INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
-                    (symbol, price, timestamp),
-                )
-                if c.rowcount > 0:
-                    count += 1
-            except sqlite3.Error as e:
-                logger.error(f"导入单条数据失败：{e}")
-                continue
-        conn.commit()
-        return count
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_prices_unique ON prices(symbol, timestamp)"
+            )
+            conn.commit()
+            count = 0
+            for symbol, price, timestamp in records:
+                try:
+                    c.execute(
+                        "INSERT OR IGNORE INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
+                        (symbol, price, timestamp),
+                    )
+                    if c.rowcount > 0:
+                        count += 1
+                except sqlite3.Error as e:
+                    logger.error(f"导入单条数据失败：{e}")
+                    continue
+            conn.commit()
+            return count
 
 
 def _resolve_bucket(hours: float) -> str:

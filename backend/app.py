@@ -30,7 +30,7 @@ def health_check():
 
 
 @app.get("/{full_path:path}")
-async def serve_spa(full_path: str):
+def serve_spa(full_path: str):
     file_path = DIST_DIR / full_path
     if file_path.is_file():
         return FileResponse(file_path)

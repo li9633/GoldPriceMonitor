@@ -6,6 +6,7 @@ import requests
 from config import CHINA_TZ, PRICE_HISTORY_DB_FILE
 from mapper.price_mapper import PriceMapper
 from service.system_settings_service import SystemSettingsService
+from utils.http_utils import safe_get
 from utils.logger import get_logger
 
 logger = get_logger("HistoryImportService")
@@ -22,11 +23,13 @@ class HistoryImportService:
 
     def fetch_historical_data(self, period: str = "60d") -> list[dict]:
         url = f"https://www.huilvbiao.com/api/gold?d={period}"
+        response = safe_get(url, timeout=15)
+        if response is None:
+            return []
         try:
-            response = requests.get(url, timeout=15)
             response.raise_for_status()
             return response.json()
-        except requests.RequestException as e:
+        except (requests.RequestException, ValueError) as e:
             logger.error(f"获取历史数据失败：{e}")
             return []
 

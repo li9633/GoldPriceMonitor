@@ -161,6 +161,9 @@ class SystemSettingsService:
         row = self.mapper.get_exchange_rate()
         return row["rate"] if row else None
 
+    def get_exchange_rate_row(self) -> dict | None:
+        return self.mapper.get_exchange_rate()
+
     def set_cached_exchange_rate(self, rate: float) -> None:
         self.mapper.upsert_exchange_rate(rate)
         logger.info(f"汇率已缓存至数据库：{rate}")

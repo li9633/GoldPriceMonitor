@@ -12,28 +12,40 @@
         router
       >
         <el-menu-item index="/dashboard">
-          <font-awesome-icon icon="desktop" />
-          <template #title>监控面板</template>
+          <font-awesome-icon icon="desktop" class="menu-icon" />
+          <template #title>
+            <span class="menu-text">监控面板</span>
+          </template>
         </el-menu-item>
         <el-menu-item index="/price-history">
-          <font-awesome-icon icon="chart-line" />
-          <template #title>价格历史</template>
+          <font-awesome-icon icon="chart-line" class="menu-icon" />
+          <template #title>
+            <span class="menu-text">价格历史</span>
+          </template>
         </el-menu-item>
         <el-menu-item index="/providers">
-          <font-awesome-icon icon="diagram-project" />
-          <template #title>模型池</template>
+          <font-awesome-icon icon="diagram-project" class="menu-icon" />
+          <template #title>
+            <span class="menu-text">模型池</span>
+          </template>
         </el-menu-item>
         <el-menu-item index="/logs">
-          <font-awesome-icon icon="file-lines" />
-          <template #title>系统日志</template>
+          <font-awesome-icon icon="file-lines" class="menu-icon" />
+          <template #title>
+            <span class="menu-text">系统日志</span>
+          </template>
         </el-menu-item>
         <el-menu-item index="/ai-stats">
-          <font-awesome-icon icon="robot" />
-          <template #title>AI 调用统计</template>
+          <font-awesome-icon icon="robot" class="menu-icon" />
+          <template #title>
+            <span class="menu-text">AI 调用统计</span>
+          </template>
         </el-menu-item>
         <el-menu-item index="/settings">
-          <font-awesome-icon icon="gear" />
-          <template #title>设置</template>
+          <font-awesome-icon icon="gear" class="menu-icon" />
+          <template #title>
+            <span class="menu-text">设置</span>
+          </template>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -135,6 +147,14 @@ const breadcrumbTitle = computed(() => {
     width 0.3s,
     background-color 0.3s;
   overflow: hidden;
+
+  .menu-icon {
+    margin-right: 8px;
+  }
+
+  .menu-text {
+    font-size: 14px;
+  }
 
   .sidebar-logo {
     height: 60px;
