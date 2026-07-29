@@ -197,8 +197,14 @@
                 <el-input-number v-model="ai.data.max_tokens" :min="256" :max="32768" :step="256" />
               </el-form-item>
               <el-form-item label="检查间隔">
-                <el-input-number v-model="ai.data.check_interval_checks" :min="1" :max="1000" />
-                <span class="unit">次</span>
+                <el-select v-model="ai.data.check_interval_minutes" class="log-level-select">
+                  <el-option :value="1" label="1 分钟" />
+                  <el-option :value="5" label="5 分钟" />
+                  <el-option :value="10" label="10 分钟" />
+                  <el-option :value="15" label="15 分钟" />
+                  <el-option :value="30" label="30 分钟" />
+                </el-select>
+                <span class="unit">重启后首次立即分析，之后按间隔执行</span>
               </el-form-item>
               <el-form-item label="最大重试次数">
                 <el-input-number v-model="ai.data.max_retries" :min="0" :max="10" />

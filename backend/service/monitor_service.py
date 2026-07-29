@@ -16,25 +16,33 @@ class MonitorService:
     def __init__(self):
         self.logger = get_logger("GoldPriceMonitor")
         self.settings = SystemSettingsService()
+        self.price_mapper = PriceMapper()
+        self.price_service = PriceService()
+        self.notification_service = NotificationService()
+        self.ai_service = AIAnalysisService()
+        self.start_time = datetime.now(CHINA_TZ)
+        self.check_count = 0
+        self.alert_count = 0
+        self._last_ai_check_time: datetime | None = None
+        self._last_settings_refresh = datetime.now(CHINA_TZ)
+        self._last_notification_time: datetime | None = None
+        self._notification_cooldown_minutes = 5
+
+        self._refresh_settings()
+        self.alert_service = AlertService(self.main_symbol, self.price_mapper)
+
+    def _refresh_settings(self) -> None:
         monitor_config = self.settings.get_monitor_config()
         self.main_symbol = monitor_config.get("main_symbol", "gds_AUTD")
         self.monitor_symbols = monitor_config.get(
             "monitor_symbols", ["gds_AUTD", "hf_XAU"]
         )
         self.check_interval = monitor_config.get("check_interval", 10)
-        self.price_mapper = PriceMapper()
-        self.price_service = PriceService()
-        self.alert_service = AlertService(self.main_symbol, self.price_mapper)
-        self.notification_service = NotificationService()
-        self.ai_service = AIAnalysisService()
-        self.ai_check_interval = self.settings.get_ai_config().get(
-            "check_interval_checks", 30
-        )
-        self.start_time = datetime.now(CHINA_TZ)
-        self.check_count = 0
-        self.alert_count = 0
-        self._last_notification_time: datetime | None = None
-        self._notification_cooldown_minutes = 5
+
+        ai_config = self.settings.get_ai_config()
+        self.ai_check_interval_minutes = ai_config.get("check_interval_minutes", 5)
+
+        self._last_settings_refresh = datetime.now(CHINA_TZ)
 
     def run(self) -> None:
         self._print_banner()
@@ -69,10 +77,7 @@ class MonitorService:
         self.logger.info(f"监控品种：{self.main_symbol}")
         self.logger.info(f"监控品种列表：{self.monitor_symbols}")
         self.logger.info(f"检查间隔：{self.check_interval} 秒")
-        self.logger.info(
-            f"AI 分析：每 {self.ai_check_interval} 次检查调用一次"
-            "（模型池配置由 AI 服务自行管理，首次调用时自动加载）"
-        )
+        self.logger.info(f"AI 分析：每 {self.ai_check_interval_minutes} 分钟调用一次")
 
     def _show_db_status(self) -> None:
         try:
@@ -82,6 +87,8 @@ class MonitorService:
             self.logger.error(f"查询数据库失败：{e}", exc_info=e)
 
     def _tick(self) -> None:
+        self._refresh_settings_if_needed()
+
         prices_data = self.price_service.fetch_all_gold_prices(self.monitor_symbols)
 
         main_symbol_data = prices_data.get(self.main_symbol)
@@ -89,6 +96,7 @@ class MonitorService:
             self.logger.warning(
                 f"[{datetime.now(CHINA_TZ)}] 获取主品种 {self.main_symbol} 价格失败，等待下次检查"
             )
+            self.check_count += 1
             return
 
         current_price = main_symbol_data["price"]
@@ -150,11 +158,13 @@ class MonitorService:
             )
 
     def _periodic_ai_check(self, prices_data: dict, current_price: float) -> None:
-        if self.check_count % self.ai_check_interval != 0:
+        if not self._should_ai_check():
             return
 
         self.logger.info("正在调用 AI 分析行情...")
         ai_result = self._call_ai(prices_data, current_price)
+        self._last_ai_check_time = datetime.now(CHINA_TZ)
+
         if not ai_result or not ai_result.get("should_alert"):
             return
 
@@ -178,6 +188,17 @@ class MonitorService:
             extra_info=extra_info,
         )
         self._last_notification_time = datetime.now(CHINA_TZ)
+
+    def _should_ai_check(self) -> bool:
+        if self._last_ai_check_time is None:
+            return True
+        elapsed = (datetime.now(CHINA_TZ) - self._last_ai_check_time).total_seconds()
+        return elapsed >= self.ai_check_interval_minutes * 60
+
+    def _refresh_settings_if_needed(self) -> None:
+        elapsed = (datetime.now(CHINA_TZ) - self._last_settings_refresh).total_seconds()
+        if elapsed >= 60:
+            self._refresh_settings()
 
     def _is_in_cooldown(self) -> bool:
         if self._last_notification_time is None:

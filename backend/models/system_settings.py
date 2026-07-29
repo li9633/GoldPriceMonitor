@@ -27,7 +27,7 @@ class AIConfigModel(BaseModel):
     prompt_check: bool = False
     temperature: float = 0.3
     max_tokens: int = 4096
-    check_interval_checks: int = 30
+    check_interval_minutes: int = 5
     max_retries: int = 2
     retry_base_delay: float = 0.5
     cache_ttl_minutes: int = 60

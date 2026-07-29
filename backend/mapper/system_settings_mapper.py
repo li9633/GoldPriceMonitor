@@ -61,7 +61,7 @@ class SystemSettingsMapper:
             prompt_check INTEGER DEFAULT 0,
             temperature REAL DEFAULT 0.3,
             max_tokens INTEGER DEFAULT 4096,
-            check_interval_checks INTEGER DEFAULT 30,
+            check_interval_minutes INTEGER DEFAULT 5,
             max_retries INTEGER DEFAULT 2,
             retry_base_delay REAL DEFAULT 0.5,
             cache_ttl_minutes INTEGER DEFAULT 60,
@@ -131,6 +131,7 @@ class SystemSettingsMapper:
         self._ensure_default_rows()
         self._migrate_monitor_config()
         self._migrate_log_config()
+        self._migrate_ai_config()
         self._seed_symbol_config()
 
     def _ensure_default_rows(self) -> None:
@@ -146,6 +147,20 @@ class SystemSettingsMapper:
             "log_config",
         ]:
             c.execute(f"INSERT OR IGNORE INTO {table} (id) VALUES (1)")
+        conn.commit()
+        conn.close()
+
+    def _migrate_ai_config(self) -> None:
+        new_columns = {"check_interval_minutes": "INTEGER DEFAULT 5"}
+        conn = self._get_connection()
+        c = conn.cursor()
+        existing = {row[1] for row in c.execute("PRAGMA table_info(ai_config)")}
+        for col_name, col_def in new_columns.items():
+            if col_name not in existing:
+                try:
+                    c.execute(f"ALTER TABLE ai_config ADD COLUMN {col_name} {col_def}")
+                except sqlite3.OperationalError:
+                    pass
         conn.commit()
         conn.close()
 

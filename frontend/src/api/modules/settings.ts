@@ -26,7 +26,7 @@ export interface AIConfig {
   prompt_check: boolean
   temperature: number
   max_tokens: number
-  check_interval_checks: number
+  check_interval_minutes: number
   max_retries: number
   retry_base_delay: number
   cache_ttl_minutes: number
