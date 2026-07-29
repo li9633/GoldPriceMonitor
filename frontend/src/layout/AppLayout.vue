@@ -23,6 +23,10 @@
           <el-icon><Connection /></el-icon>
           <template #title>模型池</template>
         </el-menu-item>
+        <el-menu-item index="/logs">
+          <el-icon><Document /></el-icon>
+          <template #title>系统日志</template>
+        </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <template #title>设置</template>
@@ -76,6 +80,7 @@ import {
   Moon,
   Sunny,
   Connection,
+  Document,
 } from '@element-plus/icons-vue'
 import { useThemeStore } from '@/stores/theme'
 

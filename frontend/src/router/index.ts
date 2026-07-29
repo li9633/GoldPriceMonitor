@@ -26,6 +26,11 @@ const routes = [
         name: 'settings',
         component: () => import('@/views/SystemSettings.vue'),
       },
+      {
+        path: 'logs',
+        name: 'logs',
+        component: () => import('@/views/LogViewer.vue'),
+      },
     ],
   },
 ]

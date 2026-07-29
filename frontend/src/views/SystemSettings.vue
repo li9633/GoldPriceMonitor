@@ -852,6 +852,10 @@ onMounted(() => {
 .tab-content {
   min-height: 300px;
   padding-top: 8px;
+
+  .log-notice {
+    margin-bottom: 20px;
+  }
 }
 
 .settings-form {
@@ -868,10 +872,6 @@ onMounted(() => {
 
     .symbol-table {
       width: 100%;
-    }
-
-    .log-notice {
-      margin-bottom: 20px;
     }
 
     .infra-descriptions {

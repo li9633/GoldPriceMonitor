@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
+from controller.log_controller import router as log_router
 from controller.model_pool_controller import router as model_pool_router
 from controller.price_history_controller import router as price_history_router
 from controller.system_settings_controller import router as settings_router
@@ -13,6 +14,7 @@ app = FastAPI(
     description="实时监控黄金价格，AI 智能分析，模型池配置管理",
 )
 
+app.include_router(log_router, prefix="/api")
 app.include_router(model_pool_router, prefix="/api")
 app.include_router(price_history_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")

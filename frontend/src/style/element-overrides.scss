@@ -190,3 +190,43 @@
 .el-loading-mask {
   background-color: var(--el-overlay-color-light);
 }
+
+// ========== ElScrollbar ==========
+.el-scrollbar {
+  .el-scrollbar__wrap {
+    // 强制显示滚动条，避免内容变化时布局抖动
+    overflow-y: scroll;
+  }
+
+  .el-scrollbar__bar {
+    &.is-vertical {
+      width: 6px;
+
+      .el-scrollbar__thumb {
+        background-color: var(--el-text-color-placeholder);
+        border-radius: 3px;
+        opacity: 0.4;
+        transition: opacity 0.3s;
+
+        &:hover {
+          opacity: 0.7;
+        }
+      }
+    }
+
+    &.is-horizontal {
+      height: 6px;
+
+      .el-scrollbar__thumb {
+        background-color: var(--el-text-color-placeholder);
+        border-radius: 3px;
+        opacity: 0.4;
+        transition: opacity 0.3s;
+
+        &:hover {
+          opacity: 0.7;
+        }
+      }
+    }
+  }
+}
