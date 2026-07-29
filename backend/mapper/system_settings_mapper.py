@@ -4,6 +4,17 @@ from datetime import datetime
 from config import CHINA_TZ, SYSTEM_SETTINGS_DB_FILE
 from utils.logger import get_logger
 
+
+def _apply_log_level_if_changed(kwargs: dict) -> None:
+    if "log_level" in kwargs:
+        try:
+            from utils.logger import apply_log_level
+
+            apply_log_level(kwargs["log_level"])
+        except ImportError:
+            pass
+
+
 logger = get_logger("SystemSettingsMapper")
 
 
@@ -74,6 +85,10 @@ class SystemSettingsMapper:
         )""")
         c.execute("""CREATE TABLE IF NOT EXISTS monitor_config (
             id INTEGER PRIMARY KEY CHECK (id = 1),
+            main_symbol TEXT DEFAULT 'gds_AUTD',
+            monitor_symbols TEXT DEFAULT '["gds_AUTD","hf_XAU"]',
+            trading_hours TEXT DEFAULT '[["09:00","11:30"],["13:30","15:30"],["20:00","23:59"],["00:00","02:30"]]',
+            ounce_to_gram REAL DEFAULT 31.1035,
             check_interval INTEGER DEFAULT 10,
             auto_import_on_start INTEGER DEFAULT 1,
             min_records_threshold INTEGER DEFAULT 100,
@@ -95,9 +110,28 @@ class SystemSettingsMapper:
             rate REAL NOT NULL,
             updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS symbol_config (
+            symbol TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            sort_order INTEGER DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS log_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            max_bytes INTEGER DEFAULT 10485760,
+            backup_count INTEGER DEFAULT 5,
+            compress_backup INTEGER DEFAULT 1,
+            console_output INTEGER DEFAULT 1,
+            keep_days INTEGER DEFAULT 30,
+            log_level TEXT DEFAULT 'DEBUG',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        )""")
         conn.commit()
         conn.close()
         self._ensure_default_rows()
+        self._migrate_monitor_config()
+        self._migrate_log_config()
+        self._seed_symbol_config()
 
     def _ensure_default_rows(self) -> None:
         conn = self._get_connection()
@@ -109,8 +143,61 @@ class SystemSettingsMapper:
             "email_config",
             "monitor_config",
             "message_config",
+            "log_config",
         ]:
             c.execute(f"INSERT OR IGNORE INTO {table} (id) VALUES (1)")
+        conn.commit()
+        conn.close()
+
+    def _migrate_log_config(self) -> None:
+        new_columns = {"log_level": "TEXT DEFAULT 'DEBUG'"}
+        conn = self._get_connection()
+        c = conn.cursor()
+        existing = {row[1] for row in c.execute("PRAGMA table_info(log_config)")}
+        for col_name, col_def in new_columns.items():
+            if col_name not in existing:
+                try:
+                    c.execute(f"ALTER TABLE log_config ADD COLUMN {col_name} {col_def}")
+                except sqlite3.OperationalError:
+                    pass
+        conn.commit()
+        conn.close()
+
+    def _migrate_monitor_config(self) -> None:
+        """为旧版 monitor_config 表补充新增列"""
+        new_columns = {
+            "main_symbol": "TEXT DEFAULT 'gds_AUTD'",
+            "monitor_symbols": 'TEXT DEFAULT \'["gds_AUTD","hf_XAU"]\'',
+            "trading_hours": 'TEXT DEFAULT \'[["09:00","11:30"],["13:30","15:30"],["20:00","23:59"],["00:00","02:30"]]\'',
+            "ounce_to_gram": "REAL DEFAULT 31.1035",
+        }
+        conn = self._get_connection()
+        c = conn.cursor()
+        existing = {row[1] for row in c.execute("PRAGMA table_info(monitor_config)")}
+        for col_name, col_def in new_columns.items():
+            if col_name not in existing:
+                try:
+                    c.execute(
+                        f"ALTER TABLE monitor_config ADD COLUMN {col_name} {col_def}"
+                    )
+                except sqlite3.OperationalError:
+                    pass
+        conn.commit()
+        conn.close()
+
+    def _seed_symbol_config(self) -> None:
+        """初始化品种名称映射默认数据"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        defaults = [
+            ("gds_AUTD", "黄金延期", 1),
+            ("hf_XAU", "伦敦金", 2),
+            ("hf_GC", "纽约黄金", 3),
+        ]
+        c.executemany(
+            "INSERT OR IGNORE INTO symbol_config (symbol, display_name, sort_order) VALUES (?, ?, ?)",
+            defaults,
+        )
         conn.commit()
         conn.close()
 
@@ -176,6 +263,56 @@ class SystemSettingsMapper:
 
     def update_message_config(self, **kwargs) -> None:
         self._upsert("message_config", list(kwargs.keys()), list(kwargs.values()))
+
+    # ==================== 品种名称映射 ====================
+
+    def get_symbol_config(self) -> list[dict]:
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute(
+            "SELECT symbol, display_name, sort_order FROM symbol_config ORDER BY sort_order"
+        )
+        rows = c.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_symbol_name_map(self) -> dict[str, str]:
+        rows = self.get_symbol_config()
+        return {r["symbol"]: r["display_name"] for r in rows}
+
+    def upsert_symbol(
+        self, symbol: str, display_name: str, sort_order: int = 0
+    ) -> None:
+        conn = self._get_connection()
+        c = conn.cursor()
+        now = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        c.execute(
+            "INSERT INTO symbol_config (symbol, display_name, sort_order, updated_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(symbol) DO UPDATE SET display_name=excluded.display_name, sort_order=excluded.sort_order, updated_at=excluded.updated_at",
+            (symbol, display_name, sort_order, now),
+        )
+        conn.commit()
+        conn.close()
+
+    def delete_symbol(self, symbol: str) -> bool:
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM symbol_config WHERE symbol=?", (symbol,))
+        conn.commit()
+        affected = c.rowcount
+        conn.close()
+        return affected > 0
+
+    # ==================== 日志配置 ====================
+
+    def get_log_config(self) -> dict | None:
+        return self._get_row("log_config")
+
+    def update_log_config(self, **kwargs) -> None:
+        self._upsert("log_config", list(kwargs.keys()), list(kwargs.values()))
+        _apply_log_level_if_changed(kwargs)
+
+    # ==================== 汇率缓存 ====================
 
     def get_exchange_rate(self) -> dict | None:
         return self._get_row("exchange_rate_cache")

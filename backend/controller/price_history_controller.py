@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Query
 
-from config import SYMBOL
 from models.price import (
     DashboardResponse,
     PriceChartPoint,
@@ -10,16 +9,24 @@ from models.price import (
 )
 from models.response import ApiResponse
 from service.price_history_service import PriceHistoryService
+from service.system_settings_service import SystemSettingsService
 
 router = APIRouter(prefix="/prices", tags=["金价历史"])
 service = PriceHistoryService()
+
+
+def _default_symbol() -> str:
+    monitor_config = SystemSettingsService().get_monitor_config()
+    return monitor_config.get("main_symbol", "gds_AUTD")
 
 
 # ==================== 记录数 ====================
 
 
 @router.get("/count", response_model=ApiResponse[int])
-def get_record_count(symbol: str = Query(default=SYMBOL, description="品种代码")):
+def get_record_count(
+    symbol: str = Query(default_factory=_default_symbol, description="品种代码"),
+):
     return ApiResponse.ok(service.get_record_count(symbol))
 
 
@@ -28,7 +35,7 @@ def get_record_count(symbol: str = Query(default=SYMBOL, description="品种代�
 
 @router.get("/statistics", response_model=ApiResponse[PriceStatistics])
 def get_statistics(
-    symbol: str = Query(default=SYMBOL, description="品种代码"),
+    symbol: str = Query(default_factory=_default_symbol, description="品种代码"),
     hours: float = Query(default=24, ge=1, description="统计窗口（小时）"),
 ):
     result = service.get_statistics(symbol, hours)
@@ -42,7 +49,7 @@ def get_statistics(
 
 @router.get("/trend", response_model=ApiResponse[PriceTrend])
 def get_trend(
-    symbol: str = Query(default=SYMBOL, description="品种代码"),
+    symbol: str = Query(default_factory=_default_symbol, description="品种代码"),
     hours: float = Query(default=6, ge=1, description="趋势窗口（小时）"),
 ):
     return ApiResponse.ok(service.get_trend(symbol, hours))
@@ -61,7 +68,7 @@ def get_dashboard():
 
 @router.get("/chart", response_model=ApiResponse[list[PriceChartPoint]])
 def get_chart_data(
-    symbol: str = Query(default=SYMBOL, description="品种代码"),
+    symbol: str = Query(default_factory=_default_symbol, description="品种代码"),
     hours: float = Query(
         default=24,
         ge=1,
@@ -77,7 +84,7 @@ def get_chart_data(
 
 @router.get("/recent", response_model=ApiResponse[list[PriceRecordResponse]])
 def get_recent_records(
-    symbol: str = Query(default=SYMBOL, description="品种代码"),
+    symbol: str = Query(default_factory=_default_symbol, description="品种代码"),
     limit: int = Query(default=20, ge=1, le=100, description="返回条数"),
 ):
     return ApiResponse.ok(service.get_recent_records(symbol, limit))

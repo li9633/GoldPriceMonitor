@@ -1,10 +1,11 @@
 import json
 from datetime import datetime
 
-from config import CHINA_TZ, SYMBOL_NAME_MAP
+from config import CHINA_TZ
 from mapper.model_pool_mapper import ModelPoolMapper
 from mapper.price_mapper import PriceSnapshot
 from service.model_pool_engine import ModelPool
+from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
 from utils.trading_utils import get_trading_status_text
 
@@ -129,7 +130,7 @@ class AIAnalysisService:
         london_usd: float | None = None,
         triggered_alerts: list[str] | None = None,
     ) -> str:
-        symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
+        symbol_name = SystemSettingsService().get_symbol_name_map().get(symbol, symbol)
         parts = []
 
         if triggered_alerts:

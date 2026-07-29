@@ -1,13 +1,7 @@
 import time
 from datetime import datetime
 
-from config import (
-    CHECK_INTERVAL,
-    CHINA_TZ,
-    LOG_CONFIG,
-    MONITOR_SYMBOLS,
-    SYMBOL,
-)
+from config import CHINA_TZ
 from mapper.price_mapper import PriceMapper
 from service.ai_service import AIAnalysisService
 from service.alert_service import AlertService
@@ -21,12 +15,18 @@ from utils.logger import cleanup_old_logs, get_log_size, get_logger
 class MonitorService:
     def __init__(self):
         self.logger = get_logger("GoldPriceMonitor")
+        self.settings = SystemSettingsService()
+        monitor_config = self.settings.get_monitor_config()
+        self.main_symbol = monitor_config.get("main_symbol", "gds_AUTD")
+        self.monitor_symbols = monitor_config.get(
+            "monitor_symbols", ["gds_AUTD", "hf_XAU"]
+        )
+        self.check_interval = monitor_config.get("check_interval", 10)
         self.price_mapper = PriceMapper()
         self.price_service = PriceService()
-        self.alert_service = AlertService(SYMBOL, self.price_mapper)
+        self.alert_service = AlertService(self.main_symbol, self.price_mapper)
         self.notification_service = NotificationService()
         self.ai_service = AIAnalysisService()
-        self.settings = SystemSettingsService()
         self.ai_check_interval = self.settings.get_ai_config().get(
             "check_interval_checks", 30
         )
@@ -54,7 +54,7 @@ class MonitorService:
             except Exception as e:
                 self.logger.error(f"主循环发生错误：{e}", exc_info=e)
 
-            time.sleep(CHECK_INTERVAL)
+            time.sleep(self.check_interval)
 
     def _print_banner(self) -> None:
         self.logger.info("=" * 50)
@@ -66,8 +66,9 @@ class MonitorService:
         init_historical_data()
 
     def _init_modules(self) -> None:
-        self.logger.info(f"监控品种：{SYMBOL}")
-        self.logger.info(f"检查间隔：{CHECK_INTERVAL} 秒")
+        self.logger.info(f"监控品种：{self.main_symbol}")
+        self.logger.info(f"监控品种列表：{self.monitor_symbols}")
+        self.logger.info(f"检查间隔：{self.check_interval} 秒")
         self.logger.info(
             f"AI 分析：每 {self.ai_check_interval} 次检查调用一次"
             "（模型池配置由 AI 服务自行管理，首次调用时自动加载）"
@@ -75,18 +76,18 @@ class MonitorService:
 
     def _show_db_status(self) -> None:
         try:
-            db_count = self.price_mapper.get_record_count(SYMBOL)
+            db_count = self.price_mapper.get_record_count(self.main_symbol)
             self.logger.info(f"当前历史记录数：{db_count} 条")
         except Exception as e:
             self.logger.error(f"查询数据库失败：{e}", exc_info=e)
 
     def _tick(self) -> None:
-        prices_data = self.price_service.fetch_all_gold_prices(MONITOR_SYMBOLS)
+        prices_data = self.price_service.fetch_all_gold_prices(self.monitor_symbols)
 
-        main_symbol_data = prices_data.get(SYMBOL)
+        main_symbol_data = prices_data.get(self.main_symbol)
         if not main_symbol_data:
             self.logger.warning(
-                f"[{datetime.now(CHINA_TZ)}] 获取主品种 {SYMBOL} 价格失败，等待下次检查"
+                f"[{datetime.now(CHINA_TZ)}] 获取主品种 {self.main_symbol} 价格失败，等待下次检查"
             )
             return
 
@@ -104,7 +105,7 @@ class MonitorService:
         self.check_count += 1
 
     def _save_prices(self, prices_data: dict, current_price: float) -> None:
-        self.price_mapper.save_price(SYMBOL, current_price)
+        self.price_mapper.save_price(self.main_symbol, current_price)
         london_data = prices_data.get("hf_XAU")
         if london_data:
             self.price_mapper.save_price("hf_XAU", london_data["price"])
@@ -141,7 +142,11 @@ class MonitorService:
 
         if should_send:
             self.notification_service.send_alert(
-                SYMBOL, current_price, alerts, suggestions, extra_info=extra_info
+                self.main_symbol,
+                current_price,
+                alerts,
+                suggestions,
+                extra_info=extra_info,
             )
 
     def _periodic_ai_check(self, prices_data: dict, current_price: float) -> None:
@@ -166,7 +171,11 @@ class MonitorService:
         )
 
         self.notification_service.send_alert(
-            SYMBOL, current_price, ai_alerts, ai_suggestions, extra_info=extra_info
+            self.main_symbol,
+            current_price,
+            ai_alerts,
+            ai_suggestions,
+            extra_info=extra_info,
         )
         self._last_notification_time = datetime.now(CHINA_TZ)
 
@@ -187,9 +196,14 @@ class MonitorService:
         london_data = prices_data.get("hf_XAU")
         london_cny = london_data.get("converted_cny_price") if london_data else None
         london_usd = london_data["price"] if london_data else None
-        snapshot = self.price_mapper.get_check_snapshot(SYMBOL)
+        snapshot = self.price_mapper.get_check_snapshot(self.main_symbol)
         return self.ai_service.analyze(
-            SYMBOL, current_price, snapshot, london_cny, london_usd, triggered_alerts
+            self.main_symbol,
+            current_price,
+            snapshot,
+            london_cny,
+            london_usd,
+            triggered_alerts,
         )
 
     def _build_extra_info(self, prices_data: dict) -> dict:
@@ -212,5 +226,7 @@ class MonitorService:
         self.logger.info("================")
 
     def _cleanup_logs(self) -> None:
-        if self.check_count % (86400 // CHECK_INTERVAL) == 0:
-            cleanup_old_logs(LOG_CONFIG["keep_days"])
+        if self.check_count % (86400 // self.check_interval) == 0:
+            log_config = self.settings.get_log_config()
+            keep_days = log_config.get("keep_days", 30) if log_config else 30
+            cleanup_old_logs(keep_days)

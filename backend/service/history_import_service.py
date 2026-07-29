@@ -3,7 +3,7 @@ from datetime import datetime
 
 import requests
 
-from config import CHINA_TZ, PRICE_HISTORY_DB_FILE, SYMBOL
+from config import CHINA_TZ, PRICE_HISTORY_DB_FILE
 from mapper.price_mapper import PriceMapper
 from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
@@ -12,9 +12,13 @@ logger = get_logger("HistoryImportService")
 
 
 class HistoryImportService:
-    def __init__(self, db_file: str = PRICE_HISTORY_DB_FILE, symbol: str = SYMBOL):
+    def __init__(self, db_file: str = PRICE_HISTORY_DB_FILE, symbol: str | None = None):
         self.price_mapper = PriceMapper(db_file)
-        self.symbol = symbol
+        if symbol is None:
+            settings = SystemSettingsService()
+            monitor_config = settings.get_monitor_config()
+            symbol = monitor_config.get("main_symbol") or "gds_AUTD"
+        self.symbol: str = symbol
 
     def fetch_historical_data(self, period: str = "60d") -> list[dict]:
         url = f"https://www.huilvbiao.com/api/gold?d={period}"

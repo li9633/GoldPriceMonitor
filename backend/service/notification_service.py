@@ -2,7 +2,7 @@ import smtplib
 from datetime import datetime
 from email.mime.text import MIMEText
 
-from config import CHINA_TZ, SYMBOL_NAME_MAP
+from config import CHINA_TZ
 from service.system_settings_service import SystemSettingsService
 from utils.http_utils import safe_post_json
 from utils.logger import get_logger
@@ -24,7 +24,7 @@ class NotificationService:
         extra_info: dict | None = None,
     ) -> bool:
         suggestions = suggestions or []
-        symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
+        symbol_name = self.settings.get_symbol_name_map().get(symbol, symbol)
         wechat_config = self.settings.get_wechat_config()
         email_config = self.settings.get_email_config()
 
@@ -86,7 +86,7 @@ class NotificationService:
         self, symbol: str, current_price: float, message: str, email_config: dict
     ) -> bool:
         try:
-            symbol_name = SYMBOL_NAME_MAP.get(symbol, symbol)
+            symbol_name = self.settings.get_symbol_name_map().get(symbol, symbol)
             subject = f"[报警] 黄金价格监控 - {symbol_name} - {current_price:.2f}"
             msg = MIMEText(message, "html", "utf-8")
             msg["Subject"] = subject

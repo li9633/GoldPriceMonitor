@@ -1,4 +1,3 @@
-from config import SYMBOL_NAME_MAP
 from mapper.price_mapper import PriceMapper
 from models.price import (
     DashboardResponse,
@@ -9,6 +8,7 @@ from models.price import (
     PriceTrend,
     SymbolDashboardItem,
 )
+from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
 
 logger = get_logger("PriceHistoryService")
@@ -74,12 +74,13 @@ class PriceHistoryService:
 
     def get_dashboard(self) -> DashboardResponse:
         raw = self.mapper.get_dashboard_data()
+        symbol_name_map = SystemSettingsService().get_symbol_name_map()
         symbols = []
         for item in raw["symbols"]:
             symbols.append(
                 SymbolDashboardItem(
                     symbol=item["symbol"],
-                    name=SYMBOL_NAME_MAP.get(item["symbol"], str(item["symbol"])),
+                    name=symbol_name_map.get(item["symbol"], str(item["symbol"])),
                     count=item["count"],
                     latest_price=item["latest_price"],
                     latest_time=item["latest_time"],

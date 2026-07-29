@@ -6,8 +6,11 @@ from models.system_settings import (
     AlertConfigModel,
     EmailConfigModel,
     ExchangeRateModel,
+    InfrastructureConfigModel,
+    LogConfigModel,
     MessageConfigModel,
     MonitorConfigModel,
+    SymbolConfigItem,
     WechatConfigModel,
 )
 from service.system_settings_service import SystemSettingsService
@@ -91,6 +94,48 @@ def update_message_config(data: MessageConfigModel):
     service.update_message_config(**data.model_dump())
     return ApiResponse.ok(
         MessageConfigModel(**service.get_message_config()), message="消息配置已更新"
+    )
+
+
+@router.get("/symbols", response_model=ApiResponse[list[SymbolConfigItem]])
+def get_symbol_config():
+    return ApiResponse.ok([SymbolConfigItem(**s) for s in service.get_symbol_config()])
+
+
+@router.put("/symbols/{symbol}", response_model=ApiResponse[SymbolConfigItem])
+def upsert_symbol(symbol: str, data: SymbolConfigItem):
+    service.upsert_symbol(symbol, data.display_name, data.sort_order)
+    updated = service.get_symbol_config()
+    for s in updated:
+        if s["symbol"] == symbol:
+            return ApiResponse.ok(SymbolConfigItem(**s), message="品种配置已更新")
+    return ApiResponse.fail("更新失败", code=500)
+
+
+@router.delete("/symbols/{symbol}", response_model=ApiResponse[dict])
+def delete_symbol(symbol: str):
+    if service.delete_symbol(symbol):
+        return ApiResponse.ok({}, message=f"品种 [{symbol}] 已删除")
+    return ApiResponse.fail(f"品种 [{symbol}] 不存在", code=404)
+
+
+@router.get("/log", response_model=ApiResponse[LogConfigModel])
+def get_log_config():
+    return ApiResponse.ok(LogConfigModel(**service.get_log_config()))
+
+
+@router.put("/log", response_model=ApiResponse[LogConfigModel])
+def update_log_config(data: LogConfigModel):
+    service.update_log_config(**data.model_dump())
+    return ApiResponse.ok(
+        LogConfigModel(**service.get_log_config()), message="日志配置已更新"
+    )
+
+
+@router.get("/infrastructure", response_model=ApiResponse[InfrastructureConfigModel])
+def get_infrastructure_config():
+    return ApiResponse.ok(
+        InfrastructureConfigModel(**service.get_infrastructure_config())
     )
 
 

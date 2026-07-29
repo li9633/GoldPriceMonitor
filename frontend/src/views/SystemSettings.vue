@@ -291,6 +291,75 @@
                 <el-input-number v-model="monitor.data.check_interval" :min="1" :max="3600" />
                 <span class="unit">秒</span>
               </el-form-item>
+              <el-form-item label="主监控品种">
+                <el-input v-model="monitor.data.main_symbol" placeholder="gds_AUTD" />
+              </el-form-item>
+              <el-form-item label="监控品种列表">
+                <el-select
+                  v-model="monitor.data.monitor_symbols"
+                  multiple
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="输入品种代码并回车添加"
+                  class="full-width-select"
+                >
+                  <el-option
+                    v-for="s in monitor.data.monitor_symbols"
+                    :key="s"
+                    :label="s"
+                    :value="s"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="交易时段">
+                <div class="trading-hours">
+                  <div
+                    v-for="(slot, index) in monitor.data.trading_hours"
+                    :key="index"
+                    class="trading-slot"
+                  >
+                    <el-time-picker
+                      v-model="slot[0]"
+                      format="HH:mm"
+                      value-format="HH:mm"
+                      placeholder="开始"
+                    />
+                    <span class="slot-sep">—</span>
+                    <el-time-picker
+                      v-model="slot[1]"
+                      format="HH:mm"
+                      value-format="HH:mm"
+                      placeholder="结束"
+                    />
+                    <el-button
+                      text
+                      type="danger"
+                      size="small"
+                      @click="monitor.data.trading_hours.splice(index, 1)"
+                    >
+                      <font-awesome-icon icon="times" />
+                    </el-button>
+                  </div>
+                  <el-button
+                    text
+                    type="primary"
+                    size="small"
+                    @click="monitor.data.trading_hours.push(['09:00', '11:30'])"
+                  >
+                    <font-awesome-icon icon="plus" /> 添加时段
+                  </el-button>
+                </div>
+              </el-form-item>
+              <el-form-item label="盎司转克常数">
+                <el-input-number
+                  v-model="monitor.data.ounce_to_gram"
+                  :precision="4"
+                  :step="0.0001"
+                  disabled
+                />
+                <span class="unit">克/盎司（只读）</span>
+              </el-form-item>
               <el-form-item label="启动时自动导入">
                 <el-switch v-model="monitor.data.auto_import_on_start" />
               </el-form-item>
@@ -355,6 +424,112 @@
             </el-form>
           </div>
         </el-tab-pane>
+
+        <el-tab-pane label="品种映射" name="symbols">
+          <div v-loading="symbolsLoading" class="tab-content">
+            <div class="tab-toolbar">
+              <el-button type="primary" @click="openAddSymbol">
+                <font-awesome-icon icon="plus" /> 新增品种
+              </el-button>
+            </div>
+            <el-table :data="symbols" stripe border class="symbol-table">
+              <el-table-column prop="symbol" label="品种代码" width="180" />
+              <el-table-column prop="display_name" label="显示名称" width="200" />
+              <el-table-column prop="sort_order" label="排序权重" width="120" align="center" />
+              <el-table-column label="操作" width="160" align="center">
+                <template #default="{ row }">
+                  <el-button
+                    text
+                    type="primary"
+                    size="small"
+                    @click="openEditSymbol(row as SymbolMapping)"
+                  >
+                    <font-awesome-icon icon="pen" /> 编辑
+                  </el-button>
+                  <el-button
+                    text
+                    type="danger"
+                    size="small"
+                    @click="handleDeleteSymbol(row.symbol)"
+                  >
+                    <font-awesome-icon icon="trash" /> 删除
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="日志配置" name="log">
+          <div v-loading="log.loading" class="tab-content">
+            <el-form v-if="log.data" label-width="160px" class="settings-form">
+              <el-alert
+                type="warning"
+                :closable="false"
+                show-icon
+                title="最大文件大小、备份文件数量、压缩旧日志、控制台输出 修改后需重启服务生效"
+                class="log-notice"
+              />
+              <el-form-item label="最大文件大小">
+                <el-input-number v-model="log.data.max_bytes" :min="1048576" :step="1048576" />
+                <span class="unit">字节 ({{ (log.data.max_bytes / 1048576).toFixed(1) }} MB)</span>
+              </el-form-item>
+              <el-form-item label="备份文件数量">
+                <el-input-number v-model="log.data.backup_count" :min="1" :max="100" />
+              </el-form-item>
+              <el-form-item label="压缩旧日志">
+                <el-switch v-model="log.data.compress_backup" />
+              </el-form-item>
+              <el-form-item label="控制台输出">
+                <el-switch v-model="log.data.console_output" />
+              </el-form-item>
+              <el-form-item label="保留天数">
+                <el-input-number v-model="log.data.keep_days" :min="1" :max="365" />
+                <span class="unit">天（运行时生效）</span>
+              </el-form-item>
+              <el-form-item label="日志等级">
+                <el-select v-model="log.data.log_level" class="log-level-select">
+                  <el-option value="DEBUG" label="DEBUG — 全部日志（默认，开发调试用）" />
+                  <el-option value="INFO" label="INFO — 一般信息 + 警告 + 错误" />
+                  <el-option value="WARNING" label="WARNING — 仅警告 + 错误" />
+                  <el-option value="ERROR" label="ERROR — 仅错误" />
+                </el-select>
+                <span class="unit">即时生效，无需重启</span>
+              </el-form-item>
+              <el-form-item class="form-actions">
+                <el-button type="primary" :loading="log.saving" @click="log.save()">
+                  保存日志配置
+                </el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="基础设施" name="infrastructure">
+          <div v-loading="infraLoading" class="tab-content">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              title="只读端点，API URL 变更需同步修改解析逻辑，请在 config.py 中修改后重启。"
+              class="log-notice"
+            />
+            <el-descriptions v-if="infrastructure" :column="1" border class="infra-descriptions">
+              <el-descriptions-item label="金价数据源 API">
+                <code>{{ infrastructure.gold_price_api_url }}</code>
+              </el-descriptions-item>
+              <el-descriptions-item label="美元汇率 API">
+                <code>{{ infrastructure.usd_to_cny_api_url }}</code>
+              </el-descriptions-item>
+              <el-descriptions-item label="系统时区">
+                {{ infrastructure.timezone }}
+              </el-descriptions-item>
+              <el-descriptions-item label="日志存储目录">
+                <code>{{ infrastructure.log_dir }}</code>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -367,6 +542,33 @@
       <template #footer>
         <el-button @click="showRateDialog = false">取消</el-button>
         <el-button type="primary" :loading="updatingRate" @click="handleUpdateRate">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="showSymbolDialog"
+      :title="isEditingSymbol ? '编辑品种映射' : '新增品种映射'"
+      width="480px"
+    >
+      <el-form label-width="120px">
+        <el-form-item label="品种代码">
+          <el-input
+            v-model="symbolForm.symbol"
+            :disabled="isEditingSymbol"
+            placeholder="如 gds_AUTD"
+          />
+        </el-form-item>
+        <el-form-item label="显示名称">
+          <el-input v-model="symbolForm.display_name" placeholder="如 黄金延期" />
+        </el-form-item>
+        <el-form-item label="排序权重">
+          <el-input-number v-model="symbolForm.sort_order" :min="0" :max="999" />
+          <span class="unit">越小越靠前</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showSymbolDialog = false">取消</el-button>
+        <el-button type="primary" :loading="symbolSaving" @click="handleSaveSymbol">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -386,9 +588,12 @@ import {
   faWaveSquare,
   faBolt,
   faAngleDoubleDown,
+  faPlus,
+  faTrash,
+  faTimes,
 } from '@fortawesome/free-solid-svg-icons'
 import { settingsApi } from '@/api/modules/settings'
-import type { ExchangeRate } from '@/api/modules/settings'
+import type { ExchangeRate, SymbolMapping, InfrastructureConfig } from '@/api/modules/settings'
 import { useSettingsGroup } from '@/composables/useSettings'
 
 library.add(
@@ -402,6 +607,9 @@ library.add(
   faWaveSquare,
   faBolt,
   faAngleDoubleDown,
+  faPlus,
+  faTrash,
+  faTimes,
 )
 
 const activeTab = ref('alert')
@@ -442,11 +650,89 @@ const updatingRate = ref(false)
 const showRateDialog = ref(false)
 const rateInput = ref(0)
 
+const symbols = ref<SymbolMapping[]>([])
+const symbolsLoading = ref(false)
+const showSymbolDialog = ref(false)
+const symbolForm = ref<SymbolMapping>({ symbol: '', display_name: '', sort_order: 0 })
+const isEditingSymbol = ref(false)
+const symbolSaving = ref(false)
+
+const log = useSettingsGroup(
+  () => settingsApi.getLog(),
+  (data) => settingsApi.updateLog(data),
+)
+
+const infrastructure = ref<InfrastructureConfig | null>(null)
+const infraLoading = ref(false)
+
 const loadExchangeRate = async () => {
   try {
     exchangeRate.value = await settingsApi.getExchangeRate()
   } catch {
     // 错误已在 request 拦截器中处理
+  }
+}
+
+const loadSymbols = async () => {
+  symbolsLoading.value = true
+  try {
+    symbols.value = await settingsApi.getSymbols()
+  } catch {
+    // 错误已在 request 拦截器中处理
+  } finally {
+    symbolsLoading.value = false
+  }
+}
+
+const openAddSymbol = () => {
+  isEditingSymbol.value = false
+  symbolForm.value = { symbol: '', display_name: '', sort_order: 0 }
+  showSymbolDialog.value = true
+}
+
+const openEditSymbol = (row: SymbolMapping) => {
+  isEditingSymbol.value = true
+  symbolForm.value = { ...row }
+  showSymbolDialog.value = true
+}
+
+const handleSaveSymbol = async () => {
+  symbolSaving.value = true
+  try {
+    await settingsApi.updateSymbol(symbolForm.value.symbol, symbolForm.value)
+    ElMessage.success(isEditingSymbol.value ? '品种配置已更新' : '品种配置已添加')
+    showSymbolDialog.value = false
+    await loadSymbols()
+  } catch {
+    // 错误已在 request 拦截器中处理
+  } finally {
+    symbolSaving.value = false
+  }
+}
+
+const handleDeleteSymbol = async (symbol: string) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除品种 [${symbol}] 吗？`, '确认删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await settingsApi.deleteSymbol(symbol)
+    ElMessage.success(`品种 [${symbol}] 已删除`)
+    await loadSymbols()
+  } catch {
+    // 用户取消或错误已在 request 拦截器中处理
+  }
+}
+
+const loadInfrastructure = async () => {
+  infraLoading.value = true
+  try {
+    infrastructure.value = await settingsApi.getInfrastructure()
+  } catch {
+    // 错误已在 request 拦截器中处理
+  } finally {
+    infraLoading.value = false
   }
 }
 
@@ -484,6 +770,9 @@ const loadTab = (tabName: string) => {
   const groups = { alert, ai, wechat, email, monitor, message } as const
   const group = groups[tabName as keyof typeof groups]
   group?.load()
+  if (tabName === 'symbols') loadSymbols()
+  if (tabName === 'log') log.load()
+  if (tabName === 'infrastructure') loadInfrastructure()
 }
 
 const onTabChange = (name: string | number) => {
@@ -566,6 +855,52 @@ onMounted(() => {
     background: var(--bg-secondary);
     border-radius: 8px;
     border: 1px solid var(--border-color);
+
+    .tab-toolbar {
+      margin-bottom: 16px;
+    }
+
+    .symbol-table {
+      width: 100%;
+    }
+
+    .log-notice {
+      margin-bottom: 20px;
+    }
+
+    .infra-descriptions {
+      margin-top: 8px;
+
+      code {
+        background: var(--bg-secondary);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 13px;
+        word-break: break-all;
+      }
+    }
+
+    .log-level-select {
+      width: 220px;
+    }
+
+    .full-width-select {
+      width: 100%;
+    }
+
+    .trading-hours {
+      .trading-slot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+
+        .slot-sep {
+          color: var(--text-secondary);
+          font-size: 14px;
+        }
+      }
+    }
 
     .section-title {
       font-size: 15px;

@@ -51,6 +51,10 @@ export interface MonitorConfig {
   auto_import_on_start: boolean
   min_records_threshold: number
   periods: string[]
+  main_symbol: string
+  monitor_symbols: string[]
+  trading_hours: string[][]
+  ounce_to_gram: number
 }
 
 export interface MessageConfig {
@@ -65,6 +69,28 @@ export interface MessageConfig {
 export interface ExchangeRate {
   rate: number | null
   updated_at: string | null
+}
+
+export interface SymbolMapping {
+  symbol: string
+  display_name: string
+  sort_order: number
+}
+
+export interface LogConfig {
+  max_bytes: number
+  backup_count: number
+  compress_backup: boolean
+  console_output: boolean
+  keep_days: number
+  log_level: string
+}
+
+export interface InfrastructureConfig {
+  gold_price_api_url: string
+  usd_to_cny_api_url: string
+  timezone: string
+  log_dir: string
 }
 
 export const settingsApi = {
@@ -115,6 +141,27 @@ export const settingsApi = {
   },
   updateExchangeRate(rate: number) {
     return request.put<string>(`/settings/exchange-rate/${rate}`)
+  },
+
+  getSymbols() {
+    return request.get<SymbolMapping[]>('/settings/symbols')
+  },
+  updateSymbol(symbol: string, data: SymbolMapping) {
+    return request.put<SymbolMapping>(`/settings/symbols/${symbol}`, data)
+  },
+  deleteSymbol(symbol: string) {
+    return request.delete<Record<string, never>>(`/settings/symbols/${symbol}`)
+  },
+
+  getLog() {
+    return request.get<LogConfig>('/settings/log')
+  },
+  updateLog(data: LogConfig) {
+    return request.put<LogConfig>('/settings/log', data)
+  },
+
+  getInfrastructure() {
+    return request.get<InfrastructureConfig>('/settings/infrastructure')
   },
 
   reload() {

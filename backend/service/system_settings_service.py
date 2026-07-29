@@ -1,6 +1,7 @@
 import json
 from typing import Self
 
+from config import GOLD_PRICE_API_URL, LOG_DIR, USD_TO_CNY_API_URL
 from mapper.system_settings_mapper import SystemSettingsMapper
 from utils.logger import get_logger
 
@@ -79,17 +80,30 @@ class SystemSettingsService:
         if row is None:
             return {}
         result = {k: v for k, v in row.items() if k not in ("id", "updated_at")}
-        if "periods" in result and isinstance(result["periods"], str):
-            try:
-                result["periods"] = json.loads(result["periods"])
-            except json.JSONDecodeError:
-                result["periods"] = ["60d", "1y"]
+        json_fields_with_defaults = {
+            "periods": ["60d", "1y"],
+            "monitor_symbols": ["gds_AUTD", "hf_XAU"],
+            "trading_hours": [
+                ["09:00", "11:30"],
+                ["13:30", "15:30"],
+                ["20:00", "23:59"],
+                ["00:00", "02:30"],
+            ],
+        }
+        for field, default in json_fields_with_defaults.items():
+            if field in result and isinstance(result[field], str):
+                try:
+                    result[field] = json.loads(result[field])
+                except json.JSONDecodeError:
+                    result[field] = default
         return result
 
     def update_monitor_config(self, **kwargs) -> None:
         clean = dict(kwargs)
-        if "periods" in clean and isinstance(clean["periods"], list):
-            clean["periods"] = json.dumps(clean["periods"])
+        json_fields = ["periods", "monitor_symbols", "trading_hours"]
+        for field in json_fields:
+            if field in clean and isinstance(clean[field], list):
+                clean[field] = json.dumps(clean[field])
         self.mapper.update_monitor_config(**clean)
 
     # ==================== 消息模板 ====================
@@ -102,6 +116,44 @@ class SystemSettingsService:
 
     def update_message_config(self, **kwargs) -> None:
         self.mapper.update_message_config(**kwargs)
+
+    # ==================== 品种名称映射 ====================
+
+    def get_symbol_config(self) -> list[dict]:
+        return self.mapper.get_symbol_config()
+
+    def get_symbol_name_map(self) -> dict[str, str]:
+        return self.mapper.get_symbol_name_map()
+
+    def upsert_symbol(
+        self, symbol: str, display_name: str, sort_order: int = 0
+    ) -> None:
+        self.mapper.upsert_symbol(symbol, display_name, sort_order)
+
+    def delete_symbol(self, symbol: str) -> bool:
+        return self.mapper.delete_symbol(symbol)
+
+    # ==================== 日志配置 ====================
+
+    def get_log_config(self) -> dict:
+        row = self.mapper.get_log_config()
+        if row is None:
+            return {}
+        return {k: v for k, v in row.items() if k not in ("id", "updated_at")}
+
+    def update_log_config(self, **kwargs) -> None:
+        self.mapper.update_log_config(**kwargs)
+
+    # ==================== 基础设施配置（只读） ====================
+
+    @staticmethod
+    def get_infrastructure_config() -> dict:
+        return {
+            "gold_price_api_url": GOLD_PRICE_API_URL,
+            "usd_to_cny_api_url": USD_TO_CNY_API_URL,
+            "timezone": "UTC+8",
+            "log_dir": LOG_DIR,
+        }
 
     # ==================== 汇率缓存 ====================
 

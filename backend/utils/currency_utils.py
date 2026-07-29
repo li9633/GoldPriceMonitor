@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
 
-from config import CHINA_TZ, OUNCE_TO_GRAM, USD_TO_CNY_API_URL
+from config import CHINA_TZ, USD_TO_CNY_API_URL
 from service.system_settings_service import SystemSettingsService
 from utils.http_utils import safe_get
 from utils.logger import get_logger
@@ -9,6 +9,12 @@ from utils.logger import get_logger
 logger = get_logger("CurrencyUtils")
 
 _RATE_CACHE_DURATION = 300
+
+
+def _get_ounce_to_gram() -> float:
+    settings = SystemSettingsService()
+    monitor_config = settings.get_monitor_config()
+    return monitor_config.get("ounce_to_gram", 31.1035)
 
 
 def get_exchange_rate() -> float:
@@ -69,5 +75,5 @@ def convert_london_gold_to_cny(
 ) -> float:
     if exchange_rate is None:
         exchange_rate = get_exchange_rate()
-    cny_per_gram = (usd_price * exchange_rate) / OUNCE_TO_GRAM
+    cny_per_gram = (usd_price * exchange_rate) / _get_ounce_to_gram()
     return round(cny_per_gram, 2)

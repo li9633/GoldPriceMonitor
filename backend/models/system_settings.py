@@ -48,6 +48,15 @@ class EmailConfigModel(BaseModel):
 
 
 class MonitorConfigModel(BaseModel):
+    main_symbol: str = "gds_AUTD"
+    monitor_symbols: list[str] = ["gds_AUTD", "hf_XAU"]
+    trading_hours: list[list[str]] = [
+        ["09:00", "11:30"],
+        ["13:30", "15:30"],
+        ["20:00", "23:59"],
+        ["00:00", "02:30"],
+    ]
+    ounce_to_gram: float = 31.1035
     check_interval: int = 10
     auto_import_on_start: bool = True
     min_records_threshold: int = 100
@@ -66,3 +75,27 @@ class MessageConfigModel(BaseModel):
 class ExchangeRateModel(BaseModel):
     rate: float | None = None
     updated_at: str | None = None
+
+
+class SymbolConfigItem(BaseModel):
+    symbol: str
+    display_name: str
+    sort_order: int = 0
+
+
+class LogConfigModel(BaseModel):
+    max_bytes: int = 10485760
+    backup_count: int = 5
+    compress_backup: bool = True
+    console_output: bool = True
+    keep_days: int = 30
+    log_level: str = "DEBUG"
+
+
+class InfrastructureConfigModel(BaseModel):
+    """基础设施配置 — 前端只读展示"""
+
+    gold_price_api_url: str = ""
+    usd_to_cny_api_url: str = ""
+    timezone: str = "UTC+8"
+    log_dir: str = "logs"

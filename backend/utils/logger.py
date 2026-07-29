@@ -13,6 +13,28 @@ _MAX_BYTES = 10 * 1024 * 1024
 _BACKUP_COUNT = 5
 _initialized = False
 
+# 运行时引用，避免循环导入
+_console_handler: logging.StreamHandler | None = None
+_third_party_libs = (
+    "urllib3",
+    "requests",
+    "charset_normalizer",
+    "certifi",
+    "fastapi",
+    "uvicorn",
+    "asyncio",
+)
+
+
+def _get_log_level_from_db() -> str:
+    try:
+        from service.system_settings_service import SystemSettingsService
+
+        cfg = SystemSettingsService().get_log_config()
+        return cfg.get("log_level", "DEBUG")
+    except ImportError:
+        return "DEBUG"
+
 
 def _init() -> None:
     global _initialized
@@ -26,15 +48,7 @@ def _init() -> None:
     root.setLevel(logging.DEBUG)
 
     # 抑制第三方库的 DEBUG 日志
-    for lib in (
-        "urllib3",
-        "requests",
-        "charset_normalizer",
-        "certifi",
-        "fastapi",
-        "uvicorn",
-        "asyncio",
-    ):
+    for lib in _third_party_libs:
         logging.getLogger(lib).setLevel(logging.WARNING)
 
     # 文件处理器 — 所有日志写入同一个文件
@@ -54,14 +68,27 @@ def _init() -> None:
     root.addHandler(fh)
 
     # 控制台处理器
-    ch = logging.StreamHandler()
-    ch.setFormatter(
+    global _console_handler
+    _console_handler = logging.StreamHandler()
+    _console_handler.setFormatter(
         logging.Formatter(
             "%(asctime)s | %(levelname)-8s | %(name)-12s | %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     )
-    root.addHandler(ch)
+    root.addHandler(_console_handler)
+
+    # 从 DB 读取日志等级，默认 DEBUG
+    log_level = _get_log_level_from_db()
+    root.setLevel(getattr(logging, log_level, logging.DEBUG))
+
+
+def apply_log_level(level: str) -> None:
+    root = logging.getLogger()
+    py_level = getattr(logging, level.upper(), logging.DEBUG)
+    root.setLevel(py_level)
+    if _console_handler:
+        _console_handler.setLevel(py_level)
 
 
 def _log_namer(name: str) -> str:

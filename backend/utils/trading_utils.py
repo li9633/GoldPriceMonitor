@@ -2,12 +2,28 @@ from datetime import datetime
 
 from chinese_calendar import is_workday
 
-from config import AUTD_TRADING_HOURS, CHINA_TZ
+from config import CHINA_TZ
+
+
+def _get_trading_hours() -> list[tuple[str, str]]:
+    from service.system_settings_service import SystemSettingsService
+
+    settings = SystemSettingsService()
+    monitor_config = settings.get_monitor_config()
+    raw = monitor_config.get("trading_hours", [])
+    if not raw or isinstance(raw, str):
+        return [
+            ("09:00", "11:30"),
+            ("13:30", "15:30"),
+            ("20:00", "23:59"),
+            ("00:00", "02:30"),
+        ]
+    return [(str(s), str(e)) for s, e in raw]
 
 
 def is_autd_trading() -> bool:
     """判断当前是否在 Au(T+D) 交易时段内
-    
+
     自动处理：周末、法定节假日、调休工作日
     """
     now = datetime.now(CHINA_TZ)
@@ -18,7 +34,7 @@ def is_autd_trading() -> bool:
 
     current_minutes = now.hour * 60 + now.minute
 
-    for start_str, end_str in AUTD_TRADING_HOURS:
+    for start_str, end_str in _get_trading_hours():
         start_h, start_m = map(int, start_str.split(":"))
         end_h, end_m = map(int, end_str.split(":"))
         start_minutes = start_h * 60 + start_m
