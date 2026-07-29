@@ -41,7 +41,7 @@
           @clear="onFilterChange"
         >
           <template #prefix>
-            <el-icon><Search /></el-icon>
+            <font-awesome-icon icon="magnifying-glass" />
           </template>
         </el-input>
         <el-select v-model="filters.lines" style="width: 120px" @change="onFilterChange">
@@ -96,12 +96,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faFileLines, faRotate } from '@fortawesome/free-solid-svg-icons'
+import { faFileLines, faRotate, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons'
 import { logsApi, type LogContent } from '@/api/modules/logs'
 
-library.add(faFileLines, faRotate)
+library.add(faFileLines, faRotate, faMagnifyingGlass)
 
 const content = ref<LogContent | null>(null)
 const loading = ref(false)
@@ -258,7 +257,6 @@ onUnmounted(() => {
 
 .content-card {
   .log-lines {
-    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
     font-size: 13px;
     line-height: 1.6;
     background: var(--el-fill-color-lighter);

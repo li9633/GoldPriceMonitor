@@ -12,23 +12,23 @@
         router
       >
         <el-menu-item index="/dashboard">
-          <el-icon><Monitor /></el-icon>
+          <font-awesome-icon icon="desktop" />
           <template #title>监控面板</template>
         </el-menu-item>
         <el-menu-item index="/price-history">
-          <el-icon><TrendCharts /></el-icon>
+          <font-awesome-icon icon="chart-line" />
           <template #title>价格历史</template>
         </el-menu-item>
         <el-menu-item index="/providers">
-          <el-icon><Connection /></el-icon>
+          <font-awesome-icon icon="diagram-project" />
           <template #title>模型池</template>
         </el-menu-item>
         <el-menu-item index="/logs">
-          <el-icon><Document /></el-icon>
+          <font-awesome-icon icon="file-lines" />
           <template #title>系统日志</template>
         </el-menu-item>
         <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon>
+          <font-awesome-icon icon="gear" />
           <template #title>设置</template>
         </el-menu-item>
       </el-menu>
@@ -37,10 +37,11 @@
     <el-container>
       <el-header class="app-titlebar">
         <div class="titlebar-left">
-          <el-icon class="collapse-btn" :size="20" @click="isCollapse = !isCollapse">
-            <Fold v-if="!isCollapse" />
-            <Expand v-else />
-          </el-icon>
+          <font-awesome-icon
+            :icon="isCollapse ? 'angles-right' : 'angles-left'"
+            class="collapse-btn"
+            @click="isCollapse = !isCollapse"
+          />
           <el-breadcrumb separator="/">
             <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
             <el-breadcrumb-item v-if="activeMenu !== '/'">
@@ -49,13 +50,9 @@
           </el-breadcrumb>
         </div>
         <div class="titlebar-right">
-          <el-switch
-            v-model="isDark"
-            :active-icon="Moon"
-            :inactive-icon="Sunny"
-            inline-prompt
-            @change="themeStore.toggle()"
-          />
+          <font-awesome-icon icon="sun" class="theme-icon" />
+          <el-switch v-model="isDark" @change="themeStore.toggle()" />
+          <font-awesome-icon icon="moon" class="theme-icon" />
         </div>
       </el-header>
 
@@ -70,21 +67,32 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faTrophy, faCoins } from '@fortawesome/free-solid-svg-icons'
 import {
-  Monitor,
-  TrendCharts,
-  Setting,
-  Fold,
-  Expand,
-  Moon,
-  Sunny,
-  Connection,
-  Document,
-} from '@element-plus/icons-vue'
+  faTrophy,
+  faDesktop,
+  faChartLine,
+  faDiagramProject,
+  faFileLines,
+  faGear,
+  faAnglesLeft,
+  faAnglesRight,
+  faMoon,
+  faSun,
+} from '@fortawesome/free-solid-svg-icons'
 import { useThemeStore } from '@/stores/theme'
 
-library.add(faTrophy, faCoins)
+library.add(
+  faTrophy,
+  faDesktop,
+  faChartLine,
+  faDiagramProject,
+  faFileLines,
+  faGear,
+  faAnglesLeft,
+  faAnglesRight,
+  faMoon,
+  faSun,
+)
 
 const route = useRoute()
 const themeStore = useThemeStore()
@@ -166,7 +174,12 @@ const breadcrumbTitle = computed(() => {
   .titlebar-right {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 8px;
+
+    .theme-icon {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
   }
 }
 
