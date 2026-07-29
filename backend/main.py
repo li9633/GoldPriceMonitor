@@ -1,3 +1,4 @@
+import argparse
 import threading
 
 import uvicorn
@@ -7,6 +8,8 @@ from service.monitor_service import MonitorService
 from utils.logger import get_logger
 
 logger = get_logger("Main")
+
+DEFAULT_PORT = 8000
 
 
 def _start_monitor() -> None:
@@ -18,11 +21,20 @@ def _start_monitor() -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="黄金价格智能监控系统")
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"服务端口（默认: {DEFAULT_PORT}）",
+    )
+    args = parser.parse_args()
+
     monitor_thread = threading.Thread(
         target=_start_monitor, daemon=True, name="MonitorThread"
     )
     monitor_thread.start()
-    logger.info("价格监控服务已在后台启动")
 
-    logger.info("API 服务已启动，监听端口 http://0.0.0.0:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    logger.info("服务启动完成 http://0.0.0.0:%d", args.port)
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="warning")

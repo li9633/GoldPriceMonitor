@@ -31,6 +31,11 @@ const routes = [
         name: 'logs',
         component: () => import('@/views/LogViewer.vue'),
       },
+      {
+        path: 'ai-stats',
+        name: 'ai-stats',
+        component: () => import('@/views/AiStats.vue'),
+      },
     ],
   },
 ]

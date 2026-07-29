@@ -27,6 +27,10 @@
           <font-awesome-icon icon="file-lines" />
           <template #title>系统日志</template>
         </el-menu-item>
+        <el-menu-item index="/ai-stats">
+          <font-awesome-icon icon="robot" />
+          <template #title>AI 调用统计</template>
+        </el-menu-item>
         <el-menu-item index="/settings">
           <font-awesome-icon icon="gear" />
           <template #title>设置</template>
@@ -78,6 +82,7 @@ import {
   faAnglesRight,
   faMoon,
   faSun,
+  faRobot,
 } from '@fortawesome/free-solid-svg-icons'
 import { useThemeStore } from '@/stores/theme'
 
@@ -92,6 +97,7 @@ library.add(
   faAnglesRight,
   faMoon,
   faSun,
+  faRobot,
 )
 
 const route = useRoute()
@@ -109,6 +115,8 @@ const breadcrumbTitle = computed(() => {
     '/dashboard': '监控面板',
     '/price-history': '价格历史',
     '/providers': '模型池',
+    '/logs': '系统日志',
+    '/ai-stats': 'AI 调用统计',
     '/settings': '设置',
   }
   return titles[route.path] || ''

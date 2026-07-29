@@ -1,3 +1,4 @@
+import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -5,6 +6,7 @@ from datetime import datetime, timedelta
 import requests
 
 from config import CHINA_TZ
+from mapper.ai_stats_mapper import AiStatsMapper
 from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
 
@@ -63,11 +65,14 @@ class ModelPool:
         self.cache_ttl = timedelta(minutes=ai_config.get("cache_ttl_minutes", 60))
         self._ai_config = ai_config
         self._cache: dict[str, tuple[datetime, ModelResult]] = {}
+        self._stats_mapper = AiStatsMapper()
+        self._stats_mapper.init_tables()
 
     def call(
         self, system_prompt: str, user_prompt: str, cache_key: str = "default"
     ) -> ModelResult:
         """多级调用入口 — 按 L1→L2→L3→L4 依次尝试"""
+        start_time = time.monotonic()
         for provider_cfg in self.providers:
             if not provider_cfg.get("api_key"):
                 logger.debug(f"跳过供应商 [{provider_cfg['name']}]：未配置 API Key")
@@ -82,6 +87,7 @@ class ModelPool:
                 if result.success:
                     logger.info(f"[{provider_cfg['name']}]/{model} 调用成功")
                     self._update_cache(cache_key, result)
+                    self._log_call(result, start_time)
                     return result
                 # L2: 同平台下一个模型
                 logger.warning(
@@ -94,7 +100,9 @@ class ModelPool:
             )
 
         # L4: 优雅降级
-        return self._graceful_degradation(cache_key)
+        result = self._graceful_degradation(cache_key)
+        self._log_call(result, start_time)
+        return result
 
     def _retry_with_backoff(
         self, provider: dict, model: str, system_prompt: str, user_prompt: str
@@ -285,3 +293,19 @@ class ModelPool:
         return ModelResult(
             success=False, error="AI 分析暂不可用：所有模型供应商均调用失败"
         )
+
+    def _log_call(self, result: ModelResult, start_time: float) -> None:
+        latency_ms = int((time.monotonic() - start_time) * 1000)
+        try:
+            self._stats_mapper.insert_log(
+                provider_name=result.provider or "unknown",
+                model_name=result.model or "unknown",
+                call_time=datetime.now(CHINA_TZ),
+                success=result.success,
+                latency_ms=latency_ms,
+                error_reason=result.error[:200] if result.error else None,
+                from_cache=result.from_cache,
+                triggered_alerts=None,
+            )
+        except sqlite3.Error:
+            logger.warning("AI 调用统计写入失败！")
