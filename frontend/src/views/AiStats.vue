@@ -55,9 +55,9 @@
       </el-col>
     </el-row>
 
-    <!-- 趋势图表 -->
+    <!-- 成功率趋势 -->
     <el-row :gutter="16" class="chart-row">
-      <el-col :span="12">
+      <el-col :span="24">
         <AiTrendChart
           :data="trendData"
           :days="trendDays"
@@ -69,7 +69,11 @@
           tooltip-label="成功率"
         />
       </el-col>
-      <el-col :span="12">
+    </el-row>
+
+    <!-- 延迟趋势 -->
+    <el-row :gutter="16" class="chart-row">
+      <el-col :span="24">
         <AiTrendChart
           :data="trendData"
           :days="trendDays"
@@ -83,11 +87,15 @@
       </el-col>
     </el-row>
 
-    <!-- 小时分布 + 排名 -->
+    <!-- 小时分布 -->
     <el-row :gutter="16" class="chart-row">
-      <el-col :span="12">
+      <el-col :span="24">
         <AiHourlyChart :data="overview?.hourly_distribution ?? []" />
       </el-col>
+    </el-row>
+
+    <!-- 模型排名 + 供应商排名 -->
+    <el-row :gutter="16" class="chart-row">
       <el-col :span="12">
         <el-card shadow="hover" class="ranking-card">
           <template #header>
@@ -113,7 +121,9 @@
             </el-table-column>
           </el-table>
         </el-card>
-        <el-card shadow="hover" class="ranking-card" style="margin-top: 16px">
+      </el-col>
+      <el-col :span="12">
+        <el-card shadow="hover" class="ranking-card">
           <template #header>
             <span class="card-title"> <font-awesome-icon icon="building" /> 供应商排名 </span>
           </template>

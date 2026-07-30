@@ -85,10 +85,13 @@ class PriceSnapshot:
 class PriceMapper:
     def __init__(self, db_file: str = PRICE_HISTORY_DB_FILE):
         self.db_file = db_file
+        self.init_table()
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_file, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA cache_size = -8000")
+        conn.execute("PRAGMA temp_store = MEMORY")
         return conn
 
     def _ensure_indexes(self, conn: sqlite3.Connection) -> None:
@@ -97,14 +100,17 @@ class PriceMapper:
             "CREATE INDEX IF NOT EXISTS idx_prices_symbol_ts ON prices(symbol, timestamp)"
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_prices_symbol ON prices(symbol)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prices_symbol_ts_price ON prices(symbol, timestamp, price)"
+        )
         conn.commit()
 
     def init_table(self):
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute("""CREATE TABLE IF NOT EXISTS prices
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                         (id INTEGER PRIMARY KEY,
+                          timestamp INTEGER NOT NULL,
                           symbol TEXT,
                           price REAL)""")
             conn.commit()
@@ -123,16 +129,17 @@ class PriceMapper:
             return False
 
     def save_price(self, symbol: str, price: float):
+        ts = int(datetime.now(CHINA_TZ).timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
                 "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
-                (symbol, price, datetime.now(CHINA_TZ)),
+                (symbol, price, ts),
             )
             conn.commit()
 
     def get_prices_in_window(self, symbol: str, hours: float) -> list[float]:
-        cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
+        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -143,9 +150,10 @@ class PriceMapper:
 
     def get_check_snapshot(self, symbol: str) -> PriceSnapshot | None:
         """一次查询获取所有检查所需数据"""
+        now = datetime.now(CHINA_TZ)
         with self._get_connection() as conn:
             c = conn.cursor()
-            cutoff_24h = datetime.now(CHINA_TZ) - timedelta(hours=24)
+            cutoff_24h = int((now - timedelta(hours=24)).timestamp())
             c.execute(
                 "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
                 (symbol, cutoff_24h),
@@ -154,8 +162,7 @@ class PriceMapper:
             if not rows:
                 return None
             prices_with_time = [
-                (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1])
-                for r in rows
+                (datetime.fromtimestamp(r[0], tz=CHINA_TZ), r[1]) for r in rows
             ]
             c.execute(
                 "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT 48",
@@ -163,36 +170,42 @@ class PriceMapper:
             )
             ma_prices = [row[0] for row in c.fetchall()]
             ma_prices.reverse()
+            cutoff_90d = int((now - timedelta(days=90)).timestamp())
             c.execute(
                 "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
-                (symbol, datetime.now(CHINA_TZ) - timedelta(days=90)),
+                (symbol, cutoff_90d),
             )
             min_3m = c.fetchone()[0]
+            cutoff_180d = int((now - timedelta(days=180)).timestamp())
             c.execute(
                 "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
-                (symbol, datetime.now(CHINA_TZ) - timedelta(days=180)),
+                (symbol, cutoff_180d),
             )
             min_6m = c.fetchone()[0]
             return PriceSnapshot(prices_with_time, ma_prices, min_3m, min_6m)
 
     def get_price_statistics(self, symbol: str, hours: float) -> dict:
-        prices = self.get_prices_in_window(symbol, hours)
-        if not prices:
-            return {}
-        return {
-            "min": min(prices),
-            "max": max(prices),
-            "avg": sum(prices) / len(prices),
-            "count": len(prices),
-            "std": self._calculate_std(prices),
-        }
-
-    def _calculate_std(self, prices: list[float]) -> float:
-        if len(prices) < 2:
-            return 0
-        avg = sum(prices) / len(prices)
-        variance = sum((p - avg) ** 2 for p in prices) / len(prices)
-        return variance**0.5
+        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT MIN(price), MAX(price), AVG(price), COUNT(*), SUM(price * price) "
+                "FROM prices WHERE symbol = ? AND timestamp > ?",
+                (symbol, cutoff),
+            )
+            row = c.fetchone()
+            if not row or row[3] == 0:
+                return {}
+            avg = row[2]
+            cnt = row[3]
+            variance = (row[4] / cnt) - (avg * avg) if cnt > 1 else 0.0
+            return {
+                "min": row[0],
+                "max": row[1],
+                "avg": avg,
+                "count": cnt,
+                "std": variance**0.5 if variance > 0 else 0.0,
+            }
 
     def get_moving_average(self, symbol: str, periods: int) -> float | None:
         with self._get_connection() as conn:
@@ -207,7 +220,7 @@ class PriceMapper:
             return sum(prices) / len(prices)
 
     def get_price_trend(self, symbol: str, hours: float) -> dict:
-        cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
+        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -245,7 +258,7 @@ class PriceMapper:
         self, symbol: str, hours: float
     ) -> list[tuple[datetime, float]]:
         """获取原始价格序列，用于最近记录等需要精确数据的场景"""
-        cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
+        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -253,15 +266,14 @@ class PriceMapper:
                 (symbol, cutoff),
             )
             return [
-                (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), r[1])
-                for r in c.fetchall()
+                (datetime.fromtimestamp(r[0], tz=CHINA_TZ), r[1]) for r in c.fetchall()
             ]
 
     def get_chart_series(
         self, symbol: str, hours: float
     ) -> list[tuple[datetime, float]]:
         """获取聚合后的价格序列，按时间范围自动降采样，用于图表渲染"""
-        cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
+        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
         bucket_sql = _resolve_bucket(hours)
         with self._get_connection() as conn:
             c = conn.cursor()
@@ -272,7 +284,7 @@ class PriceMapper:
                 (symbol, cutoff),
             )
             return [
-                (datetime.fromisoformat(r[0]).replace(tzinfo=CHINA_TZ), round(r[1], 2))
+                (datetime.fromtimestamp(r[0], tz=CHINA_TZ), round(r[1], 2))
                 for r in c.fetchall()
             ]
 
@@ -292,14 +304,14 @@ class PriceMapper:
         """仪表盘数据：总记录数 + 各品种记录数及最新价格"""
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM prices")
-            total = c.fetchone()[0]
-
             c.execute(
                 "SELECT symbol, COUNT(*) as cnt FROM prices GROUP BY symbol ORDER BY cnt DESC"
             )
+            rows = c.fetchall()
+            total = sum(r[1] for r in rows)
+
             symbol_data = []
-            for symbol, count in c.fetchall():
+            for symbol, count in rows:
                 c2 = conn.cursor()
                 c2.execute(
                     "SELECT price, timestamp FROM prices WHERE symbol=? ORDER BY timestamp DESC LIMIT 1",
@@ -311,7 +323,9 @@ class PriceMapper:
                         "symbol": symbol,
                         "count": count,
                         "latest_price": row[0] if row else None,
-                        "latest_time": row[1] if row else None,
+                        "latest_time": datetime.fromtimestamp(row[1], tz=CHINA_TZ)
+                        if row
+                        else None,
                     }
                 )
             return {"total_records": total, "symbols": symbol_data}
@@ -324,11 +338,12 @@ class PriceMapper:
             )
             conn.commit()
             count = 0
-            for symbol, price, timestamp in records:
+            for symbol, price, dt in records:
                 try:
+                    ts = int(dt.timestamp())
                     c.execute(
                         "INSERT OR IGNORE INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
-                        (symbol, price, timestamp),
+                        (symbol, price, ts),
                     )
                     if c.rowcount > 0:
                         count += 1
@@ -340,19 +355,13 @@ class PriceMapper:
 
 
 def _resolve_bucket(hours: float) -> str:
-    """根据时间范围返回 strftime 聚合表达式"""
+    """根据时间范围返回整数分桶表达式，避免 strftime 在百万行上的 CPU 开销"""
     if hours <= 24:
-        return "strftime('%Y-%m-%d %H:%M:%S', timestamp)"
+        return "timestamp"
     if hours <= 168:
-        return (
-            "strftime('%Y-%m-%d %H:', timestamp) || "
-            "printf('%02d', CAST(strftime('%M', timestamp) AS INTEGER) / 10 * 10) || ':00'"
-        )
+        return "(timestamp / 600) * 600"
     if hours <= 720:
-        return "strftime('%Y-%m-%d %H:00:00', timestamp)"
+        return "(timestamp / 3600) * 3600"
     if hours <= 2160:
-        return (
-            "strftime('%Y-%m-%d ', timestamp) || "
-            "printf('%02d', CAST(strftime('%H', timestamp) AS INTEGER) / 4 * 4) || ':00:00'"
-        )
-    return "strftime('%Y-%m-%d', timestamp)"
+        return "(timestamp / 14400) * 14400"
+    return "(timestamp / 86400) * 86400"

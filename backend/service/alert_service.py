@@ -19,6 +19,12 @@ class AlertService:
         self.alert_cooldown_minutes = 10
         self.price_change_threshold = 0.003
 
+    def refresh_config(self, symbol: str | None = None) -> None:
+        if symbol is not None:
+            self.symbol = symbol
+        self.config = self.settings.get_alert_config()
+        logger.info(f"AlertService 配置已刷新，symbol={self.symbol}")
+
     def check_all_conditions(self, current_price: float) -> tuple[list[str], list[str]]:
         alerts = []
         suggestions = []

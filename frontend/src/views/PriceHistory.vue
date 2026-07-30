@@ -37,7 +37,7 @@
       <template #header>
         <div class="chart-header">
           <span>价格走势</span>
-          <el-radio-group v-model="timeRange" @change="loadChartData">
+          <el-radio-group v-model="timeRange">
             <el-radio-button :value="1">1小时</el-radio-button>
             <el-radio-button :value="6">6小时</el-radio-button>
             <el-radio-button :value="24">24小时</el-radio-button>
@@ -104,10 +104,6 @@ const loadStats = async () => {
   } catch {
     stats.value = null
   }
-}
-
-const loadChartData = () => {
-  loadStats()
 }
 
 const onSymbolChange = () => {

@@ -21,7 +21,9 @@
         <el-card class="symbol-card" shadow="hover">
           <div class="symbol-header">
             <span class="symbol-name">{{ item.name }}</span>
-            <el-tag size="small" type="info">{{ item.symbol }}</el-tag>
+            <el-tag size="small" :type="themeStore.current === 'dark' ? 'primary' : 'info'">{{
+              item.symbol
+            }}</el-tag>
             <el-tag
               size="small"
               :type="selectedSymbol === item.symbol ? 'primary' : 'info'"
@@ -71,6 +73,7 @@
 import { ref, defineAsyncComponent } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faChartLine, faChartSimple } from '@fortawesome/free-solid-svg-icons'
+import { useThemeStore } from '@/stores/theme'
 import { usePriceData } from '@/composables/usePriceData'
 import { formatPrice } from '@/utils/format'
 import StatCard from '@/components/StatCard.vue'
@@ -79,6 +82,7 @@ const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vu
 
 library.add(faChartLine, faChartSimple)
 
+const themeStore = useThemeStore()
 const { dashboard } = usePriceData()
 const selectedSymbol = ref<string | null>(null)
 

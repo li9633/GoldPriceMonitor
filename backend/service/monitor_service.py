@@ -42,6 +42,9 @@ class MonitorService:
         ai_config = self.settings.get_ai_config()
         self.ai_check_interval_minutes = ai_config.get("check_interval_minutes", 5)
 
+        if hasattr(self, "alert_service"):
+            self.alert_service.refresh_config(self.main_symbol)
+
         self._last_settings_refresh = datetime.now(CHINA_TZ)
 
     def run(self) -> None:
