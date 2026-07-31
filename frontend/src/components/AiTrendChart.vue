@@ -16,14 +16,21 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faChartLine } from '@fortawesome/free-solid-svg-icons'
 import type { DailyTrendItem } from '@/api/modules/ai-stats'
-import { axisColor, splitColor, fillEmptyDates, formatLatency } from '@/utils/aiStatsHelpers'
+import {
+  axisColor,
+  splitColor,
+  fillEmptyDates,
+  fillEmptyTrendHours,
+  formatLatency,
+} from '@/utils/aiStatsHelpers'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 library.add(faChartLine)
 
 const props = defineProps<{
   data: DailyTrendItem[]
-  days: number
+  startDate: string
+  endDate: string
   title: string
   icon: string
   seriesKey: 'success_rate' | 'avg_latency'
@@ -37,14 +44,29 @@ let chart: echarts.ECharts | null = null
 
 function renderChart() {
   if (!chart || !props.data.length) return
-  const filled = fillEmptyDates(props.data, props.days)
-  const dates = filled.map((d) => d.date.slice(5))
-  const values = filled.map((d) => d[props.seriesKey] as number)
+  const first = props.data[0]!
+  const isHourly = first.hour !== null
+
+  let xLabels: string[]
+  let values: number[]
+  let tooltipTitle: (name: string) => string
+
+  if (isHourly) {
+    const filled = fillEmptyTrendHours(props.data)
+    xLabels = filled.map((d) => `${d.hour}:00`)
+    values = filled.map((d) => d[props.seriesKey] as number)
+    tooltipTitle = (name: string) => `${first.date} ${name}`
+  } else {
+    const filled = fillEmptyDates(props.data, props.startDate, props.endDate)
+    xLabels = filled.map((d) => d.date.slice(5))
+    values = filled.map((d) => d[props.seriesKey] as number)
+    tooltipTitle = (name: string) => name
+  }
 
   chart.setOption(
     {
       grid: { top: 10, right: 20, bottom: 30, left: 50 },
-      xAxis: { type: 'category', data: dates, axisLabel: { color: axisColor(), fontSize: 11 } },
+      xAxis: { type: 'category', data: xLabels, axisLabel: { color: axisColor(), fontSize: 11 } },
       yAxis: {
         type: 'value',
         axisLabel: { color: axisColor(), fontSize: 11, formatter: `{value}${props.yAxisLabel}` },
@@ -69,7 +91,7 @@ function renderChart() {
           if (!p) return ''
           const display =
             props.seriesKey === 'avg_latency' ? formatLatency(p.value) : `${p.value.toFixed(1)}%`
-          return `${p.name}<br/>${props.tooltipLabel}：${display}`
+          return `${tooltipTitle(p.name)}<br/>${props.tooltipLabel}：${display}`
         },
       },
     },

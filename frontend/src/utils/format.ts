@@ -24,3 +24,19 @@ export function formatDate(iso: string): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+export function toDateString(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+export function today(): string {
+  return toDateString(new Date())
+}
+
+export function offsetDate(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return toDateString(d)
+}

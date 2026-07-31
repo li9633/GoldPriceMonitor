@@ -50,7 +50,27 @@ class AiStatsMapper:
             "ON ai_call_logs(provider_name)"
         )
         conn.commit()
+        self._migrate_ai_call_logs(conn)
         conn.close()
+
+    def _migrate_ai_call_logs(self, conn: sqlite3.Connection) -> None:
+        new_columns = {
+            "raw_response": "TEXT",
+            "prompt_tokens": "INTEGER DEFAULT 0",
+            "completion_tokens": "INTEGER DEFAULT 0",
+            "total_tokens": "INTEGER DEFAULT 0",
+        }
+        c = conn.cursor()
+        existing = {row[1] for row in c.execute("PRAGMA table_info(ai_call_logs)")}
+        for col_name, col_def in new_columns.items():
+            if col_name not in existing:
+                try:
+                    c.execute(
+                        f"ALTER TABLE ai_call_logs ADD COLUMN {col_name} {col_def}"
+                    )
+                except sqlite3.OperationalError:
+                    pass
+        conn.commit()
 
     def insert_log(
         self,
@@ -95,22 +115,30 @@ class AiStatsMapper:
 
     # ==================== 统计查询 ====================
 
-    def _today_where(self) -> str:
+    def _date_range_where(self, start_date: str | None, end_date: str | None) -> str:
+        if start_date and end_date:
+            return f"date(call_time) BETWEEN '{start_date}' AND '{end_date}'"
+        if start_date:
+            return f"date(call_time) >= '{start_date}'"
+        if end_date:
+            return f"date(call_time) <= '{end_date}'"
         return "date(call_time) = date('now', 'localtime')"
 
-    def get_overview_raw(self) -> dict:
+    def get_overview_raw(
+        self, start_date: str | None = None, end_date: str | None = None
+    ) -> dict:
         conn = self._get_connection()
         c = conn.cursor()
 
-        today = self._today_where()
+        where = self._date_range_where(start_date, end_date)
 
-        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {today}")
+        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where}")
         today_total = c.fetchone()[0]
 
-        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {today} AND success=1")
+        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where} AND success=1")
         today_success = c.fetchone()[0]
 
-        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {today} AND from_cache=1")
+        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where} AND from_cache=1")
         today_cache = c.fetchone()[0]
 
         c.execute("SELECT COUNT(*) FROM ai_call_logs")
@@ -124,39 +152,39 @@ class AiStatsMapper:
         last_success_time = last_success_row[0] if last_success_row else None
 
         c.execute(
-            f"SELECT COALESCE(AVG(latency_ms), 0) FROM ai_call_logs WHERE {today} AND latency_ms IS NOT NULL"
+            f"SELECT COALESCE(AVG(latency_ms), 0) FROM ai_call_logs WHERE {where} AND latency_ms IS NOT NULL"
         )
         avg_latency = c.fetchone()[0]
 
         c.execute(
-            f"SELECT COUNT(*) FROM ai_call_logs WHERE {today} AND latency_ms > 30000"
+            f"SELECT COUNT(*) FROM ai_call_logs WHERE {where} AND latency_ms > 30000"
         )
         timeout_count = c.fetchone()[0]
 
         c.execute(
             f"SELECT provider_name, model_name, COUNT(*) AS cnt "
-            f"FROM ai_call_logs WHERE {today} "
+            f"FROM ai_call_logs WHERE {where} "
             f"GROUP BY provider_name, model_name ORDER BY cnt DESC LIMIT 1"
         )
         top_model_row = c.fetchone()
 
         c.execute(
             f"SELECT provider_name, COUNT(*) AS cnt "
-            f"FROM ai_call_logs WHERE {today} "
+            f"FROM ai_call_logs WHERE {where} "
             f"GROUP BY provider_name ORDER BY cnt DESC LIMIT 1"
         )
         top_provider_row = c.fetchone()
 
         c.execute(
             f"SELECT error_reason, COUNT(*) AS cnt "
-            f"FROM ai_call_logs WHERE {today} AND success=0 AND error_reason IS NOT NULL "
+            f"FROM ai_call_logs WHERE {where} AND success=0 AND error_reason IS NOT NULL "
             f"GROUP BY error_reason ORDER BY cnt DESC LIMIT 5"
         )
         top_failures = [{"reason": r[0], "count": r[1]} for r in c.fetchall()]
 
         c.execute(
             f"SELECT strftime('%H', call_time) AS hour, COUNT(*) AS cnt "
-            f"FROM ai_call_logs WHERE {today} "
+            f"FROM ai_call_logs WHERE {where} "
             f"GROUP BY hour ORDER BY hour"
         )
         hourly = [{"hour": r[0], "count": r[1]} for r in c.fetchall()]
@@ -166,7 +194,7 @@ class AiStatsMapper:
             f"COUNT(*) AS total, "
             f"ROUND(100.0 * SUM(success) / COUNT(*), 1) AS success_rate, "
             f"COALESCE(AVG(latency_ms), 0) AS avg_latency "
-            f"FROM ai_call_logs WHERE {today} "
+            f"FROM ai_call_logs WHERE {where} "
             f"GROUP BY provider_name, model_name ORDER BY total DESC"
         )
         model_ranking = [
@@ -185,7 +213,7 @@ class AiStatsMapper:
             f"COUNT(*) AS total, "
             f"ROUND(100.0 * SUM(success) / COUNT(*), 1) AS success_rate, "
             f"COALESCE(AVG(latency_ms), 0) AS avg_latency "
-            f"FROM ai_call_logs WHERE {today} "
+            f"FROM ai_call_logs WHERE {where} "
             f"GROUP BY provider_name ORDER BY total DESC"
         )
         provider_ranking = [
@@ -200,14 +228,14 @@ class AiStatsMapper:
 
         c.execute(
             "SELECT latency_ms FROM ai_call_logs "
-            f"WHERE {today} AND latency_ms IS NOT NULL "
+            f"WHERE {where} AND latency_ms IS NOT NULL "
             "ORDER BY latency_ms"
         )
         latencies = [r[0] for r in c.fetchall()]
 
         c.execute(
             f"SELECT provider_name, COUNT(*) AS cnt "
-            f"FROM ai_call_logs WHERE {today} AND success=0 "
+            f"FROM ai_call_logs WHERE {where} AND success=0 "
             f"GROUP BY provider_name ORDER BY cnt DESC"
         )
         provider_failures = [{"provider": r[0], "count": r[1]} for r in c.fetchall()]
@@ -257,42 +285,74 @@ class AiStatsMapper:
                 break
         return count
 
-    def get_daily_trend(self, days: int = 7) -> list[dict]:
+    def get_daily_trend(
+        self, start_date: str | None = None, end_date: str | None = None
+    ) -> list[dict]:
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute(
-            "SELECT date(call_time) AS d, "
-            "COUNT(*) AS total, "
-            "SUM(success) AS success_count, "
-            "COALESCE(AVG(latency_ms), 0) AS avg_latency "
-            "FROM ai_call_logs "
-            "WHERE call_time >= datetime('now', 'localtime', ?) "
-            "GROUP BY d ORDER BY d",
-            (f"-{days} days",),
-        )
-        result = [
-            {
-                "date": r[0],
-                "total": r[1],
-                "success_count": r[2],
-                "avg_latency": r[3],
-            }
-            for r in c.fetchall()
-        ]
+        where = self._date_range_where(start_date, end_date)
+        single_day = bool(start_date and start_date == end_date)
+        if single_day:
+            c.execute(
+                "SELECT strftime('%H', call_time) AS h, "
+                "COUNT(*) AS total, "
+                "SUM(success) AS success_count, "
+                "COALESCE(AVG(latency_ms), 0) AS avg_latency "
+                "FROM ai_call_logs "
+                f"WHERE {where} "
+                "GROUP BY h ORDER BY h"
+            )
+            result = [
+                {
+                    "date": start_date,
+                    "hour": r[0],
+                    "total": r[1],
+                    "success_count": r[2],
+                    "avg_latency": r[3],
+                }
+                for r in c.fetchall()
+            ]
+        else:
+            c.execute(
+                "SELECT date(call_time) AS d, "
+                "COUNT(*) AS total, "
+                "SUM(success) AS success_count, "
+                "COALESCE(AVG(latency_ms), 0) AS avg_latency "
+                "FROM ai_call_logs "
+                f"WHERE {where} "
+                "GROUP BY d ORDER BY d"
+            )
+            result = [
+                {
+                    "date": r[0],
+                    "hour": None,
+                    "total": r[1],
+                    "success_count": r[2],
+                    "avg_latency": r[3],
+                }
+                for r in c.fetchall()
+            ]
         conn.close()
         return result
 
-    def get_recent_logs(self, page: int, page_size: int) -> tuple[list[dict], int]:
+    def get_recent_logs(
+        self,
+        page: int,
+        page_size: int,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> tuple[list[dict], int]:
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM ai_call_logs")
+        where = self._date_range_where(start_date, end_date)
+        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where}")
         total = c.fetchone()[0]
         offset = (page - 1) * page_size
         c.execute(
             "SELECT id, provider_name, model_name, call_time, success, "
             "latency_ms, error_reason, from_cache, triggered_alerts, raw_response, "
             "prompt_tokens, completion_tokens, total_tokens "
-            "FROM ai_call_logs ORDER BY call_time DESC LIMIT ? OFFSET ?",
+            f"FROM ai_call_logs WHERE {where} ORDER BY call_time DESC LIMIT ? OFFSET ?",
             (page_size, offset),
         )
         rows = [
@@ -316,15 +376,13 @@ class AiStatsMapper:
         conn.close()
         return rows, total
 
-    def get_token_overview(self, days: int = 1) -> dict:
+    def get_token_overview(
+        self, start_date: str | None = None, end_date: str | None = None
+    ) -> dict:
         """Token 消耗概览"""
         conn = self._get_connection()
         c = conn.cursor()
-        where = (
-            "date(call_time) = date('now', 'localtime')"
-            if days == 1
-            else (f"call_time >= datetime('now', 'localtime', '-{days} days')")
-        )
+        where = self._date_range_where(start_date, end_date)
         c.execute(
             f"SELECT "
             f"COALESCE(SUM(prompt_tokens), 0), "
@@ -342,15 +400,13 @@ class AiStatsMapper:
             "calls": row[3],
         }
 
-    def get_token_by_model(self, days: int = 1) -> list[dict]:
+    def get_token_by_model(
+        self, start_date: str | None = None, end_date: str | None = None
+    ) -> list[dict]:
         """按模型/供应商分组的 Token 消耗"""
         conn = self._get_connection()
         c = conn.cursor()
-        where = (
-            "date(call_time) = date('now', 'localtime')"
-            if days == 1
-            else (f"call_time >= datetime('now', 'localtime', '-{days} days')")
-        )
+        where = self._date_range_where(start_date, end_date)
         c.execute(
             f"SELECT provider_name, model_name, "
             f"COALESCE(SUM(prompt_tokens), 0), "
@@ -374,30 +430,57 @@ class AiStatsMapper:
         conn.close()
         return rows
 
-    def get_token_daily_trend(self, days: int = 7) -> list[dict]:
-        """每日 Token 消耗趋势"""
+    def get_token_daily_trend(
+        self, start_date: str | None = None, end_date: str | None = None
+    ) -> list[dict]:
+        """Token 消耗趋势（单天按小时，多天按日期）"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute(
-            "SELECT date(call_time) AS d, "
-            "COALESCE(SUM(prompt_tokens), 0), "
-            "COALESCE(SUM(completion_tokens), 0), "
-            "COALESCE(SUM(total_tokens), 0), "
-            "COUNT(*) AS calls "
-            "FROM ai_call_logs "
-            "WHERE call_time >= datetime('now', 'localtime', ?) AND success=1 "
-            "GROUP BY d ORDER BY d",
-            (f"-{days} days",),
-        )
-        rows = [
-            {
-                "date": r[0],
-                "prompt_tokens": r[1],
-                "completion_tokens": r[2],
-                "total_tokens": r[3],
-                "calls": r[4],
-            }
-            for r in c.fetchall()
-        ]
+        where = self._date_range_where(start_date, end_date)
+        single_day = bool(start_date and start_date == end_date)
+        if single_day:
+            c.execute(
+                "SELECT strftime('%H', call_time) AS h, "
+                "COALESCE(SUM(prompt_tokens), 0), "
+                "COALESCE(SUM(completion_tokens), 0), "
+                "COALESCE(SUM(total_tokens), 0), "
+                "COUNT(*) AS calls "
+                "FROM ai_call_logs "
+                f"WHERE {where} AND success=1 "
+                "GROUP BY h ORDER BY h"
+            )
+            rows = [
+                {
+                    "date": start_date,
+                    "hour": r[0],
+                    "prompt_tokens": r[1],
+                    "completion_tokens": r[2],
+                    "total_tokens": r[3],
+                    "calls": r[4],
+                }
+                for r in c.fetchall()
+            ]
+        else:
+            c.execute(
+                "SELECT date(call_time) AS d, "
+                "COALESCE(SUM(prompt_tokens), 0), "
+                "COALESCE(SUM(completion_tokens), 0), "
+                "COALESCE(SUM(total_tokens), 0), "
+                "COUNT(*) AS calls "
+                "FROM ai_call_logs "
+                f"WHERE {where} AND success=1 "
+                "GROUP BY d ORDER BY d"
+            )
+            rows = [
+                {
+                    "date": r[0],
+                    "hour": None,
+                    "prompt_tokens": r[1],
+                    "completion_tokens": r[2],
+                    "total_tokens": r[3],
+                    "calls": r[4],
+                }
+                for r in c.fetchall()
+            ]
         conn.close()
         return rows

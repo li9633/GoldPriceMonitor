@@ -12,12 +12,15 @@
       :key="provider.id"
       :provider="provider"
       :models="getProviderModels(provider.name)"
+      :pricing-map="pricingMap"
       @edit="openEditDialog"
       @delete="handleDelete"
       @add-model="handleAddModel"
       @edit-model="handleEditModel"
       @delete-model="handleDeleteModel"
       @move-model="handleMoveModel"
+      @upsert-pricing="handleUpsertPricing"
+      @delete-pricing="handleDeletePricing"
     />
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑供应商' : '新增供应商'" width="500px">
@@ -59,12 +62,15 @@ import type {
   ProviderModelCreate,
   ProviderModelUpdate,
 } from '@/api/modules/aiProvider'
+import { pricingApi } from '@/api/modules/pricing'
+import type { PricingItem, PricingUpsert } from '@/api/modules/pricing'
 import ProviderCard from '@/components/ProviderCard.vue'
 
 library.add(faServer, faPlus)
 
 const providers = ref<ModelProvider[]>([])
 const modelsMap = ref<Record<string, ProviderModel[]>>({})
+const pricingMap = ref<Record<string, PricingItem>>({})
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingName = ref('')
@@ -90,6 +96,20 @@ const loadAll = async () => {
     }),
   )
   modelsMap.value = map
+  await loadPricing()
+}
+
+const loadPricing = async () => {
+  try {
+    const list = await pricingApi.list()
+    const map: Record<string, PricingItem> = {}
+    for (const item of list) {
+      map[`${item.provider_name}/${item.model_name}`] = item
+    }
+    pricingMap.value = map
+  } catch {
+    // ignore
+  }
 }
 
 const openCreateDialog = () => {
@@ -196,6 +216,35 @@ const findModelById = (id: number): ProviderModel | null => {
     if (found) return found
   }
   return null
+}
+
+const handleUpsertPricing = async (
+  providerName: string,
+  modelName: string,
+  data: PricingUpsert,
+) => {
+  try {
+    await pricingApi.upsert(providerName, modelName, data)
+    ElMessage.success('定价已保存')
+    await loadPricing()
+  } catch {
+    // error handled in interceptor
+  }
+}
+
+const handleDeletePricing = async (pricingId: number) => {
+  try {
+    await ElMessageBox.confirm('确定要删除该定价吗？', '确认删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await pricingApi.remove(pricingId)
+    ElMessage.success('定价已删除')
+    await loadPricing()
+  } catch {
+    // 用户取消或错误已在 request 拦截器中处理
+  }
 }
 
 onMounted(loadAll)

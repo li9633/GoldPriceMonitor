@@ -18,11 +18,23 @@
           :active-value="true"
           :inactive-value="false"
         />
-        <el-button text @click="refreshOverview">
-          <font-awesome-icon icon="rotate" /> 刷新
-        </el-button>
+        <el-button text @click="refreshAll"> <font-awesome-icon icon="rotate" /> 刷新 </el-button>
       </div>
       <div v-if="loading" class="loading-bar"></div>
+    </div>
+
+    <!-- 日期筛选栏 -->
+    <div class="date-filter">
+      <span class="filter-label"><font-awesome-icon icon="calendar" /> 日期范围</span>
+      <el-radio-group v-model="dateRange" @change="onDateRangeChange">
+        <el-radio-button value="yesterday">昨日</el-radio-button>
+        <el-radio-button value="today">今日</el-radio-button>
+        <el-radio-button value="7d">近7天</el-radio-button>
+        <el-radio-button value="30d">30天</el-radio-button>
+        <el-radio-button value="80d">80天</el-radio-button>
+        <el-radio-button value="180d">180天</el-radio-button>
+        <el-radio-button value="1y">一年</el-radio-button>
+      </el-radio-group>
     </div>
 
     <!-- 统计卡片 -->
@@ -58,12 +70,6 @@
     <!-- Token 用量统计 -->
     <div class="section-header">
       <h2 class="section-title"><font-awesome-icon icon="coins" /> Token 用量统计</h2>
-      <el-select v-model="tokenDays" class="token-days-select" @change="fetchTokenStats">
-        <el-option :value="1" label="今日" />
-        <el-option :value="7" label="近7天" />
-        <el-option :value="30" label="近30天" />
-        <el-option :value="90" label="近90天" />
-      </el-select>
     </div>
 
     <el-row :gutter="16" class="stat-row">
@@ -88,7 +94,7 @@
     </el-row>
 
     <el-row :gutter="16" class="chart-row">
-      <el-col :span="12">
+      <el-col :span="24">
         <el-card shadow="hover" class="ranking-card">
           <template #header>
             <span class="card-title">
@@ -126,10 +132,14 @@
           </el-table>
         </el-card>
       </el-col>
-      <el-col :span="12">
+    </el-row>
+
+    <el-row :gutter="16" class="chart-row">
+      <el-col :span="24">
         <TokenTrendChart
           :data="tokenTrend"
-          :days="tokenDays"
+          :start-date="dateParams.start_date"
+          :end-date="dateParams.end_date"
           title="Token 趋势"
           icon="chart-line"
         />
@@ -141,8 +151,9 @@
       <el-col :span="24">
         <AiTrendChart
           :data="trendData"
-          :days="trendDays"
-          title="成功率趋势（近7天）"
+          :start-date="dateParams.start_date"
+          :end-date="dateParams.end_date"
+          title="成功率趋势"
           icon="chart-line"
           series-key="success_rate"
           color="#67c23a"
@@ -157,8 +168,9 @@
       <el-col :span="24">
         <AiTrendChart
           :data="trendData"
-          :days="trendDays"
-          title="延迟趋势（近7天）"
+          :start-date="dateParams.start_date"
+          :end-date="dateParams.end_date"
+          title="延迟趋势"
           icon="chart-line"
           series-key="avg_latency"
           color="#409eff"
@@ -237,7 +249,7 @@
     />
 
     <!-- 调用日志 -->
-    <AiCallLogs />
+    <AiCallLogs :date-params="dateParams" />
   </div>
 </template>
 
@@ -254,6 +266,7 @@ import {
   faBuilding,
   faCoins,
   faTableList,
+  faCalendar,
 } from '@fortawesome/free-solid-svg-icons'
 import { aiStatsApi } from '@/api/modules/ai-stats'
 import type {
@@ -262,6 +275,7 @@ import type {
   TokenOverview,
   TokenByModel,
   TokenTrendItem,
+  DateParams,
 } from '@/api/modules/ai-stats'
 import StatCard from '@/components/StatCard.vue'
 import AiTrendChart from '@/components/AiTrendChart.vue'
@@ -270,6 +284,7 @@ import AiFailureCharts from '@/components/AiFailureCharts.vue'
 import AiCallLogs from '@/components/AiCallLogs.vue'
 import TokenTrendChart from '@/components/TokenTrendChart.vue'
 import { formatLatency, rateColor, latencyColor } from '@/utils/aiStatsHelpers'
+import { today, offsetDate } from '@/utils/format'
 
 library.add(
   faRobot,
@@ -280,21 +295,47 @@ library.add(
   faBuilding,
   faCoins,
   faTableList,
+  faCalendar,
 )
+
+// —— Date filter ——
+const dateRange = ref('today')
+
+const dateParams = computed<DateParams>(() => {
+  const t = today()
+  switch (dateRange.value) {
+    case 'yesterday': {
+      const d = offsetDate(-1)
+      return { start_date: d, end_date: d }
+    }
+    case 'today':
+      return { start_date: t, end_date: t }
+    case '7d':
+      return { start_date: offsetDate(-7), end_date: t }
+    case '30d':
+      return { start_date: offsetDate(-30), end_date: t }
+    case '80d':
+      return { start_date: offsetDate(-80), end_date: t }
+    case '180d':
+      return { start_date: offsetDate(-180), end_date: t }
+    case '1y':
+      return { start_date: offsetDate(-365), end_date: t }
+    default:
+      return { start_date: t, end_date: t }
+  }
+})
 
 // —— State ——
 const overview = ref<AiStatsOverview | null>(null)
 const trendData = ref<DailyTrendItem[]>([])
 const loading = ref(false)
 const autoRefresh = ref(true)
-const trendDays = ref(7)
 
 const showAlert = computed(() => (overview.value?.consecutive_failures ?? 0) > 0)
 
 const tokenOverview = ref<TokenOverview | null>(null)
 const tokenByModel = ref<TokenByModel[]>([])
 const tokenTrend = ref<TokenTrendItem[]>([])
-const tokenDays = ref(1)
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
@@ -302,7 +343,7 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 async function refreshOverview() {
   loading.value = true
   try {
-    overview.value = await aiStatsApi.getOverview()
+    overview.value = await aiStatsApi.getOverview(dateParams.value)
   } catch {
     ElMessage.error('获取统计数据失败')
   } finally {
@@ -312,7 +353,7 @@ async function refreshOverview() {
 
 async function fetchTrend() {
   try {
-    trendData.value = await aiStatsApi.getTrend(trendDays.value)
+    trendData.value = await aiStatsApi.getTrend(dateParams.value)
   } catch {
     // ignore
   }
@@ -321,9 +362,9 @@ async function fetchTrend() {
 async function fetchTokenStats() {
   try {
     const [overview, byModel, trend] = await Promise.all([
-      aiStatsApi.getTokenOverview(tokenDays.value),
-      aiStatsApi.getTokenByModel(tokenDays.value),
-      aiStatsApi.getTokenTrend(tokenDays.value),
+      aiStatsApi.getTokenOverview(dateParams.value),
+      aiStatsApi.getTokenByModel(dateParams.value),
+      aiStatsApi.getTokenTrend(dateParams.value),
     ])
     tokenOverview.value = overview
     tokenByModel.value = byModel
@@ -350,7 +391,7 @@ watch(
   autoRefresh,
   (val) => {
     if (val) {
-      refreshTimer = setInterval(refreshOverview, 30000)
+      refreshTimer = setInterval(refreshAll, 30000)
     } else if (refreshTimer) {
       clearInterval(refreshTimer)
       refreshTimer = null
@@ -359,10 +400,18 @@ watch(
   { immediate: true },
 )
 
-onMounted(async () => {
+async function refreshAll() {
   await refreshOverview()
   await fetchTrend()
   await fetchTokenStats()
+}
+
+function onDateRangeChange() {
+  refreshAll()
+}
+
+onMounted(async () => {
+  await refreshAll()
 })
 
 onUnmounted(() => {
@@ -427,6 +476,24 @@ onUnmounted(() => {
   }
 }
 
+.date-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+
+  .filter-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -438,10 +505,6 @@ onUnmounted(() => {
     font-size: 18px;
     font-weight: 600;
     margin: 0;
-  }
-
-  .token-days-select {
-    width: 120px;
   }
 }
 

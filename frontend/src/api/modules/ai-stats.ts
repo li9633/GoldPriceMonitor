@@ -33,6 +33,7 @@ export interface AiStatsOverview {
 
 export interface DailyTrendItem {
   date: string
+  hour: string | null
   total: number
   success_count: number
   success_rate: number
@@ -49,6 +50,10 @@ export interface AiCallLogItem {
   error_reason: string | null
   from_cache: boolean
   triggered_alerts: string | null
+  raw_response: string | null
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
 }
 
 export interface AiCallLogsResponse {
@@ -78,6 +83,7 @@ export interface TokenByModel {
 
 export interface TokenTrendItem {
   date: string
+  hour: string | null
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
@@ -85,25 +91,30 @@ export interface TokenTrendItem {
   estimated_cost: number
 }
 
+export interface DateParams {
+  start_date: string
+  end_date: string
+}
+
 export const aiStatsApi = {
-  getOverview() {
-    return request.get<AiStatsOverview>('/ai-stats/overview')
+  getOverview(params: DateParams) {
+    return request.get<AiStatsOverview>('/ai-stats/overview', { params })
   },
-  getTrend(days = 7) {
-    return request.get<DailyTrendItem[]>('/ai-stats/trend', { params: { days } })
+  getTrend(params: DateParams) {
+    return request.get<DailyTrendItem[]>('/ai-stats/trend', { params })
   },
-  getLogs(page = 1, pageSize = 20) {
+  getLogs(page = 1, pageSize = 20, dateParams?: DateParams) {
     return request.get<AiCallLogsResponse>('/ai-stats/logs', {
-      params: { page, page_size: pageSize },
+      params: { page, page_size: pageSize, ...dateParams },
     })
   },
-  getTokenOverview(days = 1) {
-    return request.get<TokenOverview>('/ai-stats/tokens/overview', { params: { days } })
+  getTokenOverview(params: DateParams) {
+    return request.get<TokenOverview>('/ai-stats/tokens/overview', { params })
   },
-  getTokenByModel(days = 1) {
-    return request.get<TokenByModel[]>('/ai-stats/tokens/by-model', { params: { days } })
+  getTokenByModel(params: DateParams) {
+    return request.get<TokenByModel[]>('/ai-stats/tokens/by-model', { params })
   },
-  getTokenTrend(days = 7) {
-    return request.get<TokenTrendItem[]>('/ai-stats/tokens/trend', { params: { days } })
+  getTokenTrend(params: DateParams) {
+    return request.get<TokenTrendItem[]>('/ai-stats/tokens/trend', { params })
   },
 }

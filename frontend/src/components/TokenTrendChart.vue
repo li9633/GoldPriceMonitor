@@ -16,14 +16,20 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faChartLine } from '@fortawesome/free-solid-svg-icons'
 import type { TokenTrendItem } from '@/api/modules/ai-stats'
-import { axisColor, splitColor } from '@/utils/aiStatsHelpers'
+import {
+  axisColor,
+  splitColor,
+  fillEmptyTokenDates,
+  fillEmptyTokenHours,
+} from '@/utils/aiStatsHelpers'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 library.add(faChartLine)
 
 const props = defineProps<{
   data: TokenTrendItem[]
-  days: number
+  startDate: string
+  endDate: string
   title: string
   icon: string
 }>()
@@ -39,22 +45,42 @@ function formatTokenNum(n: number): string {
 
 function renderChart() {
   if (!chart || !props.data.length) return
-  const dates = props.data.map((d) => d.date.slice(5))
-  const promptData = props.data.map((d) => d.prompt_tokens)
-  const completionData = props.data.map((d) => d.completion_tokens)
-  const totalData = props.data.map((d) => d.total_tokens)
+  const first = props.data[0]!
+  const isHourly = first.hour !== null
+
+  let xLabels: string[]
+  let promptData: number[]
+  let completionData: number[]
+  let totalData: number[]
+
+  if (isHourly) {
+    const filled = fillEmptyTokenHours(props.data)
+    xLabels = filled.map((d) => `${d.hour}:00`)
+    promptData = filled.map((d) => d.prompt_tokens)
+    completionData = filled.map((d) => d.completion_tokens)
+    totalData = filled.map((d) => d.total_tokens)
+  } else {
+    const filled = fillEmptyTokenDates(props.data, props.startDate, props.endDate)
+    xLabels = filled.map((d) => d.date.slice(5))
+    promptData = filled.map((d) => d.prompt_tokens)
+    completionData = filled.map((d) => d.completion_tokens)
+    totalData = filled.map((d) => d.total_tokens)
+  }
+
+  const tooltipTitle = (name: string) => (isHourly ? `${first.date} ${name}` : name)
 
   chart.setOption(
     {
       grid: { top: 10, right: 20, bottom: 30, left: 60 },
       legend: {
         data: ['输入Token', '输出Token', '总Token'],
-        bottom: 0,
+        top: 0,
+        right: 0,
         textStyle: { color: axisColor(), fontSize: 11 },
       },
       xAxis: {
         type: 'category',
-        data: dates,
+        data: xLabels,
         axisLabel: { color: axisColor(), fontSize: 11 },
       },
       yAxis: {
@@ -101,7 +127,7 @@ function renderChart() {
       tooltip: {
         trigger: 'axis',
         formatter: (params: { seriesName: string; value: number; name: string }[]) => {
-          let html = params[0]?.name ?? ''
+          let html = tooltipTitle(params[0]?.name ?? '')
           params.forEach((p) => {
             html += `<br/>${p.seriesName}：${p.value.toLocaleString()}`
           })
@@ -134,6 +160,6 @@ onUnmounted(() => {
 
 .chart-container {
   width: 100%;
-  height: 280px;
+  height: 260px;
 }
 </style>

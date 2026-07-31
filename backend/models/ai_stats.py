@@ -69,6 +69,7 @@ class AiStatsOverview(BaseModel):
 
 class DailyTrendItem(BaseModel):
     date: str
+    hour: str | None = None
     total: int
     success_count: int
     success_rate: float
@@ -111,6 +112,7 @@ class TokenByModel(BaseModel):
 
 class TokenDailyTrend(BaseModel):
     date: str
+    hour: str | None = None
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int

@@ -26,9 +26,17 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column label="失败原因" prop="error_reason" min-width="160">
+      <el-table-column label="失败原因" prop="error_reason" min-width="140">
         <template #default="{ row }">
           <span class="error-reason">{{ row.error_reason || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="Token" width="120" align="right">
+        <template #default="{ row }">
+          <span v-if="row.total_tokens" class="token-cell">
+            {{ row.total_tokens.toLocaleString() }}
+          </span>
+          <span v-else class="text-muted">-</span>
         </template>
       </el-table-column>
       <el-table-column label="缓存" width="60" align="center">
@@ -63,10 +71,14 @@ import {
   faBoxArchive,
 } from '@fortawesome/free-solid-svg-icons'
 import { aiStatsApi } from '@/api/modules/ai-stats'
-import type { AiCallLogItem } from '@/api/modules/ai-stats'
+import type { AiCallLogItem, DateParams } from '@/api/modules/ai-stats'
 import { latencyColor } from '@/utils/aiStatsHelpers'
 
 library.add(faList, faCircleCheck, faCircleXmark, faBoxArchive)
+
+const props = defineProps<{
+  dateParams: DateParams
+}>()
 
 const items = ref<AiCallLogItem[]>([])
 const total = ref(0)
@@ -75,7 +87,7 @@ const pageSize = ref(20)
 
 async function fetchData() {
   try {
-    const res = await aiStatsApi.getLogs(page.value, pageSize.value)
+    const res = await aiStatsApi.getLogs(page.value, pageSize.value, props.dateParams)
     items.value = res.items
     total.value = res.total
   } catch {
@@ -87,6 +99,16 @@ function onPageSizeChange() {
   page.value = 1
   fetchData()
 }
+
+import { watch } from 'vue'
+
+watch(
+  () => props.dateParams,
+  () => {
+    page.value = 1
+    fetchData()
+  },
+)
 
 onMounted(fetchData)
 </script>
@@ -115,6 +137,11 @@ onMounted(fetchData)
 
 .text-muted {
   color: var(--el-text-color-placeholder);
+}
+
+.token-cell {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
 }
 
 .pagination-bar {

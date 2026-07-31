@@ -49,9 +49,11 @@
             :model="model"
             :is-first="index === 0"
             :is-last="index === sortedModels.length - 1"
+            :pricing="getModelPricing(model)"
             @move-up="(id: number) => $emit('move-model', id, 'up')"
             @move-down="(id: number) => $emit('move-model', id, 'down')"
             @edit="openEditModel"
+            @edit-pricing="openEditPricing"
             @delete="(m: ProviderModel) => $emit('delete-model', m)"
           />
         </div>
@@ -76,6 +78,49 @@
         <el-button type="primary" @click="handleModelSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="pricingDialogVisible"
+      :title="pricingModel ? '编辑定价' : '新增定价'"
+      width="480px"
+    >
+      <el-form :model="pricingForm" label-width="120px">
+        <el-form-item label="供应商">
+          <el-input :model-value="provider.name" disabled />
+        </el-form-item>
+        <el-form-item label="模型名称">
+          <el-input :model-value="pricingModel?.model_name" disabled />
+        </el-form-item>
+        <el-form-item label="输入价格">
+          <el-input-number v-model="pricingForm.input_price" :min="0" :precision="4" :step="0.01" />
+          <span class="unit">元/百万Token</span>
+        </el-form-item>
+        <el-form-item label="输出价格">
+          <el-input-number
+            v-model="pricingForm.output_price"
+            :min="0"
+            :precision="4"
+            :step="0.01"
+          />
+          <span class="unit">元/百万Token</span>
+        </el-form-item>
+        <el-form-item label="货币单位">
+          <el-input v-model="pricingForm.currency" placeholder="CNY" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="pricingDialogVisible = false">取消</el-button>
+        <el-button
+          v-if="pricingModel && pricingMap[`${provider.name}/${pricingModel.model_name}`]"
+          type="danger"
+          plain
+          @click="handleDeletePricing"
+        >
+          删除定价
+        </el-button>
+        <el-button type="primary" @click="handlePricingSubmit">确定</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -96,6 +141,7 @@ import type {
   ProviderModelCreate,
   ProviderModelUpdate,
 } from '@/api/modules/aiProvider'
+import type { PricingItem, PricingUpsert } from '@/api/modules/pricing'
 import ModelItem from '@/components/ModelItem.vue'
 
 library.add(faChevronDown, faChevronRight, faPen, faTrash, faPlus, faCube)
@@ -103,6 +149,7 @@ library.add(faChevronDown, faChevronRight, faPen, faTrash, faPlus, faCube)
 const props = defineProps<{
   provider: ModelProvider
   models: ProviderModel[]
+  pricingMap: Record<string, PricingItem>
 }>()
 
 const emit = defineEmits<{
@@ -112,6 +159,8 @@ const emit = defineEmits<{
   'edit-model': [providerName: string, modelId: number, data: ProviderModelUpdate]
   'delete-model': [model: ProviderModel]
   'move-model': [modelId: number, direction: 'up' | 'down']
+  'upsert-pricing': [providerName: string, modelName: string, data: PricingUpsert]
+  'delete-pricing': [pricingId: number]
 }>()
 
 const expanded = ref(true)
@@ -159,6 +208,53 @@ const handleModelSubmit = () => {
     emit('add-model', props.provider.name, { ...modelForm.value })
   }
   modelDialogVisible.value = false
+}
+
+// —— Pricing ——
+const pricingDialogVisible = ref(false)
+const pricingModel = ref<ProviderModel | null>(null)
+const pricingForm = ref<PricingUpsert & { currency: string }>({
+  input_price: 0,
+  output_price: 0,
+  currency: 'CNY',
+})
+
+const getModelPricing = (model: ProviderModel): PricingItem | null => {
+  return props.pricingMap[`${props.provider.name}/${model.model_name}`] ?? null
+}
+
+const openEditPricing = (model: ProviderModel) => {
+  pricingModel.value = model
+  const existing = getModelPricing(model)
+  if (existing) {
+    pricingForm.value = {
+      input_price: existing.input_price,
+      output_price: existing.output_price,
+      currency: existing.currency,
+    }
+  } else {
+    pricingForm.value = { input_price: 0, output_price: 0, currency: 'CNY' }
+  }
+  pricingDialogVisible.value = true
+}
+
+const handlePricingSubmit = () => {
+  if (!pricingModel.value) return
+  emit('upsert-pricing', props.provider.name, pricingModel.value.model_name, {
+    input_price: pricingForm.value.input_price,
+    output_price: pricingForm.value.output_price,
+    currency: pricingForm.value.currency,
+  })
+  pricingDialogVisible.value = false
+}
+
+const handleDeletePricing = () => {
+  if (!pricingModel.value) return
+  const existing = getModelPricing(pricingModel.value)
+  if (existing) {
+    emit('delete-pricing', existing.id)
+  }
+  pricingDialogVisible.value = false
 }
 </script>
 
@@ -229,6 +325,12 @@ const handleModelSubmit = () => {
       font-size: 28px;
       opacity: 0.4;
     }
+  }
+
+  .unit {
+    margin-left: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
   }
 }
 </style>

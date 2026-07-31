@@ -1,4 +1,5 @@
-import type { DailyTrendItem } from '@/api/modules/ai-stats'
+import type { DailyTrendItem, TokenTrendItem } from '@/api/modules/ai-stats'
+import { toDateString } from '@/utils/format'
 
 export function isDark(): boolean {
   return document.documentElement.getAttribute('data-theme') === 'dark'
@@ -29,15 +30,33 @@ export function latencyColor(ms: number): string {
   return '#f56c6c'
 }
 
-export function fillEmptyDates(data: DailyTrendItem[], days: number): DailyTrendItem[] {
+export function getDaysBetween(start: string, end: string): number {
+  const diff = new Date(end).getTime() - new Date(start).getTime()
+  return Math.round(diff / (1000 * 60 * 60 * 24)) + 1
+}
+
+export function fillEmptyDates(
+  data: DailyTrendItem[],
+  startDate: string,
+  endDate: string,
+): DailyTrendItem[] {
+  const days = getDaysBetween(startDate, endDate)
   const result: DailyTrendItem[] = []
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    const dateStr = d.toISOString().slice(0, 10)
+  const start = new Date(startDate)
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start)
+    d.setDate(d.getDate() + i)
+    const dateStr = toDateString(d)
     const found = data.find((item) => item.date === dateStr)
     result.push(
-      found || { date: dateStr, total: 0, success_count: 0, success_rate: 0, avg_latency: 0 },
+      found || {
+        date: dateStr,
+        hour: null,
+        total: 0,
+        success_count: 0,
+        success_rate: 0,
+        avg_latency: 0,
+      },
     )
   }
   return result
@@ -50,4 +69,71 @@ export function fillEmptyHours(data: { hour: string; count: number }[]): number[
     if (h >= 0 && h < 24) counts[h] = item.count
   })
   return counts
+}
+
+export function fillEmptyTokenDates(
+  data: TokenTrendItem[],
+  startDate: string,
+  endDate: string,
+): TokenTrendItem[] {
+  const days = getDaysBetween(startDate, endDate)
+  const result: TokenTrendItem[] = []
+  const start = new Date(startDate)
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start)
+    d.setDate(d.getDate() + i)
+    const dateStr = toDateString(d)
+    const found = data.find((item) => item.date === dateStr)
+    result.push(
+      found || {
+        date: dateStr,
+        hour: null,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        calls: 0,
+        estimated_cost: 0,
+      },
+    )
+  }
+  return result
+}
+
+export function fillEmptyTrendHours(data: DailyTrendItem[]): DailyTrendItem[] {
+  const result: DailyTrendItem[] = []
+  for (let h = 0; h < 24; h++) {
+    const hourStr = String(h).padStart(2, '0')
+    const found = data.find((item) => item.hour === hourStr)
+    result.push(
+      found || {
+        date: data[0]?.date ?? '',
+        hour: hourStr,
+        total: 0,
+        success_count: 0,
+        success_rate: 0,
+        avg_latency: 0,
+      },
+    )
+  }
+  return result
+}
+
+export function fillEmptyTokenHours(data: TokenTrendItem[]): TokenTrendItem[] {
+  const result: TokenTrendItem[] = []
+  for (let h = 0; h < 24; h++) {
+    const hourStr = String(h).padStart(2, '0')
+    const found = data.find((item) => item.hour === hourStr)
+    result.push(
+      found || {
+        date: data[0]?.date ?? '',
+        hour: hourStr,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        calls: 0,
+        estimated_cost: 0,
+      },
+    )
+  }
+  return result
 }

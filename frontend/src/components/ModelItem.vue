@@ -3,6 +3,15 @@
     <div class="model-info">
       <span class="model-name">{{ model.model_name }}</span>
       <span class="model-order">#{{ model.sort_order }}</span>
+      <template v-if="pricing">
+        <span class="pricing-sep">|</span>
+        <span class="pricing-tag" title="输入价格"> 入 ¥{{ pricing.input_price.toFixed(2) }} </span>
+        <span class="pricing-tag" title="输出价格">
+          出 ¥{{ pricing.output_price.toFixed(2) }}
+        </span>
+        <span class="pricing-tag currency-tag">{{ pricing.currency }}</span>
+      </template>
+      <span v-else class="pricing-tag no-pricing">未定价</span>
     </div>
     <div class="model-actions">
       <el-button
@@ -23,6 +32,15 @@
       >
         <font-awesome-icon icon="arrow-down" />
       </el-button>
+      <el-button
+        text
+        size="small"
+        type="warning"
+        title="编辑定价"
+        @click="$emit('edit-pricing', model)"
+      >
+        <font-awesome-icon icon="tag" />
+      </el-button>
       <el-button text size="small" type="primary" title="编辑" @click="$emit('edit', model)">
         <font-awesome-icon icon="pen" />
       </el-button>
@@ -35,15 +53,17 @@
 
 <script setup lang="ts">
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faArrowUp, faArrowDown, faPen, faTrash } from '@fortawesome/free-solid-svg-icons'
+import { faArrowUp, faArrowDown, faPen, faTrash, faTag } from '@fortawesome/free-solid-svg-icons'
 import type { ProviderModel } from '@/api/modules/aiProvider'
+import type { PricingItem } from '@/api/modules/pricing'
 
-library.add(faArrowUp, faArrowDown, faPen, faTrash)
+library.add(faArrowUp, faArrowDown, faPen, faTrash, faTag)
 
 defineProps<{
   model: ProviderModel
   isFirst: boolean
   isLast: boolean
+  pricing?: PricingItem | null
 }>()
 
 defineEmits<{
@@ -51,6 +71,7 @@ defineEmits<{
   'move-down': [modelId: number]
   edit: [model: ProviderModel]
   delete: [model: ProviderModel]
+  'edit-pricing': [model: ProviderModel]
 }>()
 </script>
 
@@ -91,6 +112,30 @@ defineEmits<{
     background: var(--border-color);
     padding: 1px 6px;
     border-radius: 4px;
+  }
+
+  .pricing-sep {
+    color: var(--border-color);
+    font-size: 13px;
+  }
+
+  .pricing-tag {
+    font-size: 12px;
+    color: var(--color-primary);
+    background: var(--color-primary-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+
+    &.currency-tag {
+      color: var(--text-muted);
+      background: var(--border-color);
+    }
+
+    &.no-pricing {
+      color: var(--el-color-warning);
+      background: var(--el-color-warning-light-9);
+    }
   }
 
   .model-actions {
