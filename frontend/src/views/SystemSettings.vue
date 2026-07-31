@@ -536,6 +536,47 @@
             </el-descriptions>
           </div>
         </el-tab-pane>
+
+        <el-tab-pane label="定价管理" name="pricing">
+          <div v-loading="pricingLoading" class="tab-content">
+            <div class="tab-toolbar">
+              <el-button type="primary" @click="openAddPricing">
+                <font-awesome-icon icon="plus" /> 新增定价
+              </el-button>
+            </div>
+            <el-table :data="pricingList" stripe border class="symbol-table">
+              <el-table-column prop="provider_name" label="供应商" width="140" />
+              <el-table-column prop="model_name" label="模型" width="180" />
+              <el-table-column label="输入价格" width="130" align="right">
+                <template #default="{ row }">
+                  {{ formatPricingPrice(row.input_price) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="输出价格" width="130" align="right">
+                <template #default="{ row }">
+                  {{ formatPricingPrice(row.output_price) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="currency" label="货币" width="80" align="center" />
+              <el-table-column prop="updated_at" label="更新时间" width="180" />
+              <el-table-column label="操作" width="160" align="center">
+                <template #default="{ row }">
+                  <el-button
+                    text
+                    type="primary"
+                    size="small"
+                    @click="openEditPricing(row as PricingItem)"
+                  >
+                    <font-awesome-icon icon="pen" /> 编辑
+                  </el-button>
+                  <el-button text type="danger" size="small" @click="handleDeletePricing(row.id)">
+                    <font-awesome-icon icon="trash" /> 删除
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -577,6 +618,51 @@
         <el-button type="primary" :loading="symbolSaving" @click="handleSaveSymbol">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="showPricingDialog"
+      :title="isEditingPricing ? '编辑定价' : '新增定价'"
+      width="480px"
+    >
+      <el-form label-width="120px">
+        <el-form-item label="供应商">
+          <el-input
+            v-model="pricingForm.provider_name"
+            :disabled="isEditingPricing"
+            placeholder="如 智谱AI"
+          />
+        </el-form-item>
+        <el-form-item label="模型名称">
+          <el-input
+            v-model="pricingForm.model_name"
+            :disabled="isEditingPricing"
+            placeholder="如 glm-4-flash"
+          />
+        </el-form-item>
+        <el-form-item label="输入价格">
+          <el-input-number v-model="pricingForm.input_price" :min="0" :precision="4" :step="0.01" />
+          <span class="unit">元/百万Token</span>
+        </el-form-item>
+        <el-form-item label="输出价格">
+          <el-input-number
+            v-model="pricingForm.output_price"
+            :min="0"
+            :precision="4"
+            :step="0.01"
+          />
+          <span class="unit">元/百万Token</span>
+        </el-form-item>
+        <el-form-item label="货币单位">
+          <el-input v-model="pricingForm.currency" placeholder="CNY" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPricingDialog = false">取消</el-button>
+        <el-button type="primary" :loading="pricingSaving" @click="handleSavePricing">
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -600,6 +686,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { settingsApi } from '@/api/modules/settings'
 import type { ExchangeRate, SymbolMapping, InfrastructureConfig } from '@/api/modules/settings'
+import { pricingApi } from '@/api/modules/pricing'
+import type { PricingItem } from '@/api/modules/pricing'
 import { useSettingsGroup } from '@/composables/useSettings'
 
 library.add(
@@ -662,6 +750,97 @@ const showSymbolDialog = ref(false)
 const symbolForm = ref<SymbolMapping>({ symbol: '', display_name: '', sort_order: 0 })
 const isEditingSymbol = ref(false)
 const symbolSaving = ref(false)
+
+const pricingList = ref<PricingItem[]>([])
+const pricingLoading = ref(false)
+const showPricingDialog = ref(false)
+const isEditingPricing = ref(false)
+const pricingSaving = ref(false)
+const pricingForm = ref<{
+  provider_name: string
+  model_name: string
+  input_price: number
+  output_price: number
+  currency: string
+}>({
+  provider_name: '',
+  model_name: '',
+  input_price: 0,
+  output_price: 0,
+  currency: 'CNY',
+})
+
+const loadPricing = async () => {
+  pricingLoading.value = true
+  try {
+    pricingList.value = await pricingApi.list()
+  } catch {
+    // 错误已在 request 拦截器中处理
+  } finally {
+    pricingLoading.value = false
+  }
+}
+
+const openAddPricing = () => {
+  isEditingPricing.value = false
+  pricingForm.value = {
+    provider_name: '',
+    model_name: '',
+    input_price: 0,
+    output_price: 0,
+    currency: 'CNY',
+  }
+  showPricingDialog.value = true
+}
+
+const openEditPricing = (row: PricingItem) => {
+  isEditingPricing.value = true
+  pricingForm.value = {
+    provider_name: row.provider_name,
+    model_name: row.model_name,
+    input_price: row.input_price,
+    output_price: row.output_price,
+    currency: row.currency,
+  }
+  showPricingDialog.value = true
+}
+
+const handleSavePricing = async () => {
+  pricingSaving.value = true
+  try {
+    await pricingApi.upsert(pricingForm.value.provider_name, pricingForm.value.model_name, {
+      input_price: pricingForm.value.input_price,
+      output_price: pricingForm.value.output_price,
+      currency: pricingForm.value.currency,
+    })
+    ElMessage.success(isEditingPricing.value ? '定价已更新' : '定价已添加')
+    showPricingDialog.value = false
+    await loadPricing()
+  } catch {
+    // 错误已在 request 拦截器中处理
+  } finally {
+    pricingSaving.value = false
+  }
+}
+
+const handleDeletePricing = async (id: number) => {
+  try {
+    await ElMessageBox.confirm('确定要删除该定价吗？', '确认删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await pricingApi.remove(id)
+    ElMessage.success('定价已删除')
+    await loadPricing()
+  } catch {
+    // 用户取消或错误已在 request 拦截器中处理
+  }
+}
+
+const formatPricingPrice = (price: number) => {
+  return price > 0 ? `¥${price.toFixed(4)}` : '—'
+}
 
 const log = useSettingsGroup(
   () => settingsApi.getLog(),
@@ -779,6 +958,7 @@ const loadTab = (tabName: string) => {
   if (tabName === 'symbols') loadSymbols()
   if (tabName === 'log') log.load()
   if (tabName === 'infrastructure') loadInfrastructure()
+  if (tabName === 'pricing') loadPricing()
 }
 
 const onTabChange = (name: string | number) => {

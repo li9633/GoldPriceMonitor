@@ -55,6 +55,87 @@
       </el-col>
     </el-row>
 
+    <!-- Token 用量统计 -->
+    <div class="section-header">
+      <h2 class="section-title"><font-awesome-icon icon="coins" /> Token 用量统计</h2>
+      <el-select v-model="tokenDays" class="token-days-select" @change="fetchTokenStats">
+        <el-option :value="1" label="今日" />
+        <el-option :value="7" label="近7天" />
+        <el-option :value="30" label="近30天" />
+        <el-option :value="90" label="近90天" />
+      </el-select>
+    </div>
+
+    <el-row :gutter="16" class="stat-row">
+      <el-col :span="4">
+        <StatCard label="输入Token" :value="formatTokenNum(tokenOverview?.prompt_tokens ?? 0)" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard
+          label="输出Token"
+          :value="formatTokenNum(tokenOverview?.completion_tokens ?? 0)"
+        />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="总Token" :value="formatTokenNum(tokenOverview?.total_tokens ?? 0)" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="调用次数" :value="formatTokenNum(tokenOverview?.calls ?? 0)" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="预估费用" :value="formatCost(tokenOverview?.estimated_cost ?? 0)" />
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16" class="chart-row">
+      <el-col :span="12">
+        <el-card shadow="hover" class="ranking-card">
+          <template #header>
+            <span class="card-title">
+              <font-awesome-icon icon="table-list" /> 按模型Token用量
+            </span>
+          </template>
+          <el-table :data="tokenByModel" size="small" empty-text="暂无数据">
+            <el-table-column label="供应商" prop="provider_name" min-width="80" />
+            <el-table-column label="模型" prop="model_name" min-width="100" />
+            <el-table-column label="输入" width="70" align="right">
+              <template #default="{ row }">
+                {{ formatTokenNum(row.prompt_tokens) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="输出" width="70" align="right">
+              <template #default="{ row }">
+                {{ formatTokenNum(row.completion_tokens) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="总Token" width="80" align="right">
+              <template #default="{ row }">
+                {{ formatTokenNum(row.total_tokens) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="调用" width="60" align="right">
+              <template #default="{ row }">
+                {{ row.calls }}
+              </template>
+            </el-table-column>
+            <el-table-column label="费用" width="80" align="right">
+              <template #default="{ row }">
+                {{ formatCost(row.estimated_cost) }}
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <TokenTrendChart
+          :data="tokenTrend"
+          :days="tokenDays"
+          title="Token 趋势"
+          icon="chart-line"
+        />
+      </el-col>
+    </el-row>
+
     <!-- 成功率趋势 -->
     <el-row :gutter="16" class="chart-row">
       <el-col :span="24">
@@ -171,17 +252,35 @@ import {
   faChartLine,
   faRankingStar,
   faBuilding,
+  faCoins,
+  faTableList,
 } from '@fortawesome/free-solid-svg-icons'
 import { aiStatsApi } from '@/api/modules/ai-stats'
-import type { AiStatsOverview, DailyTrendItem } from '@/api/modules/ai-stats'
+import type {
+  AiStatsOverview,
+  DailyTrendItem,
+  TokenOverview,
+  TokenByModel,
+  TokenTrendItem,
+} from '@/api/modules/ai-stats'
 import StatCard from '@/components/StatCard.vue'
 import AiTrendChart from '@/components/AiTrendChart.vue'
 import AiHourlyChart from '@/components/AiHourlyChart.vue'
 import AiFailureCharts from '@/components/AiFailureCharts.vue'
 import AiCallLogs from '@/components/AiCallLogs.vue'
+import TokenTrendChart from '@/components/TokenTrendChart.vue'
 import { formatLatency, rateColor, latencyColor } from '@/utils/aiStatsHelpers'
 
-library.add(faRobot, faRotate, faTriangleExclamation, faChartLine, faRankingStar, faBuilding)
+library.add(
+  faRobot,
+  faRotate,
+  faTriangleExclamation,
+  faChartLine,
+  faRankingStar,
+  faBuilding,
+  faCoins,
+  faTableList,
+)
 
 // —— State ——
 const overview = ref<AiStatsOverview | null>(null)
@@ -191,6 +290,11 @@ const autoRefresh = ref(true)
 const trendDays = ref(7)
 
 const showAlert = computed(() => (overview.value?.consecutive_failures ?? 0) > 0)
+
+const tokenOverview = ref<TokenOverview | null>(null)
+const tokenByModel = ref<TokenByModel[]>([])
+const tokenTrend = ref<TokenTrendItem[]>([])
+const tokenDays = ref(1)
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
@@ -214,6 +318,33 @@ async function fetchTrend() {
   }
 }
 
+async function fetchTokenStats() {
+  try {
+    const [overview, byModel, trend] = await Promise.all([
+      aiStatsApi.getTokenOverview(tokenDays.value),
+      aiStatsApi.getTokenByModel(tokenDays.value),
+      aiStatsApi.getTokenTrend(tokenDays.value),
+    ])
+    tokenOverview.value = overview
+    tokenByModel.value = byModel
+    tokenTrend.value = trend
+  } catch {
+    // ignore
+  }
+}
+
+function formatTokenNum(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
+
+function formatCost(cost: number): string {
+  if (cost <= 0) return '¥0.00'
+  if (cost < 0.01) return `¥${cost.toFixed(4)}`
+  return `¥${cost.toFixed(2)}`
+}
+
 // —— Auto-refresh ——
 watch(
   autoRefresh,
@@ -231,6 +362,7 @@ watch(
 onMounted(async () => {
   await refreshOverview()
   await fetchTrend()
+  await fetchTokenStats()
 })
 
 onUnmounted(() => {
@@ -292,6 +424,24 @@ onUnmounted(() => {
   100% {
     width: 0;
     left: 100%;
+  }
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  margin-top: 24px;
+
+  .section-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .token-days-select {
+    width: 120px;
   }
 }
 

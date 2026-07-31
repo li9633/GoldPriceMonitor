@@ -58,6 +58,33 @@ export interface AiCallLogsResponse {
   page_size: number
 }
 
+export interface TokenOverview {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  calls: number
+  estimated_cost: number
+}
+
+export interface TokenByModel {
+  provider_name: string
+  model_name: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  calls: number
+  estimated_cost: number
+}
+
+export interface TokenTrendItem {
+  date: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  calls: number
+  estimated_cost: number
+}
+
 export const aiStatsApi = {
   getOverview() {
     return request.get<AiStatsOverview>('/ai-stats/overview')
@@ -69,5 +96,14 @@ export const aiStatsApi = {
     return request.get<AiCallLogsResponse>('/ai-stats/logs', {
       params: { page, page_size: pageSize },
     })
+  },
+  getTokenOverview(days = 1) {
+    return request.get<TokenOverview>('/ai-stats/tokens/overview', { params: { days } })
+  },
+  getTokenByModel(days = 1) {
+    return request.get<TokenByModel[]>('/ai-stats/tokens/by-model', { params: { days } })
+  },
+  getTokenTrend(days = 7) {
+    return request.get<TokenTrendItem[]>('/ai-stats/tokens/trend', { params: { days } })
   },
 }

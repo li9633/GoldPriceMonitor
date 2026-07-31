@@ -104,6 +104,10 @@ class AIAnalysisService:
             logger.debug(
                 f"AI 原始返回 [{result.provider}/{result.model}]：\n{result.content}"
             )
+            if result.raw_response:
+                self._log_token_usage(
+                    result.provider, result.model, result.raw_response
+                )
             parsed = self._parse_response(result.content)
             if parsed is not None:
                 parsed["provider"] = result.provider
@@ -213,6 +217,24 @@ class AIAnalysisService:
         direction = direction_map.get(trend.get("direction", "stable"), "横盘")
         slope = trend.get("slope", 0)
         return f"{direction}（斜率 {slope:.2f}）"
+
+    @staticmethod
+    def _log_token_usage(
+        provider: str | None, model: str | None, raw_response: str
+    ) -> None:
+        try:
+            data = json.loads(raw_response)
+            usage = data.get("usage", {})
+            if usage:
+                prompt_tokens = usage.get("prompt_tokens", 0)
+                completion_tokens = usage.get("completion_tokens", 0)
+                total_tokens = usage.get("total_tokens", 0)
+                logger.debug(
+                    f"[{provider}/{model}] Token 用量："
+                    f"prompt={prompt_tokens} completion={completion_tokens} total={total_tokens}"
+                )
+        except (json.JSONDecodeError, KeyError):
+            pass
 
     @staticmethod
     def _parse_response(content: str) -> dict | None:

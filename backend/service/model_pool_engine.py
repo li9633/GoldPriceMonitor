@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ class ModelResult:
     from_cache: bool = False
     error: str | None = None
     retryable: bool = True
+    raw_response: str | None = None
     """
     是否可重试。
     False 表示错误是确定性的（内容被审核、API Key 无效、权限不足等），
@@ -220,6 +222,7 @@ class ModelPool:
                     content=choice["message"]["content"],
                     provider=provider["name"],
                     model=model,
+                    raw_response=resp.text,
                 )
 
             # 非 200 响应
@@ -312,6 +315,9 @@ class ModelPool:
 
     def _log_call(self, result: ModelResult, start_time: float) -> None:
         latency_ms = int((time.monotonic() - start_time) * 1000)
+        prompt_tokens, completion_tokens, total_tokens = self._extract_tokens(
+            result.raw_response
+        )
         try:
             self._stats_mapper.insert_log(
                 provider_name=result.provider or "unknown",
@@ -322,6 +328,25 @@ class ModelPool:
                 error_reason=result.error[:200] if result.error else None,
                 from_cache=result.from_cache,
                 triggered_alerts=None,
+                raw_response=result.raw_response,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
             )
         except sqlite3.Error:
             logger.warning("AI 调用统计写入失败！")
+
+    @staticmethod
+    def _extract_tokens(raw_response: str | None) -> tuple[int, int, int]:
+        if not raw_response:
+            return 0, 0, 0
+        try:
+            data = json.loads(raw_response)
+            usage = data.get("usage", {})
+            return (
+                usage.get("prompt_tokens", 0),
+                usage.get("completion_tokens", 0),
+                usage.get("total_tokens", 0),
+            )
+        except (json.JSONDecodeError, KeyError, TypeError):
+            return 0, 0, 0

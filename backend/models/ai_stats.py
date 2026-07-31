@@ -85,3 +85,34 @@ class AiCallLogItem(BaseModel):
     error_reason: str | None
     from_cache: bool
     triggered_alerts: str | None
+    raw_response: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+class TokenOverview(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    calls: int
+    estimated_cost: float = Field(default=0, description="预估费用（元）")
+
+
+class TokenByModel(BaseModel):
+    provider_name: str
+    model_name: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    calls: int
+    estimated_cost: float = Field(default=0, description="预估费用（元）")
+
+
+class TokenDailyTrend(BaseModel):
+    date: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    calls: int
+    estimated_cost: float = Field(default=0, description="预估费用（元）")

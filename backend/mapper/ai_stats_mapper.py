@@ -32,6 +32,10 @@ class AiStatsMapper:
             error_reason TEXT,
             from_cache INTEGER DEFAULT 0,
             triggered_alerts TEXT,
+            raw_response TEXT,
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""")
         c.execute(
@@ -58,14 +62,19 @@ class AiStatsMapper:
         error_reason: str | None,
         from_cache: bool,
         triggered_alerts: str | None,
+        raw_response: str | None = None,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        total_tokens: int = 0,
     ) -> None:
         conn = self._get_connection()
         c = conn.cursor()
         c.execute(
             "INSERT INTO ai_call_logs "
             "(provider_name, model_name, call_time, success, latency_ms, "
-            "error_reason, from_cache, triggered_alerts) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "error_reason, from_cache, triggered_alerts, raw_response, "
+            "prompt_tokens, completion_tokens, total_tokens) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 provider_name,
                 model_name,
@@ -75,6 +84,10 @@ class AiStatsMapper:
                 error_reason,
                 1 if from_cache else 0,
                 triggered_alerts,
+                raw_response,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
             ),
         )
         conn.commit()
@@ -277,7 +290,8 @@ class AiStatsMapper:
         offset = (page - 1) * page_size
         c.execute(
             "SELECT id, provider_name, model_name, call_time, success, "
-            "latency_ms, error_reason, from_cache, triggered_alerts "
+            "latency_ms, error_reason, from_cache, triggered_alerts, raw_response, "
+            "prompt_tokens, completion_tokens, total_tokens "
             "FROM ai_call_logs ORDER BY call_time DESC LIMIT ? OFFSET ?",
             (page_size, offset),
         )
@@ -292,8 +306,98 @@ class AiStatsMapper:
                 "error_reason": r[6],
                 "from_cache": bool(r[7]),
                 "triggered_alerts": r[8],
+                "raw_response": r[9],
+                "prompt_tokens": r[10],
+                "completion_tokens": r[11],
+                "total_tokens": r[12],
             }
             for r in c.fetchall()
         ]
         conn.close()
         return rows, total
+
+    def get_token_overview(self, days: int = 1) -> dict:
+        """Token 消耗概览"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        where = (
+            "date(call_time) = date('now', 'localtime')"
+            if days == 1
+            else (f"call_time >= datetime('now', 'localtime', '-{days} days')")
+        )
+        c.execute(
+            f"SELECT "
+            f"COALESCE(SUM(prompt_tokens), 0), "
+            f"COALESCE(SUM(completion_tokens), 0), "
+            f"COALESCE(SUM(total_tokens), 0), "
+            f"COUNT(*) AS calls "
+            f"FROM ai_call_logs WHERE {where} AND success=1"
+        )
+        row = c.fetchone()
+        conn.close()
+        return {
+            "prompt_tokens": row[0],
+            "completion_tokens": row[1],
+            "total_tokens": row[2],
+            "calls": row[3],
+        }
+
+    def get_token_by_model(self, days: int = 1) -> list[dict]:
+        """按模型/供应商分组的 Token 消耗"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        where = (
+            "date(call_time) = date('now', 'localtime')"
+            if days == 1
+            else (f"call_time >= datetime('now', 'localtime', '-{days} days')")
+        )
+        c.execute(
+            f"SELECT provider_name, model_name, "
+            f"COALESCE(SUM(prompt_tokens), 0), "
+            f"COALESCE(SUM(completion_tokens), 0), "
+            f"COALESCE(SUM(total_tokens), 0), "
+            f"COUNT(*) AS calls "
+            f"FROM ai_call_logs WHERE {where} AND success=1 "
+            f"GROUP BY provider_name, model_name ORDER BY total_tokens DESC"
+        )
+        rows = [
+            {
+                "provider_name": r[0],
+                "model_name": r[1],
+                "prompt_tokens": r[2],
+                "completion_tokens": r[3],
+                "total_tokens": r[4],
+                "calls": r[5],
+            }
+            for r in c.fetchall()
+        ]
+        conn.close()
+        return rows
+
+    def get_token_daily_trend(self, days: int = 7) -> list[dict]:
+        """每日 Token 消耗趋势"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute(
+            "SELECT date(call_time) AS d, "
+            "COALESCE(SUM(prompt_tokens), 0), "
+            "COALESCE(SUM(completion_tokens), 0), "
+            "COALESCE(SUM(total_tokens), 0), "
+            "COUNT(*) AS calls "
+            "FROM ai_call_logs "
+            "WHERE call_time >= datetime('now', 'localtime', ?) AND success=1 "
+            "GROUP BY d ORDER BY d",
+            (f"-{days} days",),
+        )
+        rows = [
+            {
+                "date": r[0],
+                "prompt_tokens": r[1],
+                "completion_tokens": r[2],
+                "total_tokens": r[3],
+                "calls": r[4],
+            }
+            for r in c.fetchall()
+        ]
+        conn.close()
+        return rows

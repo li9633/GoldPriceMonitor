@@ -2,6 +2,7 @@ from datetime import datetime
 
 from config import CHINA_TZ
 from mapper.ai_stats_mapper import AiStatsMapper
+from mapper.model_pricing_mapper import ModelPricingMapper
 from models.ai_stats import (
     AiCallLogItem,
     AiStatsOverview,
@@ -11,6 +12,9 @@ from models.ai_stats import (
     ModelRankingItem,
     ProviderFailureItem,
     ProviderRankingItem,
+    TokenByModel,
+    TokenDailyTrend,
+    TokenOverview,
     TopModelItem,
     TopProviderItem,
 )
@@ -23,6 +27,8 @@ class AiStatsService:
     def __init__(self) -> None:
         self.mapper = AiStatsMapper()
         self.mapper.init_tables()
+        self.pricing_mapper = ModelPricingMapper()
+        self.pricing_mapper.init_table()
 
     def log_call(
         self,
@@ -131,3 +137,51 @@ class AiStatsService:
         if f + 1 < n:
             return round(sorted_data[f] + c * (sorted_data[f + 1] - sorted_data[f]), 1)
         return round(float(sorted_data[f]), 1)
+
+    def _compute_cost(
+        self,
+        provider_name: str,
+        model_name: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> float:
+        pricing = self.pricing_mapper.get_by_provider_model(provider_name, model_name)
+        if not pricing:
+            return 0.0
+        input_cost = (prompt_tokens / 1_000_000) * pricing["input_price"]
+        output_cost = (completion_tokens / 1_000_000) * pricing["output_price"]
+        return round(input_cost + output_cost, 6)
+
+    def get_token_overview(self, days: int = 1) -> TokenOverview:
+        raw = self.mapper.get_token_overview(days)
+        cost = self._compute_cost(
+            "", "", raw["prompt_tokens"], raw["completion_tokens"]
+        )
+        return TokenOverview(estimated_cost=cost, **raw)
+
+    def get_token_by_model(self, days: int = 1) -> list[TokenByModel]:
+        rows = self.mapper.get_token_by_model(days)
+        return [
+            TokenByModel(
+                estimated_cost=self._compute_cost(
+                    r["provider_name"],
+                    r["model_name"],
+                    r["prompt_tokens"],
+                    r["completion_tokens"],
+                ),
+                **r,
+            )
+            for r in rows
+        ]
+
+    def get_token_daily_trend(self, days: int = 7) -> list[TokenDailyTrend]:
+        rows = self.mapper.get_token_daily_trend(days)
+        return [
+            TokenDailyTrend(
+                estimated_cost=self._compute_cost(
+                    "", "", r["prompt_tokens"], r["completion_tokens"]
+                ),
+                **r,
+            )
+            for r in rows
+        ]
