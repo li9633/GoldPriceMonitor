@@ -353,6 +353,12 @@ class PriceMapper:
             conn.commit()
             return count
 
+    def checkpoint(self) -> None:
+        """将 WAL 中所有已提交数据合并回主库，并删除 WAL/SHM 文件"""
+        with self._get_connection() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            logger.info("WAL checkpoint 完成，数据库已完整保存")
+
 
 def _resolve_bucket(hours: float) -> str:
     """根据时间范围返回整数分桶表达式，避免 strftime 在百万行上的 CPU 开销"""
