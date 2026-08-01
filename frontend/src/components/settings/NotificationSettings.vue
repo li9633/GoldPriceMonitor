@@ -43,7 +43,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="priority" label="优先级" width="90" align="center" />
-        <el-table-column label="配置摘要" min-width="200">
+        <el-table-column label="配置摘要" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="config-summary">{{ summarizeConfig(asChannel(row)) }}</span>
           </template>
