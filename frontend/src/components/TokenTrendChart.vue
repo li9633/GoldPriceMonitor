@@ -85,6 +85,7 @@ function renderChart() {
       },
       yAxis: {
         type: 'value',
+        scale: true,
         axisLabel: {
           color: axisColor(),
           fontSize: 11,

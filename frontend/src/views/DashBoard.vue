@@ -56,25 +56,55 @@
       </el-col>
     </el-row>
 
+    <!-- 走势统计 -->
+    <el-row v-if="selectedSymbol && stats" :gutter="20" class="stat-row">
+      <el-col :span="4">
+        <StatCard label="最低价" :value="formatPrice(stats.min)" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="最高价" :value="formatPrice(stats.max)" highlight />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="均价" :value="formatPrice(stats.avg)" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="样本数" :value="String(stats.count)" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="标准差" :value="stats.std.toFixed(2)" />
+      </el-col>
+    </el-row>
+
     <!-- 走势图 -->
     <el-card v-if="selectedSymbol" class="chart-card" shadow="hover">
       <template #header>
-        <span class="chart-title">
-          <font-awesome-icon icon="chart-simple" />
-          {{ selectedSymbol }} 走势图
-        </span>
+        <div class="chart-header">
+          <span class="chart-title">
+            <font-awesome-icon icon="chart-simple" />
+            {{ selectedSymbol }} 走势图
+          </span>
+          <el-radio-group v-model="timeRange" size="small">
+            <el-radio-button :value="1">1小时</el-radio-button>
+            <el-radio-button :value="6">6小时</el-radio-button>
+            <el-radio-button :value="24">24小时</el-radio-button>
+            <el-radio-button :value="168">7天</el-radio-button>
+            <el-radio-button :value="720">30天</el-radio-button>
+          </el-radio-group>
+        </div>
       </template>
-      <PriceChart :symbol="selectedSymbol" />
+      <PriceChart :symbol="selectedSymbol" :hours="timeRange" />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, defineAsyncComponent } from 'vue'
+import { ref, watch, defineAsyncComponent } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faChartLine, faChartSimple } from '@fortawesome/free-solid-svg-icons'
 import { useThemeStore } from '@/stores/theme'
 import { usePriceData } from '@/composables/usePriceData'
+import { priceApi } from '@/api/modules/gold'
+import type { PriceStatistics } from '@/api/modules/gold'
 import { formatPrice } from '@/utils/format'
 import StatCard from '@/components/StatCard.vue'
 import TrendBadge from '@/components/TrendBadge.vue'
@@ -85,10 +115,31 @@ library.add(faChartLine, faChartSimple)
 const themeStore = useThemeStore()
 const { dashboard } = usePriceData()
 const selectedSymbol = ref<string | null>(null)
+const timeRange = ref(24)
+const stats = ref<PriceStatistics | null>(null)
 
 function selectSymbol(symbol: string) {
-  selectedSymbol.value = selectedSymbol.value === symbol ? null : symbol
+  if (selectedSymbol.value === symbol) {
+    selectedSymbol.value = null
+    stats.value = null
+  } else {
+    selectedSymbol.value = symbol
+    loadStats()
+  }
 }
+
+const loadStats = async () => {
+  if (!selectedSymbol.value) return
+  try {
+    stats.value = await priceApi.getStatistics(selectedSymbol.value, timeRange.value)
+  } catch {
+    stats.value = null
+  }
+}
+
+watch(timeRange, () => {
+  loadStats()
+})
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
@@ -185,6 +236,12 @@ function formatTime(iso: string): string {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 10px;
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
 
   .chart-title {
     font-size: 16px;

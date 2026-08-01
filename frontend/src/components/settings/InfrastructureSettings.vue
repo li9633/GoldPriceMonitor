@@ -7,20 +7,76 @@
       title="只读端点，API URL 变更需同步修改解析逻辑，请在 config.py 中修改后重启。"
       class="log-notice"
     />
-    <el-descriptions v-if="infrastructure" :column="1" border class="infra-descriptions">
-      <el-descriptions-item label="金价数据源 API">
-        <code>{{ infrastructure.gold_price_api_url }}</code>
-      </el-descriptions-item>
-      <el-descriptions-item label="美元汇率 API">
-        <code>{{ infrastructure.usd_to_cny_api_url }}</code>
-      </el-descriptions-item>
-      <el-descriptions-item label="系统时区">
-        {{ infrastructure.timezone }}
-      </el-descriptions-item>
-      <el-descriptions-item label="日志存储目录">
-        <code>{{ infrastructure.log_dir }}</code>
-      </el-descriptions-item>
-    </el-descriptions>
+
+    <template v-if="infrastructure">
+      <!-- API 端点 -->
+      <el-card shadow="never" class="infra-section">
+        <template #header><span class="section-title">API 端点</span></template>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="金价数据源">
+            <code>{{ infrastructure.gold_price_api_url }}</code>
+          </el-descriptions-item>
+          <el-descriptions-item label="美元汇率">
+            <code>{{ infrastructure.usd_to_cny_api_url }}</code>
+          </el-descriptions-item>
+        </el-descriptions>
+      </el-card>
+
+      <!-- 系统配置 -->
+      <el-card shadow="never" class="infra-section">
+        <template #header><span class="section-title">系统配置</span></template>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="时区">{{ infrastructure.timezone }}</el-descriptions-item>
+          <el-descriptions-item label="调试模式">
+            <el-tag :type="infrastructure.debug_mode ? 'warning' : 'info'" size="small">
+              {{ infrastructure.debug_mode ? '开启' : '关闭' }}
+            </el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+      </el-card>
+
+      <!-- 日志 -->
+      <el-card shadow="never" class="infra-section">
+        <template #header><span class="section-title">日志</span></template>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="存储目录">
+            <code>{{ infrastructure.log_dir }}</code>
+          </el-descriptions-item>
+          <el-descriptions-item label="占用空间">
+            {{ formatBytes(infrastructure.log_dir_size_bytes) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="文件列表">
+            <span class="file-count">共 {{ infrastructure.log_file_count }} 个文件</span>
+            <div class="file-list">
+              <el-tag v-for="f in infrastructure.log_files" :key="f" size="small" type="info">{{
+                f
+              }}</el-tag>
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
+      </el-card>
+
+      <!-- 数据库 -->
+      <el-card shadow="never" class="infra-section">
+        <template #header><span class="section-title">数据库</span></template>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="数据目录">
+            <code>{{ infrastructure.db_dir }}</code>
+          </el-descriptions-item>
+          <el-descriptions-item label="占用空间">
+            {{ formatBytes(infrastructure.db_dir_size_bytes) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="文件列表">
+            <span class="file-count">共 {{ infrastructure.db_file_count }} 个文件</span>
+            <div class="file-list">
+              <el-tag v-for="f in infrastructure.db_files" :key="f" size="small" type="info">{{
+                f
+              }}</el-tag>
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
+      </el-card>
+    </template>
   </div>
 </template>
 
@@ -31,6 +87,13 @@ import type { InfrastructureConfig } from '@/api/modules/settings'
 
 const infrastructure = ref<InfrastructureConfig | null>(null)
 const loading = ref(false)
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i]
+}
 
 onMounted(async () => {
   loading.value = true
@@ -54,8 +117,16 @@ onMounted(async () => {
   }
 }
 
-.infra-descriptions {
-  margin-top: 8px;
+.infra-section {
+  margin-bottom: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+
+  .section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
 
   code {
     background: var(--bg-secondary);
@@ -63,6 +134,19 @@ onMounted(async () => {
     border-radius: 4px;
     font-size: 13px;
     word-break: break-all;
+  }
+
+  .file-count {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .file-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 }
 </style>

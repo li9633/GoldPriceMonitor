@@ -46,7 +46,7 @@ const initChart = () => {
 const updateChart = () => {
   if (!chart) return
 
-  const isLongRange = props.hours >= 24
+  const isLongRange = props.hours > 24
   const labelFn = isLongRange ? formatDate : formatTime
   const times = chartData.value.map((p) => labelFn(p.timestamp))
   const prices = chartData.value.map((p) => p.price)
@@ -61,6 +61,7 @@ const updateChart = () => {
     },
     yAxis: {
       type: 'value',
+      scale: true,
       axisLabel: { color: isDark ? '#a09070' : '#8c7a5c', fontSize: 11 },
       splitLine: { lineStyle: { color: isDark ? '#2a2a40' : '#e8e0d0' } },
     },

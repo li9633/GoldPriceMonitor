@@ -38,6 +38,7 @@ function renderChart() {
       xAxis: { type: 'category', data: hours, axisLabel: { color: axisColor(), fontSize: 11 } },
       yAxis: {
         type: 'value',
+        scale: true,
         axisLabel: { color: axisColor(), fontSize: 11 },
         splitLine: { lineStyle: { color: splitColor() } },
       },

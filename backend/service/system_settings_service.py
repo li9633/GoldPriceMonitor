@@ -1,7 +1,8 @@
 import json
+import os
 from typing import Self
 
-from config import GOLD_PRICE_API_URL, LOG_DIR, USD_TO_CNY_API_URL
+from config import DEBUG, GOLD_PRICE_API_URL, LOG_DIR, USD_TO_CNY_API_URL
 from mapper.system_settings_mapper import SystemSettingsMapper
 from utils.logger import get_logger
 
@@ -147,12 +148,37 @@ class SystemSettingsService:
     # ==================== 基础设施配置（只读） ====================
 
     @staticmethod
+    def _scan_dir(dir_path: str) -> tuple[list[str], int, int]:
+        """扫描目录，返回 (文件列表, 文件数, 总大小字节)"""
+        files: list[str] = []
+        total_size = 0
+        if os.path.isdir(dir_path):
+            for entry in os.scandir(dir_path):
+                if entry.is_file():
+                    files.append(entry.name)
+                    total_size += entry.stat().st_size
+        files.sort()
+        return files, len(files), total_size
+
+    @staticmethod
     def get_infrastructure_config() -> dict:
+        log_files, log_file_count, log_dir_size = SystemSettingsService._scan_dir(
+            LOG_DIR
+        )
+        db_files, db_file_count, db_dir_size = SystemSettingsService._scan_dir("data")
         return {
             "gold_price_api_url": GOLD_PRICE_API_URL,
             "usd_to_cny_api_url": USD_TO_CNY_API_URL,
             "timezone": "UTC+8",
+            "debug_mode": DEBUG,
             "log_dir": LOG_DIR,
+            "log_file_count": log_file_count,
+            "log_files": log_files,
+            "log_dir_size_bytes": log_dir_size,
+            "db_dir": "data",
+            "db_file_count": db_file_count,
+            "db_files": db_files,
+            "db_dir_size_bytes": db_dir_size,
         }
 
     # ==================== 汇率缓存 ====================

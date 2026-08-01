@@ -62,7 +62,7 @@ function renderCharts() {
       reasonsChart.setOption(
         {
           grid: { top: 10, right: 20, bottom: 30, left: 50 },
-          xAxis: { type: 'value', axisLabel: { color: axisColor(), fontSize: 11 } },
+          xAxis: { type: 'value', scale: true, axisLabel: { color: axisColor(), fontSize: 11 } },
           yAxis: {
             type: 'category',
             data: props.topFailures.map((f) =>
@@ -110,6 +110,7 @@ function renderCharts() {
           },
           yAxis: {
             type: 'value',
+            scale: true,
             axisLabel: { color: axisColor(), fontSize: 11 },
             splitLine: { lineStyle: { color: splitColor() } },
           },

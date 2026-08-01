@@ -98,4 +98,12 @@ class InfrastructureConfigModel(BaseModel):
     gold_price_api_url: str = ""
     usd_to_cny_api_url: str = ""
     timezone: str = "UTC+8"
+    debug_mode: bool = False
     log_dir: str = "logs"
+    log_file_count: int = 0
+    log_files: list[str] = []
+    log_dir_size_bytes: int = 0
+    db_dir: str = "data"
+    db_file_count: int = 0
+    db_files: list[str] = []
+    db_dir_size_bytes: int = 0

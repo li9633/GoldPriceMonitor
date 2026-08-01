@@ -71,7 +71,7 @@ function renderChart() {
         type: 'value',
         axisLabel: { color: axisColor(), fontSize: 11, formatter: `{value}${props.yAxisLabel}` },
         splitLine: { lineStyle: { color: splitColor() } },
-        ...(props.seriesKey === 'success_rate' ? { min: 0, max: 100 } : {}),
+        ...(props.seriesKey === 'success_rate' ? { min: 0, max: 100 } : { scale: true }),
       },
       series: [
         {

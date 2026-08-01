@@ -90,7 +90,15 @@ export interface InfrastructureConfig {
   gold_price_api_url: string
   usd_to_cny_api_url: string
   timezone: string
+  debug_mode: boolean
   log_dir: string
+  log_file_count: number
+  log_files: string[]
+  log_dir_size_bytes: number
+  db_dir: string
+  db_file_count: number
+  db_files: string[]
+  db_dir_size_bytes: number
 }
 
 export const settingsApi = {
