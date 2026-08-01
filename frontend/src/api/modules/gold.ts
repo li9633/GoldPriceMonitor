@@ -24,11 +24,43 @@ export interface SymbolDashboardItem {
   count: number
   latest_price: number | null
   latest_time: string | null
+  today_high: number | null
+  today_low: number | null
+  data_freshness_seconds: number | null
 }
 
 export interface DashboardResponse {
-  total_records: number
-  symbols: SymbolDashboardItem[]
+  start_date: string
+  end_date: string
+  price: {
+    total_records: number
+    new_records: number
+    symbols: SymbolDashboardItem[]
+  }
+  ai: {
+    total_calls: number
+    success_count: number
+    failure_count: number
+    success_rate: number
+    cache_hit_count: number
+    total_tokens: number
+    last_success_time: string | null
+  }
+  notification: {
+    total_sends: number
+    success_count: number
+    failure_count: number
+    success_rate: number
+  }
+  active_symbols_count: number
+  monitored_symbols: string[]
+  main_symbol: string
+}
+
+export interface DashboardParams {
+  hours?: number
+  start_date?: string
+  end_date?: string
 }
 
 export interface PriceRecord {
@@ -39,17 +71,21 @@ export interface PriceRecord {
 }
 
 export const priceApi = {
-  getDashboard() {
-    return request.get<DashboardResponse>('/prices/dashboard')
+  getDashboard(params?: DashboardParams) {
+    return request.get<DashboardResponse>('/prices/dashboard', { params })
   },
-  getStatistics(symbol: string, hours = 24) {
-    return request.get<PriceStatistics>('/prices/statistics', { params: { symbol, hours } })
+  getStatistics(symbol: string, hours?: number, start_date?: string, end_date?: string) {
+    return request.get<PriceStatistics>('/prices/statistics', {
+      params: { symbol, hours, start_date, end_date },
+    })
   },
-  getTrend(symbol: string, hours = 6) {
+  getTrend(symbol: string, hours?: number) {
     return request.get<PriceTrend>('/prices/trend', { params: { symbol, hours } })
   },
-  getChart(symbol: string, hours = 24) {
-    return request.get<PriceChartPoint[]>('/prices/chart', { params: { symbol, hours } })
+  getChart(symbol: string, hours?: number, start_date?: string, end_date?: string) {
+    return request.get<PriceChartPoint[]>('/prices/chart', {
+      params: { symbol, hours, start_date, end_date },
+    })
   },
   getRecent(symbol: string, limit = 20) {
     return request.get<PriceRecord[]>('/prices/recent', { params: { symbol, limit } })

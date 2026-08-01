@@ -1,54 +1,6 @@
 <template>
   <el-container class="app-layout">
-    <el-aside :width="isCollapse ? '64px' : '220px'" class="app-sidebar">
-      <div class="sidebar-logo" @click="isCollapse = !isCollapse">
-        <span v-show="!isCollapse"><font-awesome-icon icon="trophy" /> 黄金监控</span>
-        <span v-show="isCollapse"><font-awesome-icon icon="trophy" /></span>
-      </div>
-      <el-menu
-        :default-active="activeMenu"
-        :collapse="isCollapse"
-        :collapse-transition="false"
-        router
-      >
-        <el-menu-item index="/dashboard">
-          <font-awesome-icon icon="desktop" class="menu-icon" />
-          <template #title>
-            <span class="menu-text">监控面板</span>
-          </template>
-        </el-menu-item>
-        <el-menu-item index="/price-history">
-          <font-awesome-icon icon="chart-line" class="menu-icon" />
-          <template #title>
-            <span class="menu-text">价格历史</span>
-          </template>
-        </el-menu-item>
-        <el-menu-item index="/providers">
-          <font-awesome-icon icon="diagram-project" class="menu-icon" />
-          <template #title>
-            <span class="menu-text">模型池</span>
-          </template>
-        </el-menu-item>
-        <el-menu-item index="/logs">
-          <font-awesome-icon icon="file-lines" class="menu-icon" />
-          <template #title>
-            <span class="menu-text">系统日志</span>
-          </template>
-        </el-menu-item>
-        <el-menu-item index="/ai-stats">
-          <font-awesome-icon icon="robot" class="menu-icon" />
-          <template #title>
-            <span class="menu-text">AI 调用统计</span>
-          </template>
-        </el-menu-item>
-        <el-menu-item index="/settings">
-          <font-awesome-icon icon="gear" class="menu-icon" />
-          <template #title>
-            <span class="menu-text">设置</span>
-          </template>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
+    <AppSidebar v-model:is-collapse="isCollapse" />
 
     <el-container>
       <el-header class="app-titlebar">
@@ -60,7 +12,7 @@
           />
           <el-breadcrumb separator="/">
             <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-            <el-breadcrumb-item v-if="activeMenu !== '/'">
+            <el-breadcrumb-item v-if="route.path !== '/'">
               {{ breadcrumbTitle }}
             </el-breadcrumb-item>
           </el-breadcrumb>
@@ -83,40 +35,16 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { library } from '@fortawesome/fontawesome-svg-core'
-import {
-  faTrophy,
-  faDesktop,
-  faChartLine,
-  faDiagramProject,
-  faFileLines,
-  faGear,
-  faAnglesLeft,
-  faAnglesRight,
-  faMoon,
-  faSun,
-  faRobot,
-} from '@fortawesome/free-solid-svg-icons'
+import { faAnglesLeft, faAnglesRight, faMoon, faSun } from '@fortawesome/free-solid-svg-icons'
 import { useThemeStore } from '@/stores/theme'
+import AppSidebar from '@/layout/AppSidebar.vue'
 
-library.add(
-  faTrophy,
-  faDesktop,
-  faChartLine,
-  faDiagramProject,
-  faFileLines,
-  faGear,
-  faAnglesLeft,
-  faAnglesRight,
-  faMoon,
-  faSun,
-  faRobot,
-)
+library.add(faAnglesLeft, faAnglesRight, faMoon, faSun)
 
 const route = useRoute()
 const themeStore = useThemeStore()
 const isCollapse = ref(false)
 
-const activeMenu = computed(() => route.path)
 const isDark = computed({
   get: () => themeStore.current === 'dark',
   set: () => {},
@@ -129,6 +57,7 @@ const breadcrumbTitle = computed(() => {
     '/providers': '模型池',
     '/logs': '系统日志',
     '/ai-stats': 'AI 调用统计',
+    '/notification-stats': '通知统计',
     '/settings': '设置',
   }
   return titles[route.path] || ''
@@ -138,40 +67,6 @@ const breadcrumbTitle = computed(() => {
 <style lang="scss" scoped>
 .app-layout {
   height: 100vh;
-}
-
-.app-sidebar {
-  background-color: var(--sidebar-bg);
-  border-right: 1px solid var(--sidebar-border);
-  transition:
-    width 0.3s,
-    background-color 0.3s;
-  overflow: hidden;
-
-  .menu-icon {
-    margin-right: 8px;
-  }
-
-  .menu-text {
-    font-size: 14px;
-  }
-
-  .sidebar-logo {
-    height: 60px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--sidebar-logo-color);
-    font-size: 18px;
-    font-weight: bold;
-    cursor: pointer;
-    border-bottom: 1px solid var(--sidebar-border);
-    transition: color 0.3s;
-  }
-
-  .el-menu {
-    border-right: none;
-  }
 }
 
 .app-titlebar {

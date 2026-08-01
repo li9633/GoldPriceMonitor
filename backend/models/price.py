@@ -80,15 +80,63 @@ class SymbolDashboardItem(BaseModel):
 
     symbol: str = Field(..., description="品种代码")
     name: str = Field(..., description="品种中文名")
-    count: int = Field(..., description="该品种记录数")
+    count: int = Field(..., description="该品种总记录数")
     latest_price: float | None = Field(default=None, description="最新价格")
     latest_time: datetime | None = Field(default=None, description="最新记录时间")
+    today_high: float | None = Field(default=None, description="范围内最高价")
+    today_low: float | None = Field(default=None, description="范围内最低价")
+    data_freshness_seconds: int | None = Field(
+        default=None, description="距最新数据秒数"
+    )
 
 
-class DashboardResponse(BaseModel):
-    """仪表盘总览"""
+class PriceDashboardStats(BaseModel):
+    """仪表盘 — 价格统计"""
 
-    total_records: int = Field(..., description="数据库总记录数")
+    total_records: int = Field(default=0, description="数据库总记录数")
+    new_records: int = Field(default=0, description="时间范围内新增记录数")
     symbols: list[SymbolDashboardItem] = Field(
         default_factory=list, description="各品种统计"
     )
+
+
+class AiDashboardStats(BaseModel):
+    """仪表盘 — AI 统计"""
+
+    total_calls: int = Field(default=0, description="AI 调用总次数")
+    success_count: int = Field(default=0, description="成功次数")
+    failure_count: int = Field(default=0, description="失败次数")
+    success_rate: float = Field(default=0.0, description="成功率(%)")
+    cache_hit_count: int = Field(default=0, description="缓存命中次数")
+    total_tokens: int = Field(default=0, description="消耗 Token 总数")
+    last_success_time: str | None = Field(default=None, description="最近一次成功时间")
+
+
+class NotificationDashboardStats(BaseModel):
+    """仪表盘 — 通知统计"""
+
+    total_sends: int = Field(default=0, description="通知发送总次数")
+    success_count: int = Field(default=0, description="成功次数")
+    failure_count: int = Field(default=0, description="失败次数")
+    success_rate: float = Field(default=0.0, description="成功率(%)")
+
+
+class DashboardResponse(BaseModel):
+    """仪表盘总览 — 系统统一概览"""
+
+    start_date: str = Field(default="", description="统计起始日期")
+    end_date: str = Field(default="", description="统计结束日期")
+    price: PriceDashboardStats = Field(
+        default_factory=PriceDashboardStats, description="价格统计"
+    )
+    ai: AiDashboardStats = Field(
+        default_factory=AiDashboardStats, description="AI 统计"
+    )
+    notification: NotificationDashboardStats = Field(
+        default_factory=NotificationDashboardStats, description="通知统计"
+    )
+    active_symbols_count: int = Field(default=0, description="监控品种数")
+    monitored_symbols: list[str] = Field(
+        default_factory=list, description="监控品种列表"
+    )
+    main_symbol: str = Field(default="", description="主监控品种")

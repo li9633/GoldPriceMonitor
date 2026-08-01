@@ -103,6 +103,7 @@ class PriceMapper:
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_prices_symbol_ts_price ON prices(symbol, timestamp, price)"
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_prices_ts ON prices(timestamp)")
         conn.commit()
 
     def init_table(self):
@@ -184,14 +185,22 @@ class PriceMapper:
             min_6m = c.fetchone()[0]
             return PriceSnapshot(prices_with_time, ma_prices, min_3m, min_6m)
 
-    def get_price_statistics(self, symbol: str, hours: float) -> dict:
-        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+    def get_price_statistics(
+        self,
+        symbol: str,
+        hours: float | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict:
+        where_clause, where_params = self._price_time_filter(
+            int(hours) if hours else None, start_date, end_date
+        )
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT MIN(price), MAX(price), AVG(price), COUNT(*), SUM(price * price) "
-                "FROM prices WHERE symbol = ? AND timestamp > ?",
-                (symbol, cutoff),
+                f"SELECT MIN(price), MAX(price), AVG(price), COUNT(*), SUM(price * price) "
+                f"FROM prices WHERE symbol = ? AND {where_clause}",
+                (symbol, *where_params),
             )
             row = c.fetchone()
             if not row or row[3] == 0:
@@ -219,13 +228,21 @@ class PriceMapper:
                 return None
             return sum(prices) / len(prices)
 
-    def get_price_trend(self, symbol: str, hours: float) -> dict:
-        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+    def get_price_trend(
+        self,
+        symbol: str,
+        hours: float | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict:
+        where_clause, where_params = self._price_time_filter(
+            int(hours) if hours else None, start_date, end_date
+        )
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
-                (symbol, cutoff),
+                f"SELECT price FROM prices WHERE symbol = ? AND {where_clause} ORDER BY timestamp",
+                (symbol, *where_params),
             )
             prices = [row[0] for row in c.fetchall()]
         if len(prices) < 2:
@@ -270,18 +287,24 @@ class PriceMapper:
             ]
 
     def get_chart_series(
-        self, symbol: str, hours: float
+        self,
+        symbol: str,
+        hours: float | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> list[tuple[datetime, float]]:
         """获取聚合后的价格序列，按时间范围自动降采样，用于图表渲染"""
-        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
-        bucket_sql = _resolve_bucket(hours)
+        where_clause, where_params = self._price_time_filter(
+            int(hours) if hours else None, start_date, end_date
+        )
+        bucket_sql = _resolve_bucket(hours or 24)
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT {bucket_sql} AS bucket, AVG(price) AS price "
-                "FROM prices WHERE symbol = ? AND timestamp > ? "
+                f"FROM prices WHERE symbol = ? AND {where_clause} "
                 "GROUP BY bucket ORDER BY bucket",
-                (symbol, cutoff),
+                (symbol, *where_params),
             )
             return [
                 (datetime.fromtimestamp(r[0], tz=CHINA_TZ), round(r[1], 2))
@@ -300,8 +323,56 @@ class PriceMapper:
             logger.error(f"查询数据条数失败：{e}")
             return 0
 
-    def get_dashboard_data(self) -> dict:
-        """仪表盘数据：总记录数 + 各品种记录数及最新价格"""
+    def _price_time_filter(
+        self,
+        hours: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> tuple[str, tuple]:
+        """构建价格表的时间筛选 WHERE 子句和参数
+        优先级：hours > start_date/end_date > 默认今天
+        使用原始时间戳比较，确保索引可用"""
+        if hours is not None and hours > 0:
+            cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+            return "timestamp > ?", (cutoff,)
+        if start_date and end_date:
+            start_ts = int(
+                datetime.strptime(start_date, "%Y-%m-%d")
+                .replace(hour=0, minute=0, second=0, tzinfo=CHINA_TZ)
+                .timestamp()
+            )
+            end_ts = int(
+                datetime.strptime(end_date, "%Y-%m-%d")
+                .replace(hour=23, minute=59, second=59, tzinfo=CHINA_TZ)
+                .timestamp()
+            )
+            return "timestamp BETWEEN ? AND ?", (start_ts, end_ts)
+        if start_date:
+            start_ts = int(
+                datetime.strptime(start_date, "%Y-%m-%d")
+                .replace(hour=0, minute=0, second=0, tzinfo=CHINA_TZ)
+                .timestamp()
+            )
+            return "timestamp >= ?", (start_ts,)
+        if end_date:
+            end_ts = int(
+                datetime.strptime(end_date, "%Y-%m-%d")
+                .replace(hour=23, minute=59, second=59, tzinfo=CHINA_TZ)
+                .timestamp()
+            )
+            return "timestamp <= ?", (end_ts,)
+        today = datetime.now(CHINA_TZ)
+        start_ts = int(today.replace(hour=0, minute=0, second=0).timestamp())
+        end_ts = int(today.replace(hour=23, minute=59, second=59).timestamp())
+        return "timestamp BETWEEN ? AND ?", (start_ts, end_ts)
+
+    def get_dashboard_data(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
+    ) -> dict:
+        """仪表盘数据：总记录数 + 范围内新增 + 各品种统计"""
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -310,25 +381,53 @@ class PriceMapper:
             rows = c.fetchall()
             total = sum(r[1] for r in rows)
 
+            where_clause, where_params = self._price_time_filter(
+                hours, start_date, end_date
+            )
+            c.execute(f"SELECT COUNT(*) FROM prices WHERE {where_clause}", where_params)
+            new_records = c.fetchone()[0]
+
+            c.execute(
+                f"SELECT symbol, MAX(price), MIN(price) FROM prices "
+                f"WHERE {where_clause} GROUP BY symbol",
+                where_params,
+            )
+            today_range = {
+                r[0]: {"today_high": r[1], "today_low": r[2]} for r in c.fetchall()
+            }
+
+            now = datetime.now(CHINA_TZ)
             symbol_data = []
             for symbol, count in rows:
-                c2 = conn.cursor()
-                c2.execute(
-                    "SELECT price, timestamp FROM prices WHERE symbol=? ORDER BY timestamp DESC LIMIT 1",
+                c.execute(
+                    "SELECT price, timestamp FROM prices WHERE symbol=? "
+                    "ORDER BY timestamp DESC LIMIT 1",
                     (symbol,),
                 )
-                row = c2.fetchone()
+                row = c.fetchone()
+                latest_time = (
+                    datetime.fromtimestamp(row[1], tz=CHINA_TZ) if row else None
+                )
+                freshness = (
+                    int((now - latest_time).total_seconds()) if latest_time else None
+                )
+                tr = today_range.get(symbol, {})
                 symbol_data.append(
                     {
                         "symbol": symbol,
                         "count": count,
                         "latest_price": row[0] if row else None,
-                        "latest_time": datetime.fromtimestamp(row[1], tz=CHINA_TZ)
-                        if row
-                        else None,
+                        "latest_time": latest_time,
+                        "today_high": tr.get("today_high"),
+                        "today_low": tr.get("today_low"),
+                        "data_freshness_seconds": freshness,
                     }
                 )
-            return {"total_records": total, "symbols": symbol_data}
+            return {
+                "total_records": total,
+                "new_records": new_records,
+                "symbols": symbol_data,
+            }
 
     def batch_insert_prices(self, records: list[tuple]) -> int:
         with self._get_connection() as conn:

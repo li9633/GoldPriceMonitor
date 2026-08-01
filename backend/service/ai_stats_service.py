@@ -52,9 +52,12 @@ class AiStatsService:
         )
 
     def get_overview(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> AiStatsOverview:
-        raw = self.mapper.get_overview_raw(start_date, end_date)
+        raw = self.mapper.get_overview_raw(start_date, end_date, hours)
         today_total = raw["today_total"]
         today_success = raw["today_success"]
         today_failure = today_total - today_success
@@ -108,9 +111,12 @@ class AiStatsService:
         )
 
     def get_daily_trend(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> list[DailyTrendItem]:
-        rows = self.mapper.get_daily_trend(start_date, end_date)
+        rows = self.mapper.get_daily_trend(start_date, end_date, hours)
         return [
             DailyTrendItem(
                 date=r["date"],
@@ -131,8 +137,11 @@ class AiStatsService:
         page_size: int,
         start_date: str | None = None,
         end_date: str | None = None,
+        hours: int | None = None,
     ) -> tuple[list[AiCallLogItem], int]:
-        rows, total = self.mapper.get_recent_logs(page, page_size, start_date, end_date)
+        rows, total = self.mapper.get_recent_logs(
+            page, page_size, start_date, end_date, hours
+        )
         return [AiCallLogItem(**r) for r in rows], total
 
     @staticmethod
@@ -162,18 +171,24 @@ class AiStatsService:
         return round(input_cost + output_cost, 6)
 
     def get_token_overview(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> TokenOverview:
-        raw = self.mapper.get_token_overview(start_date, end_date)
+        raw = self.mapper.get_token_overview(start_date, end_date, hours)
         cost = self._compute_cost(
             "", "", raw["prompt_tokens"], raw["completion_tokens"]
         )
         return TokenOverview(estimated_cost=cost, **raw)
 
     def get_token_by_model(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> list[TokenByModel]:
-        rows = self.mapper.get_token_by_model(start_date, end_date)
+        rows = self.mapper.get_token_by_model(start_date, end_date, hours)
         return [
             TokenByModel(
                 estimated_cost=self._compute_cost(
@@ -188,9 +203,12 @@ class AiStatsService:
         ]
 
     def get_token_daily_trend(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> list[TokenDailyTrend]:
-        rows = self.mapper.get_token_daily_trend(start_date, end_date)
+        rows = self.mapper.get_token_daily_trend(start_date, end_date, hours)
         return [
             TokenDailyTrend(
                 date=r["date"],

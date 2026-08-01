@@ -92,8 +92,9 @@ export interface TokenTrendItem {
 }
 
 export interface DateParams {
-  start_date: string
-  end_date: string
+  start_date?: string
+  end_date?: string
+  hours?: number
 }
 
 export const aiStatsApi = {

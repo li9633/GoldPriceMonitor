@@ -171,8 +171,4 @@ export const settingsApi = {
   getInfrastructure() {
     return request.get<InfrastructureConfig>('/settings/infrastructure')
   },
-
-  reload() {
-    return request.post<Record<string, never>>('/settings/reload')
-  },
 }

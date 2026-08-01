@@ -24,18 +24,11 @@
     </div>
 
     <!-- 日期筛选栏 -->
-    <div class="date-filter">
-      <span class="filter-label"><font-awesome-icon icon="calendar" /> 日期范围</span>
-      <el-radio-group v-model="dateRange" @change="onDateRangeChange">
-        <el-radio-button value="yesterday">昨日</el-radio-button>
-        <el-radio-button value="today">今日</el-radio-button>
-        <el-radio-button value="7d">近7天</el-radio-button>
-        <el-radio-button value="30d">30天</el-radio-button>
-        <el-radio-button value="80d">80天</el-radio-button>
-        <el-radio-button value="180d">180天</el-radio-button>
-        <el-radio-button value="1y">一年</el-radio-button>
-      </el-radio-group>
-    </div>
+    <TimeRangeFilter
+      v-model="dateRange"
+      :options="dateRangeOptions"
+      @params-change="onDateParamsChange"
+    />
 
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stat-row">
@@ -138,8 +131,8 @@
       <el-col :span="24">
         <TokenTrendChart
           :data="tokenTrend"
-          :start-date="dateParams.start_date"
-          :end-date="dateParams.end_date"
+          :start-date="dateParams.start_date!"
+          :end-date="dateParams.end_date!"
           title="Token 趋势"
           icon="chart-line"
         />
@@ -151,8 +144,8 @@
       <el-col :span="24">
         <AiTrendChart
           :data="trendData"
-          :start-date="dateParams.start_date"
-          :end-date="dateParams.end_date"
+          :start-date="dateParams.start_date!"
+          :end-date="dateParams.end_date!"
           title="成功率趋势"
           icon="chart-line"
           series-key="success_rate"
@@ -168,8 +161,8 @@
       <el-col :span="24">
         <AiTrendChart
           :data="trendData"
-          :start-date="dateParams.start_date"
-          :end-date="dateParams.end_date"
+          :start-date="dateParams.start_date!"
+          :end-date="dateParams.end_date!"
           title="延迟趋势"
           icon="chart-line"
           series-key="avg_latency"
@@ -266,7 +259,6 @@ import {
   faBuilding,
   faCoins,
   faTableList,
-  faCalendar,
 } from '@fortawesome/free-solid-svg-icons'
 import { aiStatsApi } from '@/api/modules/ai-stats'
 import type {
@@ -284,7 +276,9 @@ import AiFailureCharts from '@/components/AiFailureCharts.vue'
 import AiCallLogs from '@/components/AiCallLogs.vue'
 import TokenTrendChart from '@/components/TokenTrendChart.vue'
 import { formatLatency, rateColor, latencyColor } from '@/utils/aiStatsHelpers'
-import { today, offsetDate } from '@/utils/format'
+import { today } from '@/utils/format'
+import TimeRangeFilter from '@/components/TimeRangeFilter.vue'
+import type { TimeRangeOption, TimeRangeParams } from '@/components/TimeRangeFilter.vue'
 
 library.add(
   faRobot,
@@ -295,35 +289,27 @@ library.add(
   faBuilding,
   faCoins,
   faTableList,
-  faCalendar,
 )
 
 // —— Date filter ——
 const dateRange = ref('today')
 
-const dateParams = computed<DateParams>(() => {
-  const t = today()
-  switch (dateRange.value) {
-    case 'yesterday': {
-      const d = offsetDate(-1)
-      return { start_date: d, end_date: d }
-    }
-    case 'today':
-      return { start_date: t, end_date: t }
-    case '7d':
-      return { start_date: offsetDate(-7), end_date: t }
-    case '30d':
-      return { start_date: offsetDate(-30), end_date: t }
-    case '80d':
-      return { start_date: offsetDate(-80), end_date: t }
-    case '180d':
-      return { start_date: offsetDate(-180), end_date: t }
-    case '1y':
-      return { start_date: offsetDate(-365), end_date: t }
-    default:
-      return { start_date: t, end_date: t }
-  }
-})
+const dateRangeOptions: TimeRangeOption[] = [
+  { label: '昨日', value: 'yesterday', days: 1, endDays: 1 },
+  { label: '今日', value: 'today', days: 0 },
+  { label: '近7天', value: '7d', days: 7 },
+  { label: '30天', value: '30d', days: 30 },
+  { label: '80天', value: '80d', days: 80 },
+  { label: '180天', value: '180d', days: 180 },
+  { label: '一年', value: '1y', days: 365 },
+]
+
+const dateParams = ref<DateParams>({ start_date: today(), end_date: today() })
+
+function onDateParamsChange(params: TimeRangeParams) {
+  dateParams.value = params
+  refreshAll()
+}
 
 // —— State ——
 const overview = ref<AiStatsOverview | null>(null)
@@ -406,10 +392,6 @@ async function refreshAll() {
   await fetchTokenStats()
 }
 
-function onDateRangeChange() {
-  refreshAll()
-}
-
 onMounted(async () => {
   await refreshAll()
 })
@@ -473,24 +455,6 @@ onUnmounted(() => {
   100% {
     width: 0;
     left: 100%;
-  }
-}
-
-.date-filter {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 10px 16px;
-  background: var(--bg-secondary);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-
-  .filter-label {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    white-space: nowrap;
   }
 }
 

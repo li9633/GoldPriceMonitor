@@ -54,6 +54,14 @@ const routes = [
           title: 'AI模调用统计',
         },
       },
+      {
+        path: 'notification-stats',
+        name: 'notification-stats',
+        component: () => import('@/views/NotificationStats.vue'),
+        meta: {
+          title: '通知统计',
+        },
+      },
     ],
   },
 ]

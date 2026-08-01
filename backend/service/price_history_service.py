@@ -1,7 +1,12 @@
+from mapper.ai_stats_mapper import AiStatsMapper
+from mapper.notification_stats_mapper import NotificationStatsMapper
 from mapper.price_mapper import PriceMapper
 from models.price import (
+    AiDashboardStats,
     DashboardResponse,
+    NotificationDashboardStats,
     PriceChartPoint,
+    PriceDashboardStats,
     PriceRecordResponse,
     PriceSnapshotResponse,
     PriceStatistics,
@@ -19,6 +24,8 @@ class PriceHistoryService:
 
     def __init__(self) -> None:
         self.mapper = PriceMapper()
+        self.ai_stats_mapper = AiStatsMapper()
+        self.notify_stats_mapper = NotificationStatsMapper()
 
     # ==================== 记录数 ====================
 
@@ -27,16 +34,28 @@ class PriceHistoryService:
 
     # ==================== 统计信息 ====================
 
-    def get_statistics(self, symbol: str, hours: float) -> PriceStatistics | None:
-        raw = self.mapper.get_price_statistics(symbol, hours)
+    def get_statistics(
+        self,
+        symbol: str,
+        hours: float | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> PriceStatistics | None:
+        raw = self.mapper.get_price_statistics(symbol, hours, start_date, end_date)
         if not raw:
             return None
         return PriceStatistics(**raw)
 
     # ==================== 趋势 ====================
 
-    def get_trend(self, symbol: str, hours: float) -> PriceTrend:
-        raw = self.mapper.get_price_trend(symbol, hours)
+    def get_trend(
+        self,
+        symbol: str,
+        hours: float | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> PriceTrend:
+        raw = self.mapper.get_price_trend(symbol, hours, start_date, end_date)
         return PriceTrend(**raw)
 
     # ==================== 快照 ====================
@@ -72,9 +91,17 @@ class PriceHistoryService:
 
     # ==================== 仪表盘 ====================
 
-    def get_dashboard(self) -> DashboardResponse:
-        raw = self.mapper.get_dashboard_data()
-        symbol_name_map = SystemSettingsService().get_symbol_name_map()
+    def get_dashboard(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
+    ) -> DashboardResponse:
+        raw = self.mapper.get_dashboard_data(start_date, end_date, hours)
+        settings = SystemSettingsService()
+        symbol_name_map = settings.get_symbol_name_map()
+        monitor_config = settings.get_monitor_config()
+
         symbols = []
         for item in raw["symbols"]:
             symbols.append(
@@ -84,14 +111,40 @@ class PriceHistoryService:
                     count=item["count"],
                     latest_price=item["latest_price"],
                     latest_time=item["latest_time"],
+                    today_high=item["today_high"],
+                    today_low=item["today_low"],
+                    data_freshness_seconds=item["data_freshness_seconds"],
                 )
             )
-        return DashboardResponse(total_records=raw["total_records"], symbols=symbols)
+
+        ai_raw = self.ai_stats_mapper.get_simple_stats(start_date, end_date)
+        notify_raw = self.notify_stats_mapper.get_simple_stats(start_date, end_date)
+
+        return DashboardResponse(
+            start_date=start_date or "",
+            end_date=end_date or "",
+            price=PriceDashboardStats(
+                total_records=raw["total_records"],
+                new_records=raw["new_records"],
+                symbols=symbols,
+            ),
+            ai=AiDashboardStats(**ai_raw),
+            notification=NotificationDashboardStats(**notify_raw),
+            active_symbols_count=len(monitor_config.get("monitor_symbols", [])),
+            monitored_symbols=monitor_config.get("monitor_symbols", []),
+            main_symbol=monitor_config.get("main_symbol", ""),
+        )
 
     # ==================== 图表数据 ====================
 
-    def get_chart_data(self, symbol: str, hours: float) -> list[PriceChartPoint]:
-        rows = self.mapper.get_chart_series(symbol, hours)
+    def get_chart_data(
+        self,
+        symbol: str,
+        hours: float | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[PriceChartPoint]:
+        rows = self.mapper.get_chart_series(symbol, hours, start_date, end_date)
         return [PriceChartPoint(timestamp=ts, price=p) for ts, p in rows]
 
     # ==================== 最近记录 ====================

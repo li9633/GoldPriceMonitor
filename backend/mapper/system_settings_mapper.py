@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime
 
@@ -132,7 +133,93 @@ class SystemSettingsMapper:
         self._migrate_log_config(conn)
         self._migrate_ai_config(conn)
         self._seed_symbol_config(conn)
+        self._init_notification_stats(conn)
+        self._init_notification_channels(conn)
+        self._init_notification_strategy(conn)
         conn.close()
+
+    def _init_notification_channels(self, conn: sqlite3.Connection) -> None:
+        c = conn.cursor()
+        c.execute("""CREATE TABLE IF NOT EXISTS notification_channels (
+            channel_type TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            priority INTEGER DEFAULT 100,
+            config TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        )""")
+        conn.commit()
+        self._seed_notification_channels(conn)
+
+    def _init_notification_strategy(self, conn: sqlite3.Connection) -> None:
+        c = conn.cursor()
+        c.execute("""CREATE TABLE IF NOT EXISTS notification_strategy (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            stop_on_first_success INTEGER DEFAULT 1,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        )""")
+        c.execute("INSERT OR IGNORE INTO notification_strategy (id) VALUES (1)")
+        conn.commit()
+
+    def _seed_notification_channels(self, conn: sqlite3.Connection) -> None:
+        c = conn.cursor()
+        defaults = [
+            ("wechat", "企业微信", 1, 10, '{"webhook_url": ""}'),
+            (
+                "email",
+                "邮件通知",
+                1,
+                30,
+                '{"smtp_server": "smtp.qq.com", "smtp_port": 587, "sender_email": "", "sender_password": "", "receiver_email": ""}',
+            ),
+        ]
+        c.executemany(
+            "INSERT OR IGNORE INTO notification_channels (channel_type, display_name, enabled, priority, config) VALUES (?, ?, ?, ?, ?)",
+            defaults,
+        )
+        conn.commit()
+
+    def _init_notification_stats(self, conn: sqlite3.Connection) -> None:
+        c = conn.cursor()
+        c.execute("""CREATE TABLE IF NOT EXISTS notification_send_logs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_level     TEXT NOT NULL DEFAULT 'warning',
+            symbol          TEXT NOT NULL,
+            symbol_name     TEXT DEFAULT '',
+            current_price   REAL,
+            alert_summary   TEXT DEFAULT '',
+            channel_type    TEXT NOT NULL,
+            channel_name    TEXT DEFAULT '',
+            chain_id        TEXT DEFAULT '',
+            chain_position  INTEGER DEFAULT 0,
+            chain_total     INTEGER DEFAULT 1,
+            success         INTEGER NOT NULL DEFAULT 0,
+            latency_ms      REAL,
+            error_type      TEXT DEFAULT '',
+            error_reason    TEXT DEFAULT '',
+            created_at      TEXT DEFAULT (datetime('now', 'localtime'))
+        )""")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notify_logs_created_at "
+            "ON notification_send_logs(created_at)"
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notify_logs_channel "
+            "ON notification_send_logs(channel_type)"
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notify_logs_success "
+            "ON notification_send_logs(success)"
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notify_logs_error_type "
+            "ON notification_send_logs(error_type)"
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notify_logs_chain_id "
+            "ON notification_send_logs(chain_id)"
+        )
+        conn.commit()
 
     def _ensure_default_rows(self, conn: sqlite3.Connection | None = None) -> None:
         own = conn is None
@@ -346,6 +433,78 @@ class SystemSettingsMapper:
 
     def get_exchange_rate(self) -> dict | None:
         return self._get_row("exchange_rate_cache")
+
+    # ==================== 通知渠道 ====================
+
+    def get_notification_channels(self) -> list[dict]:
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute(
+            "SELECT channel_type, display_name, enabled, priority, config "
+            "FROM notification_channels ORDER BY priority"
+        )
+        rows = c.fetchall()
+        conn.close()
+        result = []
+        for r in rows:
+            item = dict(r)
+            try:
+                item["config"] = json.loads(item["config"])
+            except json.JSONDecodeError:
+                item["config"] = {}
+            item["enabled"] = bool(item["enabled"])
+            result.append(item)
+        return result
+
+    def upsert_notification_channel(
+        self,
+        channel_type: str,
+        display_name: str,
+        enabled: bool,
+        priority: int,
+        config: dict,
+    ) -> None:
+        conn = self._get_connection()
+        c = conn.cursor()
+        now = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        c.execute(
+            "INSERT INTO notification_channels (channel_type, display_name, enabled, priority, config, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(channel_type) DO UPDATE SET "
+            "display_name=excluded.display_name, enabled=excluded.enabled, "
+            "priority=excluded.priority, config=excluded.config, updated_at=excluded.updated_at",
+            (
+                channel_type,
+                display_name,
+                1 if enabled else 0,
+                priority,
+                json.dumps(config),
+                now,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def delete_notification_channel(self, channel_type: str) -> bool:
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute(
+            "DELETE FROM notification_channels WHERE channel_type=?", (channel_type,)
+        )
+        conn.commit()
+        affected = c.rowcount
+        conn.close()
+        return affected > 0
+
+    # ==================== 通知策略 ====================
+
+    def get_notification_strategy(self) -> dict | None:
+        return self._get_row("notification_strategy")
+
+    def update_notification_strategy(self, **kwargs) -> None:
+        self._upsert(
+            "notification_strategy", list(kwargs.keys()), list(kwargs.values())
+        )
 
     def upsert_exchange_rate(self, rate: float) -> None:
         conn = self._get_connection()

@@ -27,10 +27,8 @@
         <template #header><span class="section-title">系统配置</span></template>
         <el-descriptions :column="1" border>
           <el-descriptions-item label="时区">{{ infrastructure.timezone }}</el-descriptions-item>
-          <el-descriptions-item label="调试模式">
-            <el-tag :type="infrastructure.debug_mode ? 'warning' : 'info'" size="small">
-              {{ infrastructure.debug_mode ? '开启' : '关闭' }}
-            </el-tag>
+          <el-descriptions-item v-if="infrastructure.debug_mode" label="调试模式">
+            <el-tag type="warning" size="small">开启</el-tag>
           </el-descriptions-item>
         </el-descriptions>
       </el-card>

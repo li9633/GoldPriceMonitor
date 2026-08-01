@@ -8,16 +8,81 @@
     <!-- 数据库总览 -->
     <el-row :gutter="20" class="stat-row">
       <el-col :span="6">
-        <StatCard label="数据库总记录" :value="String(dashboard?.total_records ?? '--')" />
+        <StatCard label="数据库总记录" :value="String(dashboard?.price.total_records ?? '--')" />
       </el-col>
       <el-col :span="6">
-        <StatCard label="监控品种数" :value="String(dashboard?.symbols?.length ?? '--')" />
+        <StatCard
+          label="今日新增"
+          :value="String(dashboard?.price.new_records ?? '--')"
+          highlight
+        />
+      </el-col>
+      <el-col :span="6">
+        <StatCard label="监控品种数" :value="String(dashboard?.active_symbols_count ?? '--')" />
+      </el-col>
+      <el-col :span="6">
+        <StatCard label="主监控品种" :value="dashboard?.main_symbol ?? '--'" />
+      </el-col>
+    </el-row>
+
+    <!-- AI 统计 -->
+    <el-row :gutter="20" class="stat-row">
+      <el-col :span="4">
+        <StatCard label="AI 总调用" :value="String(dashboard?.ai.total_calls ?? '--')" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="AI 成功" :value="String(dashboard?.ai.success_count ?? '--')" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="AI 失败" :value="String(dashboard?.ai.failure_count ?? '--')" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard
+          label="AI 成功率"
+          :value="
+            dashboard?.ai.success_rate != null ? dashboard.ai.success_rate.toFixed(1) + '%' : '--'
+          "
+        />
+      </el-col>
+      <el-col :span="4">
+        <StatCard label="缓存命中" :value="String(dashboard?.ai.cache_hit_count ?? '--')" />
+      </el-col>
+      <el-col :span="4">
+        <StatCard
+          label="Token 消耗"
+          :value="
+            dashboard?.ai.total_tokens != null ? dashboard.ai.total_tokens.toLocaleString() : '--'
+          "
+        />
+      </el-col>
+    </el-row>
+
+    <!-- 通知统计 -->
+    <el-row :gutter="20" class="stat-row">
+      <el-col :span="6">
+        <StatCard label="通知发送" :value="String(dashboard?.notification.total_sends ?? '--')" />
+      </el-col>
+      <el-col :span="6">
+        <StatCard label="通知成功" :value="String(dashboard?.notification.success_count ?? '--')" />
+      </el-col>
+      <el-col :span="6">
+        <StatCard label="通知失败" :value="String(dashboard?.notification.failure_count ?? '--')" />
+      </el-col>
+      <el-col :span="6">
+        <StatCard
+          label="通知成功率"
+          :value="
+            dashboard?.notification.success_rate != null
+              ? dashboard.notification.success_rate.toFixed(1) + '%'
+              : '--'
+          "
+        />
       </el-col>
     </el-row>
 
     <!-- 品种卡片 -->
     <el-row :gutter="20" class="symbol-row">
-      <el-col :span="12" v-for="item in dashboard?.symbols" :key="item.symbol">
+      <el-col :span="12" v-for="item in dashboard?.price.symbols" :key="item.symbol">
         <el-card class="symbol-card" shadow="hover">
           <div class="symbol-header">
             <span class="symbol-name">{{ item.name }}</span>
@@ -44,11 +109,20 @@
                 :direction="item.latest_price >= (item.latest_price ?? 0) ? 'stable' : 'stable'"
               />
             </div>
+            <div class="symbol-range">
+              <span>最高 {{ item.today_high != null ? formatPrice(item.today_high) : '—' }}</span>
+              <span class="divider">|</span>
+              <span>最低 {{ item.today_low != null ? formatPrice(item.today_low) : '—' }}</span>
+            </div>
             <div class="symbol-meta">
               <span>记录数：{{ item.count.toLocaleString() }}</span>
               <span class="divider">|</span>
+              <span> 最新：{{ item.latest_time ? formatTime(item.latest_time) : '暂无' }} </span>
+              <span class="divider">|</span>
               <span>
-                最新时间：{{ item.latest_time ? formatTime(item.latest_time) : '暂无' }}
+                {{
+                  item.data_freshness_seconds != null ? item.data_freshness_seconds + '秒前' : '—'
+                }}
               </span>
             </div>
           </div>
@@ -83,13 +157,11 @@
             <font-awesome-icon icon="chart-simple" />
             {{ selectedSymbol }} 走势图
           </span>
-          <el-radio-group v-model="timeRange" size="small">
-            <el-radio-button :value="1">1小时</el-radio-button>
-            <el-radio-button :value="6">6小时</el-radio-button>
-            <el-radio-button :value="24">24小时</el-radio-button>
-            <el-radio-button :value="168">7天</el-radio-button>
-            <el-radio-button :value="720">30天</el-radio-button>
-          </el-radio-group>
+          <TimeRangeFilter
+            v-model="timeRange"
+            :options="timeRangeOptions"
+            @params-change="onTimeParamsChange"
+          />
         </div>
       </template>
       <PriceChart :symbol="selectedSymbol" :hours="timeRange" />
@@ -108,15 +180,30 @@ import type { PriceStatistics } from '@/api/modules/gold'
 import { formatPrice } from '@/utils/format'
 import StatCard from '@/components/StatCard.vue'
 import TrendBadge from '@/components/TrendBadge.vue'
+import TimeRangeFilter from '@/components/TimeRangeFilter.vue'
+import type { TimeRangeOption, TimeRangeParams } from '@/components/TimeRangeFilter.vue'
 const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vue'))
 
 library.add(faChartLine, faChartSimple)
 
 const themeStore = useThemeStore()
 const { dashboard } = usePriceData()
+
+const timeRangeOptions: TimeRangeOption[] = [
+  { label: '1小时', value: 1, hours: 1 },
+  { label: '6小时', value: 6, hours: 6 },
+  { label: '24小时', value: 24, hours: 24 },
+  { label: '7天', value: 168, hours: 168 },
+  { label: '30天', value: 720, hours: 720 },
+]
 const selectedSymbol = ref<string | null>(null)
 const timeRange = ref(24)
 const stats = ref<PriceStatistics | null>(null)
+
+function onTimeParamsChange(params: TimeRangeParams) {
+  // hours 模式只需要 hours，chart 已通过 timeRange 联动
+  void params
+}
 
 function selectSymbol(symbol: string) {
   if (selectedSymbol.value === symbol) {
@@ -225,7 +312,18 @@ function formatTime(iso: string): string {
       color: var(--text-secondary);
 
       .divider {
-        margin: 0 10px;
+        margin: 0 8px;
+        color: var(--border-color);
+      }
+    }
+
+    .symbol-range {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+
+      .divider {
+        margin: 0 8px;
         color: var(--border-color);
       }
     }

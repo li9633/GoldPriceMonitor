@@ -27,9 +27,6 @@ class SystemSettingsService:
         self.mapper.init_tables()
         self._initialized = True
 
-    def reload(self) -> None:
-        logger.info("系统设置缓存已刷新")
-
     # ==================== 报警配置 ====================
 
     def get_alert_config(self) -> dict:
@@ -180,6 +177,37 @@ class SystemSettingsService:
             "db_files": db_files,
             "db_dir_size_bytes": db_dir_size,
         }
+
+    # ==================== 通知渠道 ====================
+
+    def get_notification_channels(self) -> list[dict]:
+        return self.mapper.get_notification_channels()
+
+    def update_notification_channel(
+        self,
+        channel_type: str,
+        display_name: str,
+        enabled: bool,
+        priority: int,
+        config: dict,
+    ) -> None:
+        self.mapper.upsert_notification_channel(
+            channel_type, display_name, enabled, priority, config
+        )
+
+    def delete_notification_channel(self, channel_type: str) -> bool:
+        return self.mapper.delete_notification_channel(channel_type)
+
+    # ==================== 通知策略 ====================
+
+    def get_notification_strategy(self) -> dict:
+        row = self.mapper.get_notification_strategy()
+        if row is None:
+            return {"stop_on_first_success": True}
+        return {k: v for k, v in row.items() if k not in ("id", "updated_at")}
+
+    def update_notification_strategy(self, **kwargs) -> None:
+        self.mapper.update_notification_strategy(**kwargs)
 
     # ==================== 汇率缓存 ====================
 

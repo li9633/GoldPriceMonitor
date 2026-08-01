@@ -36,9 +36,13 @@ def get_record_count(
 @router.get("/statistics", response_model=ApiResponse[PriceStatistics])
 def get_statistics(
     symbol: str = Query(default_factory=_default_symbol, description="品种代码"),
-    hours: float = Query(default=24, ge=1, description="统计窗口（小时）"),
+    hours: float | None = Query(
+        default=None, ge=1, description="统计窗口（小时），优先于日期范围"
+    ),
+    start_date: str | None = Query(default=None, description="起始日期（YYYY-MM-DD）"),
+    end_date: str | None = Query(default=None, description="结束日期（YYYY-MM-DD）"),
 ):
-    result = service.get_statistics(symbol, hours)
+    result = service.get_statistics(symbol, hours, start_date, end_date)
     if not result:
         return ApiResponse.fail(f"品种 [{symbol}] 暂无价格数据", code=404)
     return ApiResponse.ok(result)
@@ -50,17 +54,31 @@ def get_statistics(
 @router.get("/trend", response_model=ApiResponse[PriceTrend])
 def get_trend(
     symbol: str = Query(default_factory=_default_symbol, description="品种代码"),
-    hours: float = Query(default=6, ge=1, description="趋势窗口（小时）"),
+    hours: float | None = Query(
+        default=None, ge=1, description="趋势窗口（小时），优先于日期范围"
+    ),
+    start_date: str | None = Query(default=None, description="起始日期（YYYY-MM-DD）"),
+    end_date: str | None = Query(default=None, description="结束日期（YYYY-MM-DD）"),
 ):
-    return ApiResponse.ok(service.get_trend(symbol, hours))
+    return ApiResponse.ok(service.get_trend(symbol, hours, start_date, end_date))
 
 
 # ==================== 仪表盘 ====================
 
 
 @router.get("/dashboard", response_model=ApiResponse[DashboardResponse])
-def get_dashboard():
-    return ApiResponse.ok(service.get_dashboard())
+def get_dashboard(
+    start_date: str | None = Query(
+        default=None, description="起始日期（YYYY-MM-DD），默认今天"
+    ),
+    end_date: str | None = Query(
+        default=None, description="结束日期（YYYY-MM-DD），默认今天"
+    ),
+    hours: int | None = Query(
+        default=None, ge=1, description="最近N小时（优先于日期范围）"
+    ),
+):
+    return ApiResponse.ok(service.get_dashboard(start_date, end_date, hours))
 
 
 # ==================== 图表数据 ====================
@@ -69,14 +87,16 @@ def get_dashboard():
 @router.get("/chart", response_model=ApiResponse[list[PriceChartPoint]])
 def get_chart_data(
     symbol: str = Query(default_factory=_default_symbol, description="品种代码"),
-    hours: float = Query(
-        default=24,
+    hours: float | None = Query(
+        default=None,
         ge=1,
         le=8760,
-        description="图表时间范围（小时，最长365天 | 720=30天 2160=90天 4380=半年 8760=1年）",
+        description="图表时间范围（小时），优先于日期范围",
     ),
+    start_date: str | None = Query(default=None, description="起始日期（YYYY-MM-DD）"),
+    end_date: str | None = Query(default=None, description="结束日期（YYYY-MM-DD）"),
 ):
-    return ApiResponse.ok(service.get_chart_data(symbol, hours))
+    return ApiResponse.ok(service.get_chart_data(symbol, hours, start_date, end_date))
 
 
 # ==================== 最近记录 ====================

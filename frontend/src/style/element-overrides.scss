@@ -17,23 +17,25 @@
   --el-menu-border-color: transparent;
 
   .el-menu-item {
-    margin: 4px 8px;
     border-radius: 6px;
-    transition: all 0.25s;
 
-    &.is-active {
-      background-color: var(--sidebar-active-bg) !important;
+    &:not(.is-active):hover {
+      background-color: var(--sidebar-hover-bg) !important;
       color: var(--sidebar-text-hover) !important;
     }
 
-    &:hover {
+    &.is-active:hover {
+      background-color: var(--sidebar-hover-bg) !important;
+      color: var(--sidebar-text-hover) !important;
+    }
+
+    &.is-active:hover {
       background-color: var(--sidebar-hover-bg) !important;
       color: var(--sidebar-text-hover) !important;
     }
   }
 
   .el-sub-menu__title {
-    margin: 4px 8px;
     border-radius: 6px;
 
     &:hover {

@@ -92,6 +92,22 @@ class LogConfigModel(BaseModel):
     log_level: str = "DEBUG"
 
 
+class NotificationChannelModel(BaseModel):
+    """通知渠道配置"""
+
+    channel_type: str
+    display_name: str = ""
+    enabled: bool = True
+    priority: int = 100
+    config: dict = {}
+
+
+class NotificationStrategyModel(BaseModel):
+    """通知策略配置"""
+
+    stop_on_first_success: bool = True
+
+
 class InfrastructureConfigModel(BaseModel):
     """基础设施配置 — 前端只读展示"""
 

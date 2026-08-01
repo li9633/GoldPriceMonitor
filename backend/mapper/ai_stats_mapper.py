@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime
 
 from config import MODEL_POOL_DB_FILE
+from utils.date_filter import build_date_filter
 from utils.logger import get_logger
 
 logger = get_logger("AiStatsMapper")
@@ -115,22 +116,68 @@ class AiStatsMapper:
 
     # ==================== 统计查询 ====================
 
-    def _date_range_where(self, start_date: str | None, end_date: str | None) -> str:
-        if start_date and end_date:
-            return f"date(call_time) BETWEEN '{start_date}' AND '{end_date}'"
-        if start_date:
-            return f"date(call_time) >= '{start_date}'"
-        if end_date:
-            return f"date(call_time) <= '{end_date}'"
-        return "date(call_time) = date('now', 'localtime')"
+    # ==================== 简易统计（供仪表盘使用） ====================
+
+    def get_simple_stats(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
+    ) -> dict:
+        conn = self._get_connection()
+        c = conn.cursor()
+        where = self._date_range_where(start_date, end_date, hours)
+
+        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where}")
+        total = c.fetchone()[0]
+
+        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where} AND success=1")
+        success = c.fetchone()[0]
+
+        c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where} AND from_cache=1")
+        cache_hit = c.fetchone()[0]
+
+        c.execute(
+            f"SELECT COALESCE(SUM(total_tokens), 0) FROM ai_call_logs WHERE {where}"
+        )
+        total_tokens = c.fetchone()[0]
+
+        c.execute(
+            "SELECT call_time FROM ai_call_logs WHERE success=1 "
+            "ORDER BY call_time DESC LIMIT 1"
+        )
+        last_row = c.fetchone()
+        last_success_time = last_row[0] if last_row else None
+
+        conn.close()
+        return {
+            "total_calls": total,
+            "success_count": success,
+            "failure_count": total - success,
+            "success_rate": round(100.0 * success / total, 1) if total else 0.0,
+            "cache_hit_count": cache_hit,
+            "total_tokens": total_tokens,
+            "last_success_time": last_success_time,
+        }
+
+    def _date_range_where(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
+    ) -> str:
+        return build_date_filter(hours, start_date, end_date, "call_time", "datetime")
 
     def get_overview_raw(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> dict:
         conn = self._get_connection()
         c = conn.cursor()
 
-        where = self._date_range_where(start_date, end_date)
+        where = self._date_range_where(start_date, end_date, hours)
 
         c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where}")
         today_total = c.fetchone()[0]
@@ -286,11 +333,15 @@ class AiStatsMapper:
         return count
 
     def get_daily_trend(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> list[dict]:
         conn = self._get_connection()
         c = conn.cursor()
-        where = self._date_range_where(start_date, end_date)
+
+        where = self._date_range_where(start_date, end_date, hours)
         single_day = bool(start_date and start_date == end_date)
         if single_day:
             c.execute(
@@ -341,10 +392,11 @@ class AiStatsMapper:
         page_size: int,
         start_date: str | None = None,
         end_date: str | None = None,
+        hours: int | None = None,
     ) -> tuple[list[dict], int]:
         conn = self._get_connection()
         c = conn.cursor()
-        where = self._date_range_where(start_date, end_date)
+        where = self._date_range_where(start_date, end_date, hours)
         c.execute(f"SELECT COUNT(*) FROM ai_call_logs WHERE {where}")
         total = c.fetchone()[0]
         offset = (page - 1) * page_size
@@ -377,12 +429,15 @@ class AiStatsMapper:
         return rows, total
 
     def get_token_overview(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> dict:
         """Token 消耗概览"""
         conn = self._get_connection()
         c = conn.cursor()
-        where = self._date_range_where(start_date, end_date)
+        where = self._date_range_where(start_date, end_date, hours)
         c.execute(
             f"SELECT "
             f"COALESCE(SUM(prompt_tokens), 0), "
@@ -401,12 +456,15 @@ class AiStatsMapper:
         }
 
     def get_token_by_model(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> list[dict]:
         """按模型/供应商分组的 Token 消耗"""
         conn = self._get_connection()
         c = conn.cursor()
-        where = self._date_range_where(start_date, end_date)
+        where = self._date_range_where(start_date, end_date, hours)
         c.execute(
             f"SELECT provider_name, model_name, "
             f"COALESCE(SUM(prompt_tokens), 0), "
@@ -431,12 +489,15 @@ class AiStatsMapper:
         return rows
 
     def get_token_daily_trend(
-        self, start_date: str | None = None, end_date: str | None = None
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
     ) -> list[dict]:
         """Token 消耗趋势（单天按小时，多天按日期）"""
         conn = self._get_connection()
         c = conn.cursor()
-        where = self._date_range_where(start_date, end_date)
+        where = self._date_range_where(start_date, end_date, hours)
         single_day = bool(start_date and start_date == end_date)
         if single_day:
             c.execute(

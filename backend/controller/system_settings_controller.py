@@ -10,6 +10,8 @@ from models.system_settings import (
     LogConfigModel,
     MessageConfigModel,
     MonitorConfigModel,
+    NotificationChannelModel,
+    NotificationStrategyModel,
     SymbolConfigItem,
     WechatConfigModel,
 )
@@ -139,10 +141,62 @@ def get_infrastructure_config():
     )
 
 
-@router.post("/reload", response_model=ApiResponse[dict])
-def reload_settings():
-    service.reload()
-    return ApiResponse.ok({}, message="设置已刷新")
+@router.get(
+    "/notification/channels",
+    response_model=ApiResponse[list[NotificationChannelModel]],
+)
+def get_notification_channels():
+    return ApiResponse.ok(
+        [NotificationChannelModel(**c) for c in service.get_notification_channels()]
+    )
+
+
+@router.put(
+    "/notification/channels/{channel_type}",
+    response_model=ApiResponse[NotificationChannelModel],
+)
+def update_notification_channel(channel_type: str, data: NotificationChannelModel):
+    service.update_notification_channel(
+        channel_type, data.display_name, data.enabled, data.priority, data.config
+    )
+    channels = service.get_notification_channels()
+    for c in channels:
+        if c["channel_type"] == channel_type:
+            return ApiResponse.ok(
+                NotificationChannelModel(**c), message="渠道配置已更新"
+            )
+    return ApiResponse.fail("渠道不存在", code=404)
+
+
+@router.delete(
+    "/notification/channels/{channel_type}", response_model=ApiResponse[dict]
+)
+def delete_notification_channel(channel_type: str):
+    if service.delete_notification_channel(channel_type):
+        return ApiResponse.ok({}, message=f"渠道 [{channel_type}] 已删除")
+    return ApiResponse.fail(f"渠道 [{channel_type}] 不存在", code=404)
+
+
+@router.get(
+    "/notification/strategy",
+    response_model=ApiResponse[NotificationStrategyModel],
+)
+def get_notification_strategy():
+    return ApiResponse.ok(
+        NotificationStrategyModel(**service.get_notification_strategy())
+    )
+
+
+@router.put(
+    "/notification/strategy",
+    response_model=ApiResponse[NotificationStrategyModel],
+)
+def update_notification_strategy(data: NotificationStrategyModel):
+    service.update_notification_strategy(**data.model_dump())
+    return ApiResponse.ok(
+        NotificationStrategyModel(**service.get_notification_strategy()),
+        message="通知策略已更新",
+    )
 
 
 @router.get("/exchange-rate", response_model=ApiResponse[ExchangeRateModel])

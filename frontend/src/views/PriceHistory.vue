@@ -37,15 +37,7 @@
       <template #header>
         <div class="chart-header">
           <span>价格走势</span>
-          <el-radio-group v-model="timeRange">
-            <el-radio-button :value="1">1小时</el-radio-button>
-            <el-radio-button :value="6">6小时</el-radio-button>
-            <el-radio-button :value="24">24小时</el-radio-button>
-            <el-radio-button :value="168">7天</el-radio-button>
-            <el-radio-button :value="720">30天</el-radio-button>
-            <el-radio-button :value="2160">90天</el-radio-button>
-            <el-radio-button :value="8760">1年</el-radio-button>
-          </el-radio-group>
+          <TimeRangeFilter v-model="timeRange" :options="timeRangeOptions" />
         </div>
       </template>
       <PriceChart :symbol="symbol" :hours="timeRange" />
@@ -83,13 +75,24 @@ import { formatPrice, formatDateTime } from '@/utils/format'
 import { usePriceData } from '@/composables/usePriceData'
 const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vue'))
 import StatCard from '@/components/StatCard.vue'
+import TimeRangeFilter from '@/components/TimeRangeFilter.vue'
+import type { TimeRangeOption } from '@/components/TimeRangeFilter.vue'
 
 library.add(faHistory)
 
 const { dashboard } = usePriceData()
 
-const symbols = computed(() => dashboard.value?.symbols ?? [])
+const symbols = computed(() => dashboard.value?.price.symbols ?? [])
 const symbol = ref('gds_AUTD')
+const timeRangeOptions: TimeRangeOption[] = [
+  { label: '1小时', value: 1, hours: 1 },
+  { label: '6小时', value: 6, hours: 6 },
+  { label: '24小时', value: 24, hours: 24 },
+  { label: '7天', value: 168, hours: 168 },
+  { label: '30天', value: 720, hours: 720 },
+  { label: '90天', value: 2160, hours: 2160 },
+  { label: '1年', value: 8760, hours: 8760 },
+]
 const timeRange = ref(24)
 const recentRecords = ref<PriceRecord[]>([])
 const stats = ref<PriceStatistics | null>(null)
