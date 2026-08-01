@@ -32,20 +32,6 @@ export interface AIConfig {
   cache_ttl_minutes: number
 }
 
-export interface WeChatConfig {
-  enabled: boolean
-  webhook_url: string
-}
-
-export interface EmailConfig {
-  enabled: boolean
-  smtp_server: string
-  smtp_port: number
-  sender_email: string
-  sender_password: string
-  receiver_email: string
-}
-
 export interface MonitorConfig {
   check_interval: number
   auto_import_on_start: boolean
@@ -114,20 +100,6 @@ export const settingsApi = {
   },
   updateAI(data: AIConfig) {
     return request.put<AIConfig>('/settings/ai', data)
-  },
-
-  getWeChat() {
-    return request.get<WeChatConfig>('/settings/wechat')
-  },
-  updateWeChat(data: WeChatConfig) {
-    return request.put<WeChatConfig>('/settings/wechat', data)
-  },
-
-  getEmail() {
-    return request.get<EmailConfig>('/settings/email')
-  },
-  updateEmail(data: EmailConfig) {
-    return request.put<EmailConfig>('/settings/email', data)
   },
 
   getMonitor() {

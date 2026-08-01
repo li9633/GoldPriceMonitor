@@ -49,28 +49,6 @@ class SystemSettingsService:
     def update_ai_config(self, **kwargs) -> None:
         self.mapper.update_ai_config(**kwargs)
 
-    # ==================== 企业微信 ====================
-
-    def get_wechat_config(self) -> dict:
-        row = self.mapper.get_wechat_config()
-        if row is None:
-            return {}
-        return {k: v for k, v in row.items() if k not in ("id", "updated_at")}
-
-    def update_wechat_config(self, **kwargs) -> None:
-        self.mapper.update_wechat_config(**kwargs)
-
-    # ==================== 邮件 ====================
-
-    def get_email_config(self) -> dict:
-        row = self.mapper.get_email_config()
-        if row is None:
-            return {}
-        return {k: v for k, v in row.items() if k not in ("id", "updated_at")}
-
-    def update_email_config(self, **kwargs) -> None:
-        self.mapper.update_email_config(**kwargs)
-
     # ==================== 监控配置 ====================
 
     def get_monitor_config(self) -> dict:

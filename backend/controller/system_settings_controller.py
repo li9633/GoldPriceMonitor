@@ -4,7 +4,6 @@ from models.response import ApiResponse
 from models.system_settings import (
     AIConfigModel,
     AlertConfigModel,
-    EmailConfigModel,
     ExchangeRateModel,
     InfrastructureConfigModel,
     LogConfigModel,
@@ -13,7 +12,6 @@ from models.system_settings import (
     NotificationChannelModel,
     NotificationStrategyModel,
     SymbolConfigItem,
-    WechatConfigModel,
 )
 from service.system_settings_service import SystemSettingsService
 
@@ -44,32 +42,6 @@ def update_ai_config(data: AIConfigModel):
     service.update_ai_config(**data.model_dump())
     return ApiResponse.ok(
         AIConfigModel(**service.get_ai_config()), message="AI 配置已更新"
-    )
-
-
-@router.get("/wechat", response_model=ApiResponse[WechatConfigModel])
-def get_wechat_config():
-    return ApiResponse.ok(WechatConfigModel(**service.get_wechat_config()))
-
-
-@router.put("/wechat", response_model=ApiResponse[WechatConfigModel])
-def update_wechat_config(data: WechatConfigModel):
-    service.update_wechat_config(**data.model_dump())
-    return ApiResponse.ok(
-        WechatConfigModel(**service.get_wechat_config()), message="企业微信配置已更新"
-    )
-
-
-@router.get("/email", response_model=ApiResponse[EmailConfigModel])
-def get_email_config():
-    return ApiResponse.ok(EmailConfigModel(**service.get_email_config()))
-
-
-@router.put("/email", response_model=ApiResponse[EmailConfigModel])
-def update_email_config(data: EmailConfigModel):
-    service.update_email_config(**data.model_dump())
-    return ApiResponse.ok(
-        EmailConfigModel(**service.get_email_config()), message="邮件配置已更新"
     )
 
 

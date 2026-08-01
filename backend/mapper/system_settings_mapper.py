@@ -357,18 +357,6 @@ class SystemSettingsMapper:
     def update_ai_config(self, **kwargs) -> None:
         self._upsert("ai_config", list(kwargs.keys()), list(kwargs.values()))
 
-    def get_wechat_config(self) -> dict | None:
-        return self._get_row("wechat_config")
-
-    def update_wechat_config(self, **kwargs) -> None:
-        self._upsert("wechat_config", list(kwargs.keys()), list(kwargs.values()))
-
-    def get_email_config(self) -> dict | None:
-        return self._get_row("email_config")
-
-    def update_email_config(self, **kwargs) -> None:
-        self._upsert("email_config", list(kwargs.keys()), list(kwargs.values()))
-
     def get_monitor_config(self) -> dict | None:
         return self._get_row("monitor_config")
 
