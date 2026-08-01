@@ -152,7 +152,7 @@ onMounted(loadExchangeRate)
 
 <style lang="scss" scoped>
 .settings {
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
