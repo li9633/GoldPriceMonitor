@@ -4,6 +4,7 @@
     <div class="page-header">
       <h1 class="page-title"><font-awesome-icon icon="bell" /> 通知统计</h1>
       <div class="header-actions">
+        <el-switch v-model="isAbbreviated" active-text="缩略" inactive-text="完整" size="small" />
         <el-switch
           v-model="autoRefresh"
           active-text="自动刷新"
@@ -25,19 +26,29 @@
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6">
-        <StatCard label="今日发送" :value="String(overview?.today_total ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="今日发送"
+          :value="String(overview?.today_total ?? '--')"
+        />
       </el-col>
       <el-col :span="6">
-        <StatCard label="今日成功" :value="String(overview?.today_success ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="今日成功"
+          :value="String(overview?.today_success ?? '--')"
+        />
       </el-col>
       <el-col :span="6">
-        <StatCard
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
           label="成功率"
           :value="overview ? overview.success_rate.toFixed(1) + '%' : '--'"
         />
       </el-col>
       <el-col :span="6">
-        <StatCard
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
           label="平均延迟"
           :value="overview ? overview.avg_latency_ms.toFixed(0) + 'ms' : '--'"
         />
@@ -85,7 +96,7 @@ import type {
   NotifyLogItem,
   DateParams,
 } from '@/api/modules/notification'
-import StatCard from '@/components/StatCard.vue'
+import StatisticCard from '@/components/StatisticCard.vue'
 import NotificationFailureChart from '@/components/NotificationFailureChart.vue'
 import NotificationChannelChart from '@/components/NotificationChannelChart.vue'
 import NotificationTrendChart from '@/components/NotificationTrendChart.vue'
@@ -106,6 +117,7 @@ const logsPageSize = ref(20)
 const logsLoading = ref(false)
 const loading = ref(false)
 const autoRefresh = ref(true)
+const isAbbreviated = ref(false)
 
 const dateRange = ref('today')
 

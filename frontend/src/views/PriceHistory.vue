@@ -17,19 +17,19 @@
 
     <el-row v-if="stats" :gutter="20" class="stat-row">
       <el-col :span="4">
-        <StatCard label="最低价" :value="formatPrice(stats.min)" />
+        <StatisticCard label="最低价" :value="formatPrice(stats.min)" />
       </el-col>
       <el-col :span="4">
-        <StatCard label="最高价" :value="formatPrice(stats.max)" highlight />
+        <StatisticCard label="最高价" :value="formatPrice(stats.max)" highlight />
       </el-col>
       <el-col :span="4">
-        <StatCard label="均价" :value="formatPrice(stats.avg)" />
+        <StatisticCard label="均价" :value="formatPrice(stats.avg)" />
       </el-col>
       <el-col :span="4">
-        <StatCard label="样本数" :value="String(stats.count)" />
+        <StatisticCard label="样本数" :value="String(stats.count)" />
       </el-col>
       <el-col :span="4">
-        <StatCard label="标准差" :value="stats.std.toFixed(2)" />
+        <StatisticCard label="标准差" :value="stats.std.toFixed(2)" />
       </el-col>
     </el-row>
 
@@ -74,7 +74,7 @@ import type { PriceRecord, PriceStatistics } from '@/api/modules/gold'
 import { formatPrice, formatDateTime } from '@/utils/format'
 import { usePriceData } from '@/composables/usePriceData'
 const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vue'))
-import StatCard from '@/components/StatCard.vue'
+import StatisticCard from '@/components/StatisticCard.vue'
 import TimeRangeFilter from '@/components/TimeRangeFilter.vue'
 import type { TimeRangeOption } from '@/components/TimeRangeFilter.vue'
 

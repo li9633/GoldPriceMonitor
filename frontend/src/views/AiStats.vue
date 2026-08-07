@@ -12,6 +12,7 @@
     <div class="page-header">
       <h1 class="page-title"><font-awesome-icon icon="robot" /> AI 调用统计</h1>
       <div class="header-actions">
+        <el-switch v-model="isAbbreviated" active-text="缩略" inactive-text="完整" size="small" />
         <el-switch
           v-model="autoRefresh"
           active-text="自动刷新"
@@ -33,30 +34,33 @@
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6">
-        <StatCard label="今日调用" :value="String(overview?.today_total ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="今日调用"
+          :value="String(overview?.today_total ?? '--')"
+        />
       </el-col>
       <el-col :span="6">
-        <StatCard
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
           label="成功率"
           :value="overview ? overview.success_rate.toFixed(1) + '%' : '--'"
         />
       </el-col>
       <el-col :span="6">
-        <StatCard
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
           label="平均延迟"
           :value="overview ? formatLatency(overview.avg_latency_ms) : '--'"
         />
       </el-col>
       <el-col :span="6">
-        <StatCard label="缓存命中">
-          <template #value>
-            <span v-if="overview">
-              {{ overview.cache_hit_count
-              }}<span class="hit-rate"> ({{ overview.cache_hit_rate.toFixed(1) }}%)</span>
-            </span>
-            <span v-else>--</span>
-          </template>
-        </StatCard>
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="缓存命中"
+          :value="overview ? overview.cache_hit_count : '--'"
+          :sub="overview ? '(' + overview.cache_hit_rate.toFixed(1) + '%)' : undefined"
+        />
       </el-col>
     </el-row>
 
@@ -67,22 +71,41 @@
 
     <el-row :gutter="16" class="stat-row">
       <el-col :span="4">
-        <StatCard label="输入Token" :value="formatTokenNum(tokenOverview?.prompt_tokens ?? 0)" />
-      </el-col>
-      <el-col :span="4">
-        <StatCard
-          label="输出Token"
-          :value="formatTokenNum(tokenOverview?.completion_tokens ?? 0)"
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="输入Token"
+          :value="tokenOverview?.prompt_tokens ?? 0"
         />
       </el-col>
       <el-col :span="4">
-        <StatCard label="总Token" :value="formatTokenNum(tokenOverview?.total_tokens ?? 0)" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="输出Token"
+          :value="tokenOverview?.completion_tokens ?? 0"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard label="调用次数" :value="formatTokenNum(tokenOverview?.calls ?? 0)" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="总Token"
+          :value="tokenOverview?.total_tokens ?? 0"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard label="预估费用" :value="formatCost(tokenOverview?.estimated_cost ?? 0)" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="调用次数"
+          :value="tokenOverview?.calls ?? 0"
+        />
+      </el-col>
+      <el-col :span="4">
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="预估费用"
+          prefix="¥"
+          :value="tokenOverview?.estimated_cost ?? 0"
+          :precision="2"
+        />
       </el-col>
     </el-row>
 
@@ -269,7 +292,7 @@ import type {
   TokenTrendItem,
   DateParams,
 } from '@/api/modules/ai-stats'
-import StatCard from '@/components/StatCard.vue'
+import StatisticCard from '@/components/StatisticCard.vue'
 import AiTrendChart from '@/components/AiTrendChart.vue'
 import AiHourlyChart from '@/components/AiHourlyChart.vue'
 import AiFailureCharts from '@/components/AiFailureCharts.vue'
@@ -316,6 +339,7 @@ const overview = ref<AiStatsOverview | null>(null)
 const trendData = ref<DailyTrendItem[]>([])
 const loading = ref(false)
 const autoRefresh = ref(true)
+const isAbbreviated = ref(false)
 
 const showAlert = computed(() => (overview.value?.consecutive_failures ?? 0) > 0)
 

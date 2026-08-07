@@ -4,7 +4,8 @@ import type { DashboardResponse } from '@/api/modules/gold'
 
 const POLL_INTERVAL = 10000
 
-export function usePriceData() {
+export function usePriceData(options?: { autoStart?: boolean }) {
+  const autoStart = options?.autoStart ?? true
   const dashboard = ref<DashboardResponse | null>(null)
   const loading = ref(false)
   let timer: ReturnType<typeof setInterval> | null = null
@@ -32,8 +33,10 @@ export function usePriceData() {
     }
   }
 
-  onMounted(startPolling)
+  if (autoStart) {
+    onMounted(startPolling)
+  }
   onUnmounted(stopPolling)
 
-  return { dashboard, loading, fetchDashboard }
+  return { dashboard, loading, fetchDashboard, startPolling, stopPolling }
 }

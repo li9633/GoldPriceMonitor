@@ -1,43 +1,86 @@
 <template>
   <div class="dashboard">
     <div class="page-header">
-      <h1 class="page-title"><font-awesome-icon icon="chart-line" /> 黄金价格监控</h1>
-      <p class="page-subtitle">实时追踪黄金价格，智能分析市场趋势</p>
+      <div class="header-actions">
+        <el-switch
+          v-model="autoRefresh"
+          active-text="自动刷新"
+          :active-value="true"
+          :inactive-value="false"
+        />
+        <el-button text @click="refreshDashboard">
+          <font-awesome-icon icon="rotate" /> 刷新
+        </el-button>
+      </div>
+      <div class="header-left">
+        <h1 class="page-title"><font-awesome-icon icon="chart-line" /> 黄金价格监控</h1>
+        <p class="page-subtitle">实时追踪黄金价格，智能分析市场趋势</p>
+        <div class="global-toggle">
+          <el-switch v-model="isAbbreviated" active-text="缩略" inactive-text="完整" size="small" />
+        </div>
+      </div>
+      <div v-if="loading" class="loading-bar"></div>
     </div>
 
     <!-- 数据库总览 -->
     <el-row :gutter="20" class="stat-row">
       <el-col :span="6">
-        <StatCard label="数据库总记录" :value="String(dashboard?.price.total_records ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="数据库总记录"
+          :value="String(dashboard?.price.total_records ?? '--')"
+        />
       </el-col>
       <el-col :span="6">
-        <StatCard
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
           label="今日新增"
           :value="String(dashboard?.price.new_records ?? '--')"
           highlight
         />
       </el-col>
       <el-col :span="6">
-        <StatCard label="监控品种数" :value="String(dashboard?.active_symbols_count ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="监控品种数"
+          :value="String(dashboard?.active_symbols_count ?? '--')"
+        />
       </el-col>
       <el-col :span="6">
-        <StatCard label="主监控品种" :value="dashboard?.main_symbol ?? '--'" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="主监控品种"
+          :value="dashboard?.main_symbol ?? '--'"
+        />
       </el-col>
     </el-row>
 
     <!-- AI 统计 -->
     <el-row :gutter="20" class="stat-row">
       <el-col :span="4">
-        <StatCard label="AI 总调用" :value="String(dashboard?.ai.total_calls ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="AI 总调用"
+          :value="String(dashboard?.ai.total_calls ?? '--')"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard label="AI 成功" :value="String(dashboard?.ai.success_count ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="AI 成功"
+          :value="String(dashboard?.ai.success_count ?? '--')"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard label="AI 失败" :value="String(dashboard?.ai.failure_count ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="AI 失败"
+          :value="String(dashboard?.ai.failure_count ?? '--')"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
           label="AI 成功率"
           :value="
             dashboard?.ai.success_rate != null ? dashboard.ai.success_rate.toFixed(1) + '%' : '--'
@@ -45,14 +88,17 @@
         />
       </el-col>
       <el-col :span="4">
-        <StatCard label="缓存命中" :value="String(dashboard?.ai.cache_hit_count ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="缓存命中"
+          :value="String(dashboard?.ai.cache_hit_count ?? '--')"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
           label="Token 消耗"
-          :value="
-            dashboard?.ai.total_tokens != null ? dashboard.ai.total_tokens.toLocaleString() : '--'
-          "
+          :value="dashboard?.ai.total_tokens ?? '--'"
         />
       </el-col>
     </el-row>
@@ -60,16 +106,29 @@
     <!-- 通知统计 -->
     <el-row :gutter="20" class="stat-row">
       <el-col :span="6">
-        <StatCard label="通知发送" :value="String(dashboard?.notification.total_sends ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="通知发送"
+          :value="String(dashboard?.notification.total_sends ?? '--')"
+        />
       </el-col>
       <el-col :span="6">
-        <StatCard label="通知成功" :value="String(dashboard?.notification.success_count ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="通知成功"
+          :value="String(dashboard?.notification.success_count ?? '--')"
+        />
       </el-col>
       <el-col :span="6">
-        <StatCard label="通知失败" :value="String(dashboard?.notification.failure_count ?? '--')" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="通知失败"
+          :value="String(dashboard?.notification.failure_count ?? '--')"
+        />
       </el-col>
       <el-col :span="6">
-        <StatCard
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
           label="通知成功率"
           :value="
             dashboard?.notification.success_rate != null
@@ -133,19 +192,40 @@
     <!-- 走势统计 -->
     <el-row v-if="selectedSymbol && stats" :gutter="20" class="stat-row">
       <el-col :span="4">
-        <StatCard label="最低价" :value="formatPrice(stats.min)" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="最低价"
+          :value="formatPrice(stats.min)"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard label="最高价" :value="formatPrice(stats.max)" highlight />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="最高价"
+          :value="formatPrice(stats.max)"
+          highlight
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard label="均价" :value="formatPrice(stats.avg)" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="均价"
+          :value="formatPrice(stats.avg)"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard label="样本数" :value="String(stats.count)" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="样本数"
+          :value="String(stats.count)"
+        />
       </el-col>
       <el-col :span="4">
-        <StatCard label="标准差" :value="stats.std.toFixed(2)" />
+        <StatisticCard
+          v-model:abbreviated="isAbbreviated"
+          label="标准差"
+          :value="stats.std.toFixed(2)"
+        />
       </el-col>
     </el-row>
 
@@ -170,24 +250,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, defineAsyncComponent } from 'vue'
+import { ref, watch, onUnmounted, defineAsyncComponent } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faChartLine, faChartSimple } from '@fortawesome/free-solid-svg-icons'
+import { faChartLine, faChartSimple, faRotate } from '@fortawesome/free-solid-svg-icons'
 import { useThemeStore } from '@/stores/theme'
 import { usePriceData } from '@/composables/usePriceData'
 import { priceApi } from '@/api/modules/gold'
 import type { PriceStatistics } from '@/api/modules/gold'
 import { formatPrice } from '@/utils/format'
-import StatCard from '@/components/StatCard.vue'
+import StatisticCard from '@/components/StatisticCard.vue'
 import TrendBadge from '@/components/TrendBadge.vue'
 import TimeRangeFilter from '@/components/TimeRangeFilter.vue'
 import type { TimeRangeOption, TimeRangeParams } from '@/components/TimeRangeFilter.vue'
 const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vue'))
 
-library.add(faChartLine, faChartSimple)
+library.add(faChartLine, faChartSimple, faRotate)
 
 const themeStore = useThemeStore()
-const { dashboard } = usePriceData()
+const { dashboard, loading, fetchDashboard, startPolling, stopPolling } = usePriceData({
+  autoStart: false,
+})
 
 const timeRangeOptions: TimeRangeOption[] = [
   { label: '1小时', value: 1, hours: 1 },
@@ -199,6 +281,29 @@ const timeRangeOptions: TimeRangeOption[] = [
 const selectedSymbol = ref<string | null>(null)
 const timeRange = ref(24)
 const stats = ref<PriceStatistics | null>(null)
+const isAbbreviated = ref(false)
+const autoRefresh = ref(true)
+
+function refreshDashboard() {
+  fetchDashboard()
+  loadStats()
+}
+
+watch(
+  autoRefresh,
+  (val) => {
+    if (val) {
+      startPolling()
+    } else {
+      stopPolling()
+    }
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  stopPolling()
+})
 
 function onTimeParamsChange(params: TimeRangeParams) {
   // hours 模式只需要 hours，chart 已通过 timeRange 联动
@@ -246,8 +351,20 @@ function formatTime(iso: string): string {
 }
 
 .page-header {
-  text-align: center;
+  position: relative;
   margin-bottom: 28px;
+
+  .header-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .header-left {
+    text-align: center;
+  }
 
   .page-title {
     font-size: 24px;
@@ -259,6 +376,29 @@ function formatTime(iso: string): string {
     font-size: 14px;
     color: var(--text-secondary);
     margin: 0;
+  }
+
+  .global-toggle {
+    margin-top: 10px;
+  }
+
+  .loading-bar {
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--color-primary), var(--price-color));
+    animation: loading-slide 1.5s ease-in-out infinite;
+  }
+}
+
+@keyframes loading-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
   }
 }
 
