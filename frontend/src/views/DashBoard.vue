@@ -139,6 +139,74 @@
       </el-col>
     </el-row>
 
+    <!-- 汇率概览 -->
+    <el-row :gutter="20" class="stat-row">
+      <el-col :span="24">
+        <el-card class="rate-card" shadow="hover">
+          <div class="rate-header">
+            <span class="rate-title"> <font-awesome-icon icon="dollar-sign" /> 美元汇率 </span>
+            <router-link to="/exchange-rate" class="rate-link">
+              查看详情 <font-awesome-icon icon="arrow-right" />
+            </router-link>
+          </div>
+          <div class="rate-body">
+            <div class="rate-main">
+              <span class="rate-label">最新汇率</span>
+              <span class="rate-value">
+                {{
+                  dashboard?.exchange_rate?.latest_rate != null
+                    ? dashboard.exchange_rate.latest_rate.toFixed(6)
+                    : '--'
+                }}
+              </span>
+            </div>
+            <div class="rate-range">
+              <span
+                >最高
+                {{
+                  dashboard?.exchange_rate?.today_high != null
+                    ? dashboard.exchange_rate.today_high.toFixed(6)
+                    : '—'
+                }}</span
+              >
+              <span class="divider">|</span>
+              <span
+                >最低
+                {{
+                  dashboard?.exchange_rate?.today_low != null
+                    ? dashboard.exchange_rate.today_low.toFixed(6)
+                    : '—'
+                }}</span
+              >
+            </div>
+            <div class="rate-meta">
+              <span
+                >历史记录：{{
+                  dashboard?.exchange_rate?.record_count?.toLocaleString() ?? '--'
+                }}</span
+              >
+              <span class="divider">|</span>
+              <span>
+                最新：{{
+                  dashboard?.exchange_rate?.latest_time
+                    ? formatTime(dashboard.exchange_rate.latest_time)
+                    : '暂无'
+                }}
+              </span>
+              <span class="divider">|</span>
+              <span>
+                {{
+                  dashboard?.exchange_rate?.data_freshness_seconds != null
+                    ? dashboard.exchange_rate.data_freshness_seconds + '秒前'
+                    : '—'
+                }}
+              </span>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <!-- 品种卡片 -->
     <el-row :gutter="20" class="symbol-row">
       <el-col :span="12" v-for="item in dashboard?.price.symbols" :key="item.symbol">
@@ -252,7 +320,13 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted, defineAsyncComponent } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faChartLine, faChartSimple, faRotate } from '@fortawesome/free-solid-svg-icons'
+import {
+  faChartLine,
+  faChartSimple,
+  faRotate,
+  faDollarSign,
+  faArrowRight,
+} from '@fortawesome/free-solid-svg-icons'
 import { useThemeStore } from '@/stores/theme'
 import { usePriceData } from '@/composables/usePriceData'
 import { priceApi } from '@/api/modules/gold'
@@ -264,7 +338,7 @@ import TimeRangeFilter from '@/components/TimeRangeFilter.vue'
 import type { TimeRangeOption, TimeRangeParams } from '@/components/TimeRangeFilter.vue'
 const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vue'))
 
-library.add(faChartLine, faChartSimple, faRotate)
+library.add(faChartLine, faChartSimple, faRotate, faDollarSign, faArrowRight)
 
 const themeStore = useThemeStore()
 const { dashboard, loading, fetchDashboard, startPolling, stopPolling } = usePriceData({
@@ -461,6 +535,79 @@ function formatTime(iso: string): string {
       font-size: 13px;
       color: var(--text-secondary);
       margin-bottom: 6px;
+
+      .divider {
+        margin: 0 8px;
+        color: var(--border-color);
+      }
+    }
+  }
+}
+
+.rate-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+
+  .rate-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+
+    .rate-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .rate-link {
+      font-size: 13px;
+      color: var(--color-primary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+
+      &:hover {
+        opacity: 0.8;
+      }
+    }
+  }
+
+  .rate-body {
+    .rate-main {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+
+      .rate-label {
+        font-size: 14px;
+        color: var(--text-secondary);
+      }
+
+      .rate-value {
+        font-size: 32px;
+        font-weight: bold;
+        color: var(--color-primary);
+      }
+    }
+
+    .rate-range {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+
+      .divider {
+        margin: 0 8px;
+        color: var(--border-color);
+      }
+    }
+
+    .rate-meta {
+      font-size: 13px;
+      color: var(--text-secondary);
 
       .divider {
         margin: 0 8px;

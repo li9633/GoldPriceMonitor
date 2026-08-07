@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from models.exchange_rate import ExchangeRateDashboardItem
+
 
 class PriceRecordBase(BaseModel):
     """价格记录基础字段"""
@@ -140,3 +142,6 @@ class DashboardResponse(BaseModel):
         default_factory=list, description="监控品种列表"
     )
     main_symbol: str = Field(default="", description="主监控品种")
+    exchange_rate: ExchangeRateDashboardItem = Field(
+        default_factory=lambda: ExchangeRateDashboardItem(), description="美元汇率行情"
+    )

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 from controller.ai_stats_controller import router as ai_stats_router
+from controller.exchange_rate_controller import router as exchange_rate_router
 from controller.log_controller import router as log_router
 from controller.model_pool_controller import router as model_pool_router
 from controller.model_pricing_controller import router as pricing_router
@@ -18,6 +19,7 @@ app = FastAPI(
 )
 
 app.include_router(ai_stats_router, prefix="/api")
+app.include_router(exchange_rate_router, prefix="/api")
 app.include_router(log_router, prefix="/api")
 app.include_router(model_pool_router, prefix="/api")
 app.include_router(notification_stats_router, prefix="/api")

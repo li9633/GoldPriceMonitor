@@ -1,6 +1,7 @@
 from mapper.ai_stats_mapper import AiStatsMapper
 from mapper.notification_stats_mapper import NotificationStatsMapper
 from mapper.price_mapper import PriceMapper
+from models.exchange_rate import ExchangeRateDashboardItem
 from models.price import (
     AiDashboardStats,
     DashboardResponse,
@@ -13,6 +14,7 @@ from models.price import (
     PriceTrend,
     SymbolDashboardItem,
 )
+from service.exchange_rate_service import ExchangeRateService
 from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
 
@@ -26,6 +28,7 @@ class PriceHistoryService:
         self.mapper = PriceMapper()
         self.ai_stats_mapper = AiStatsMapper()
         self.notify_stats_mapper = NotificationStatsMapper()
+        self.exchange_rate_service = ExchangeRateService()
 
     # ==================== 记录数 ====================
 
@@ -119,6 +122,9 @@ class PriceHistoryService:
 
         ai_raw = self.ai_stats_mapper.get_simple_stats(start_date, end_date)
         notify_raw = self.notify_stats_mapper.get_simple_stats(start_date, end_date)
+        exchange_rate_raw = self.exchange_rate_service.mapper.get_dashboard_data(
+            start_date, end_date, hours
+        )
 
         return DashboardResponse(
             start_date=start_date or "",
@@ -133,6 +139,7 @@ class PriceHistoryService:
             active_symbols_count=len(monitor_config.get("monitor_symbols", [])),
             monitored_symbols=monitor_config.get("monitor_symbols", []),
             main_symbol=monitor_config.get("main_symbol", ""),
+            exchange_rate=ExchangeRateDashboardItem(**exchange_rate_raw),
         )
 
     # ==================== 图表数据 ====================

@@ -1,7 +1,9 @@
+import sqlite3
 import time
 from datetime import datetime
 
 from config import CHINA_TZ, USD_TO_CNY_API_URL
+from mapper.exchange_rate_mapper import ExchangeRateMapper
 from service.system_settings_service import SystemSettingsService
 from utils.http_utils import safe_get
 from utils.logger import get_logger
@@ -41,6 +43,7 @@ def get_exchange_rate() -> float:
     rate = _fetch_from_api()
     if rate is not None:
         settings.set_cached_exchange_rate(rate)
+        _save_to_history(rate)
         return rate
 
     if cached is not None:
@@ -68,6 +71,13 @@ def _fetch_from_api() -> float | None:
         logger.error(f"解析汇率响应异常: {e}")
 
     return None
+
+
+def _save_to_history(rate: float) -> None:
+    try:
+        ExchangeRateMapper().save_rate(rate)
+    except sqlite3.Error as e:
+        logger.warning(f"汇率写入历史表失败（不影响主流程）：{e}")
 
 
 def convert_london_gold_to_cny(

@@ -4,7 +4,6 @@ from models.response import ApiResponse
 from models.system_settings import (
     AIConfigModel,
     AlertConfigModel,
-    ExchangeRateModel,
     InfrastructureConfigModel,
     LogConfigModel,
     MessageConfigModel,
@@ -168,27 +167,4 @@ def update_notification_strategy(data: NotificationStrategyModel):
     return ApiResponse.ok(
         NotificationStrategyModel(**service.get_notification_strategy()),
         message="通知策略已更新",
-    )
-
-
-@router.get("/exchange-rate", response_model=ApiResponse[ExchangeRateModel])
-def get_exchange_rate():
-    row = service.mapper.get_exchange_rate()
-    if row:
-        return ApiResponse.ok(
-            ExchangeRateModel(rate=row["rate"], updated_at=row["updated_at"])
-        )
-    return ApiResponse.ok(ExchangeRateModel(rate=None, updated_at=None))
-
-
-@router.put("/exchange-rate/{rate}", response_model=ApiResponse[ExchangeRateModel])
-def update_exchange_rate(rate: float):
-    service.set_cached_exchange_rate(rate)
-    row = service.mapper.get_exchange_rate()
-    return ApiResponse.ok(
-        ExchangeRateModel(
-            rate=row["rate"] if row else None,
-            updated_at=row["updated_at"] if row else None,
-        ),
-        message="汇率已更新",
     )

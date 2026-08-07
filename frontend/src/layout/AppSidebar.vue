@@ -24,6 +24,10 @@
           <font-awesome-icon icon="chart-line" class="menu-icon" />
           <span class="menu-text">价格历史</span>
         </el-menu-item>
+        <el-menu-item index="/exchange-rate">
+          <font-awesome-icon icon="dollar-sign" class="menu-icon" />
+          <span class="menu-text">汇率行情</span>
+        </el-menu-item>
       </el-sub-menu>
       <el-sub-menu index="stats">
         <template #title>
@@ -77,6 +81,7 @@ import {
   faRobot,
   faBell,
   faSliders,
+  faDollarSign,
 } from '@fortawesome/free-solid-svg-icons'
 
 library.add(
@@ -91,6 +96,7 @@ library.add(
   faRobot,
   faBell,
   faSliders,
+  faDollarSign,
 )
 
 defineProps<{ isCollapse: boolean }>()

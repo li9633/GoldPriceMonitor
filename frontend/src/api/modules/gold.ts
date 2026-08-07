@@ -1,4 +1,5 @@
 import request from '@/api/request'
+import type { ExchangeRateDashboard } from './exchange-rate'
 
 export interface PriceStatistics {
   min: number
@@ -55,6 +56,7 @@ export interface DashboardResponse {
   active_symbols_count: number
   monitored_symbols: string[]
   main_symbol: string
+  exchange_rate: ExchangeRateDashboard
 }
 
 export interface DashboardParams {

@@ -62,6 +62,14 @@ const routes = [
           title: '通知统计',
         },
       },
+      {
+        path: 'exchange-rate',
+        name: 'exchange-rate',
+        component: () => import('@/views/ExchangeRate.vue'),
+        meta: {
+          title: '汇率行情',
+        },
+      },
     ],
   },
 ]

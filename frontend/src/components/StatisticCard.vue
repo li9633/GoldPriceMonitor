@@ -153,7 +153,11 @@ const displayPrecision = computed(() => {
   if (props.precision != null) return props.precision
   if (props.format === 'integer') return 0
   if (props.format === 'percent') return 1
-  if (!abbrInfo.value) return 0
+  if (!abbrInfo.value) {
+    const str = String(numericValue.value)
+    const dot = str.indexOf('.')
+    return dot === -1 ? 0 : str.length - dot - 1
+  }
   return Number.isInteger(abbrInfo.value.value) ? 0 : 1
 })
 

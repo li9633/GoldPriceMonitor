@@ -72,11 +72,6 @@ class MessageConfigModel(BaseModel):
     include_stop_loss: bool = True
 
 
-class ExchangeRateModel(BaseModel):
-    rate: float | None = None
-    updated_at: str | None = None
-
-
 class SymbolConfigItem(BaseModel):
     symbol: str
     display_name: str
