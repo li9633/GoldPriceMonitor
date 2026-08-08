@@ -122,6 +122,7 @@ const isAbbreviated = ref(false)
 const dateRange = ref('today')
 
 const dateRangeOptions: TimeRangeOption[] = [
+  { label: '昨天', value: 'yesterday', days: 1, endDays: 1 },
   { label: '今日', value: 'today', days: 0 },
   { label: '近7天', value: '7d', days: 7 },
   { label: '30天', value: '30d', days: 30 },

@@ -107,7 +107,6 @@ class InfrastructureConfigModel(BaseModel):
     """基础设施配置 — 前端只读展示"""
 
     gold_price_api_url: str = ""
-    usd_to_cny_api_url: str = ""
     timezone: str = "UTC+8"
     debug_mode: bool = False
     log_dir: str = "logs"

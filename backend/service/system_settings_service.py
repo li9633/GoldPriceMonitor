@@ -2,7 +2,7 @@ import json
 import os
 from typing import Self
 
-from config import DEBUG, GOLD_PRICE_API_URL, LOG_DIR, USD_TO_CNY_API_URL
+from config import DEBUG, GOLD_PRICE_API_URL, LOG_DIR
 from mapper.system_settings_mapper import SystemSettingsMapper
 from utils.logger import get_logger
 
@@ -143,7 +143,6 @@ class SystemSettingsService:
         db_files, db_file_count, db_dir_size = SystemSettingsService._scan_dir("data")
         return {
             "gold_price_api_url": GOLD_PRICE_API_URL,
-            "usd_to_cny_api_url": USD_TO_CNY_API_URL,
             "timezone": "UTC+8",
             "debug_mode": DEBUG,
             "log_dir": LOG_DIR,
@@ -186,16 +185,3 @@ class SystemSettingsService:
 
     def update_notification_strategy(self, **kwargs) -> None:
         self.mapper.update_notification_strategy(**kwargs)
-
-    # ==================== 汇率缓存 ====================
-
-    def get_cached_exchange_rate(self) -> float | None:
-        row = self.mapper.get_exchange_rate()
-        return row["rate"] if row else None
-
-    def get_exchange_rate_row(self) -> dict | None:
-        return self.mapper.get_exchange_rate()
-
-    def set_cached_exchange_rate(self, rate: float) -> None:
-        self.mapper.upsert_exchange_rate(rate)
-        logger.info(f"汇率已缓存至数据库：{rate}")

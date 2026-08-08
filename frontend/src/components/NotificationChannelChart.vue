@@ -24,8 +24,12 @@ const chartRef = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
 
 function render() {
-  if (!chartRef.value || !props.data.length) return
+  if (!chartRef.value) return
   if (!chart) chart = echarts.init(chartRef.value)
+  if (!props.data.length) {
+    chart.clear()
+    return
+  }
 
   const names = props.data.map((c) => c.channel_name)
   const successData = props.data.map((c) => c.success_count)
@@ -33,7 +37,7 @@ function render() {
 
   chart.setOption(
     {
-      grid: { top: 10, right: 20, bottom: 30, left: 50 },
+      grid: { top: 10, right: 20, bottom: 40, left: 50 },
       legend: {
         data: ['成功', '失败'],
         bottom: 0,

@@ -74,7 +74,6 @@ export interface LogConfig {
 
 export interface InfrastructureConfig {
   gold_price_api_url: string
-  usd_to_cny_api_url: string
   timezone: string
   debug_mode: boolean
   log_dir: string

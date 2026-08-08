@@ -16,7 +16,6 @@ LOG_DIR = "logs"
 
 # 数据源 API URL（前端只读展示，更改需同步修改解析逻辑）
 GOLD_PRICE_API_URL = "https://www.huilvbiao.com/api/gold_indexApi"
-USD_TO_CNY_API_URL = "https://open.er-api.com/v6/latest/USD"
 
 # 数据库文件路径
 PRICE_HISTORY_DB_FILE = "data/prices.db"  # 价格历史数据

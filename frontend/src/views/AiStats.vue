@@ -122,17 +122,17 @@
             <el-table-column label="模型" prop="model_name" min-width="100" />
             <el-table-column label="输入" width="70" align="right">
               <template #default="{ row }">
-                {{ formatTokenNum(row.prompt_tokens) }}
+                {{ row.prompt_tokens.toLocaleString() }}
               </template>
             </el-table-column>
             <el-table-column label="输出" width="70" align="right">
               <template #default="{ row }">
-                {{ formatTokenNum(row.completion_tokens) }}
+                {{ row.completion_tokens.toLocaleString() }}
               </template>
             </el-table-column>
             <el-table-column label="总Token" width="80" align="right">
               <template #default="{ row }">
-                {{ formatTokenNum(row.total_tokens) }}
+                {{ row.total_tokens.toLocaleString() }}
               </template>
             </el-table-column>
             <el-table-column label="调用" width="60" align="right">
@@ -265,7 +265,7 @@
     />
 
     <!-- 调用日志 -->
-    <AiCallLogs :date-params="dateParams" />
+    <AiCallLogs ref="callLogsRef" :date-params="dateParams" />
   </div>
 </template>
 
@@ -384,12 +384,6 @@ async function fetchTokenStats() {
   }
 }
 
-function formatTokenNum(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
-
 function formatCost(cost: number): string {
   if (cost <= 0) return '¥0.00'
   if (cost < 0.01) return `¥${cost.toFixed(4)}`
@@ -410,10 +404,13 @@ watch(
   { immediate: true },
 )
 
+const callLogsRef = ref<InstanceType<typeof AiCallLogs>>()
+
 async function refreshAll() {
   await refreshOverview()
   await fetchTrend()
   await fetchTokenStats()
+  callLogsRef.value?.fetchData()
 }
 
 onMounted(async () => {

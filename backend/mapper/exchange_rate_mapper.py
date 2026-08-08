@@ -26,23 +26,66 @@ class ExchangeRateMapper:
             c.execute("""CREATE TABLE IF NOT EXISTS exchange_rate_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 rate REAL NOT NULL,
-                timestamp INTEGER NOT NULL
+                timestamp INTEGER NOT NULL,
+                source TEXT DEFAULT '',
+                provider TEXT DEFAULT '',
+                data_updated_at INTEGER DEFAULT 0
             )""")
             c.execute(
                 "CREATE INDEX IF NOT EXISTS idx_exchange_rate_ts "
                 "ON exchange_rate_history(timestamp)"
             )
+            self._migrate_new_columns(c)
             conn.commit()
 
-    def save_rate(self, rate: float) -> None:
+    @staticmethod
+    def _migrate_new_columns(cursor) -> None:
+        existing = {
+            row[1] for row in cursor.execute("PRAGMA table_info(exchange_rate_history)")
+        }
+        for col_name, col_def in [
+            ("source", "TEXT DEFAULT ''"),
+            ("provider", "TEXT DEFAULT ''"),
+            ("data_updated_at", "INTEGER DEFAULT 0"),
+        ]:
+            if col_name not in existing:
+                try:
+                    cursor.execute(
+                        f"ALTER TABLE exchange_rate_history ADD COLUMN {col_name} {col_def}"
+                    )
+                except sqlite3.OperationalError as e:
+                    logger.warning(f"迁移 exchange_rate_history.{col_name} 列失败: {e}")
+
+    def save_rate(
+        self,
+        rate: float,
+        source: str = "",
+        provider: str = "",
+        data_updated_at: int = 0,
+    ) -> None:
         ts = int(datetime.now(CHINA_TZ).timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
-                "INSERT INTO exchange_rate_history (rate, timestamp) VALUES (?, ?)",
-                (rate, ts),
+                "INSERT INTO exchange_rate_history (rate, timestamp, source, provider, data_updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (rate, ts, source, provider, data_updated_at),
             )
             conn.commit()
+
+    def get_latest_rate(self) -> float | None:
+        """获取数据库中最新的汇率记录，作为所有接口都失败时的兜底"""
+        try:
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute(
+                    "SELECT rate FROM exchange_rate_history ORDER BY timestamp DESC LIMIT 1"
+                )
+                row = c.fetchone()
+                return row[0] if row else None
+        except sqlite3.Error as e:
+            logger.error(f"查询最新汇率失败：{e}")
+            return None
 
     def get_record_count(self) -> int:
         try:

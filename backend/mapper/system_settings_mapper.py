@@ -493,15 +493,3 @@ class SystemSettingsMapper:
         self._upsert(
             "notification_strategy", list(kwargs.keys()), list(kwargs.values())
         )
-
-    def upsert_exchange_rate(self, rate: float) -> None:
-        conn = self._get_connection()
-        c = conn.cursor()
-        now = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        c.execute(
-            "INSERT INTO exchange_rate_cache (id, rate, updated_at) VALUES (1, ?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET rate=excluded.rate, updated_at=excluded.updated_at",
-            (rate, now),
-        )
-        conn.commit()
-        conn.close()

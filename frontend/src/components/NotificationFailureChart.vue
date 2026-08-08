@@ -24,8 +24,12 @@ const chartRef = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
 
 function render() {
-  if (!chartRef.value || !props.data.length) return
+  if (!chartRef.value) return
   if (!chart) chart = echarts.init(chartRef.value)
+  if (!props.data.length) {
+    chart.clear()
+    return
+  }
 
   chart.setOption(
     {

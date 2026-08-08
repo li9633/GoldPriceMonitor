@@ -44,7 +44,11 @@ function formatTokenNum(n: number): string {
 }
 
 function renderChart() {
-  if (!chart || !props.data.length) return
+  if (!chart) return
+  if (!props.data.length) {
+    chart.clear()
+    return
+  }
   const first = props.data[0]!
   const isHourly = first.hour !== null
 

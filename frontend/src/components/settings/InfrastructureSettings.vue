@@ -16,9 +16,6 @@
           <el-descriptions-item label="金价数据源">
             <code>{{ infrastructure.gold_price_api_url }}</code>
           </el-descriptions-item>
-          <el-descriptions-item label="美元汇率">
-            <code>{{ infrastructure.usd_to_cny_api_url }}</code>
-          </el-descriptions-item>
         </el-descriptions>
       </el-card>
 
