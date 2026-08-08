@@ -3,7 +3,12 @@
     <template #header>
       <span class="card-title">按渠道统计</span>
     </template>
-    <div ref="chartRef" class="chart-container"></div>
+    <div class="chart-wrapper">
+      <div ref="chartRef" class="chart-container"></div>
+      <div v-show="!data.length" class="empty-overlay">
+        <el-empty description="暂无渠道数据" :image-size="60" />
+      </div>
+    </div>
   </el-card>
 </template>
 
@@ -26,10 +31,8 @@ let chart: echarts.ECharts | null = null
 function render() {
   if (!chartRef.value) return
   if (!chart) chart = echarts.init(chartRef.value)
-  if (!props.data.length) {
-    chart.clear()
-    return
-  }
+  if (!props.data.length) return
+  chart.resize()
 
   const names = props.data.map((c) => c.channel_name)
   const successData = props.data.map((c) => c.success_count)
@@ -41,18 +44,18 @@ function render() {
       legend: {
         data: ['成功', '失败'],
         bottom: 0,
-        textStyle: { color: axisColor(), fontSize: 11 },
+        textStyle: { color: axisColor(), fontSize: 11 }
       },
       xAxis: {
         type: 'category',
         data: names,
-        axisLabel: { color: axisColor(), fontSize: 11 },
+        axisLabel: { color: axisColor(), fontSize: 11 }
       },
       yAxis: {
         type: 'value',
         scale: true,
         axisLabel: { color: axisColor(), fontSize: 11 },
-        splitLine: { lineStyle: { color: splitColor() } },
+        splitLine: { lineStyle: { color: splitColor() } }
       },
       series: [
         {
@@ -60,24 +63,24 @@ function render() {
           type: 'bar',
           data: successData,
           stack: 'total',
-          itemStyle: { color: '#67c23a', borderRadius: [4, 4, 0, 0] },
+          itemStyle: { color: '#67c23a', borderRadius: [4, 4, 0, 0] }
         },
         {
           name: '失败',
           type: 'bar',
           data: failData,
           stack: 'total',
-          itemStyle: { color: '#f56c6c', borderRadius: [4, 4, 0, 0] },
-        },
+          itemStyle: { color: '#f56c6c', borderRadius: [4, 4, 0, 0] }
+        }
       ],
-      tooltip: { trigger: 'axis' },
+      tooltip: { trigger: 'axis' }
     },
-    true,
+    true
   )
 }
 
 onMounted(render)
-watch(() => props.data, render, { deep: true })
+watch(() => props.data, render, { deep: true, flush: 'post' })
 onUnmounted(() => chart?.dispose())
 </script>
 
@@ -86,8 +89,21 @@ onUnmounted(() => chart?.dispose())
   font-weight: 600;
 }
 
+.chart-wrapper {
+  position: relative;
+}
+
 .chart-container {
   width: 100%;
   height: 260px;
+}
+
+.empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--el-bg-color);
 }
 </style>

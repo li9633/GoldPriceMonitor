@@ -3,7 +3,12 @@
     <template #header>
       <span class="card-title"> <font-awesome-icon icon="clock" /> 小时调用分布 </span>
     </template>
-    <div ref="chartRef" class="chart-container"></div>
+    <div class="chart-wrapper">
+      <div ref="chartRef" class="chart-container"></div>
+      <div v-show="!data.length" class="empty-overlay">
+        <el-empty description="暂无小时数据" :image-size="60" />
+      </div>
+    </div>
   </el-card>
 </template>
 
@@ -28,7 +33,10 @@ const chartRef = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
 
 function renderChart() {
-  if (!chart) return
+  if (!chartRef.value) return
+  if (!chart) chart = echarts.init(chartRef.value)
+  if (!props.data.length) return
+  chart.resize()
   const counts = fillEmptyHours(props.data)
   const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 
@@ -40,7 +48,7 @@ function renderChart() {
         type: 'value',
         scale: true,
         axisLabel: { color: axisColor(), fontSize: 11 },
-        splitLine: { lineStyle: { color: splitColor() } },
+        splitLine: { lineStyle: { color: splitColor() } }
       },
       series: [
         {
@@ -49,26 +57,25 @@ function renderChart() {
           itemStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
               { offset: 0, color: '#409eff' },
-              { offset: 1, color: '#79bbff' },
+              { offset: 1, color: '#79bbff' }
             ]),
-            borderRadius: [4, 4, 0, 0],
-          },
-        },
+            borderRadius: [4, 4, 0, 0]
+          }
+        }
       ],
-      tooltip: { trigger: 'axis', formatter: '{b}:00 — {c} 次' },
+      tooltip: { trigger: 'axis', formatter: '{b}:00 — {c} 次' }
     },
-    true,
+    true
   )
 }
 
 onMounted(() => {
   if (chartRef.value) {
-    chart = echarts.init(chartRef.value)
     renderChart()
   }
 })
 
-watch(() => props.data, renderChart, { deep: true })
+watch(() => props.data, renderChart, { deep: true, flush: 'post' })
 
 onUnmounted(() => {
   chart?.dispose()
@@ -80,8 +87,21 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.chart-wrapper {
+  position: relative;
+}
+
 .chart-container {
   width: 100%;
   height: 260px;
+}
+
+.empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--el-bg-color);
 }
 </style>

@@ -3,7 +3,12 @@
     <template #header>
       <span class="card-title"> <font-awesome-icon :icon="icon" /> {{ title }} </span>
     </template>
-    <div ref="chartRef" class="chart-container"></div>
+    <div class="chart-wrapper">
+      <div ref="chartRef" class="chart-container"></div>
+      <div v-show="!data.length" class="empty-overlay">
+        <el-empty description="暂无趋势数据" :image-size="60" />
+      </div>
+    </div>
   </el-card>
 </template>
 
@@ -21,7 +26,7 @@ import {
   splitColor,
   fillEmptyDates,
   fillEmptyTrendHours,
-  formatLatency,
+  formatLatency
 } from '@/utils/aiStatsHelpers'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -43,11 +48,10 @@ const chartRef = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
 
 function renderChart() {
-  if (!chart) return
-  if (!props.data.length) {
-    chart.clear()
-    return
-  }
+  if (!chartRef.value) return
+  if (!chart) chart = echarts.init(chartRef.value)
+  if (!props.data.length) return
+  chart.resize()
   const first = props.data[0]!
   const isHourly = first.hour !== null
 
@@ -75,7 +79,7 @@ function renderChart() {
         type: 'value',
         axisLabel: { color: axisColor(), fontSize: 11, formatter: `{value}${props.yAxisLabel}` },
         splitLine: { lineStyle: { color: splitColor() } },
-        ...(props.seriesKey === 'success_rate' ? { min: 0, max: 100 } : { scale: true }),
+        ...(props.seriesKey === 'success_rate' ? { min: 0, max: 100 } : { scale: true })
       },
       series: [
         {
@@ -85,8 +89,8 @@ function renderChart() {
           symbol: 'circle',
           symbolSize: 4,
           lineStyle: { color: props.color, width: 2 },
-          itemStyle: { color: props.color },
-        },
+          itemStyle: { color: props.color }
+        }
       ],
       tooltip: {
         trigger: 'axis',
@@ -96,21 +100,20 @@ function renderChart() {
           const display =
             props.seriesKey === 'avg_latency' ? formatLatency(p.value) : `${p.value.toFixed(1)}%`
           return `${tooltipTitle(p.name)}<br/>${props.tooltipLabel}：${display}`
-        },
-      },
+        }
+      }
     },
-    true,
+    true
   )
 }
 
 onMounted(() => {
   if (chartRef.value) {
-    chart = echarts.init(chartRef.value)
     renderChart()
   }
 })
 
-watch(() => props.data, renderChart, { deep: true })
+watch(() => props.data, renderChart, { deep: true, flush: 'post' })
 
 onUnmounted(() => {
   chart?.dispose()
@@ -122,8 +125,21 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.chart-wrapper {
+  position: relative;
+}
+
 .chart-container {
   width: 100%;
   height: 260px;
+}
+
+.empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--el-bg-color);
 }
 </style>

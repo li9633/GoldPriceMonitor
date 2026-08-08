@@ -1,9 +1,9 @@
 import sqlite3
-from datetime import datetime
 
-from config import CHINA_TZ, SYSTEM_SETTINGS_DB_FILE
+from config import SYSTEM_SETTINGS_DB_FILE
 from utils.date_filter import build_date_filter
 from utils.logger import get_logger
+from utils.time_utils import now_str
 
 logger = get_logger("NotificationStatsMapper")
 
@@ -81,7 +81,7 @@ class NotificationStatsMapper:
     ) -> None:
         conn = self._get_connection()
         c = conn.cursor()
-        now = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        now = now_str()
         c.execute(
             "INSERT INTO notification_send_logs "
             "(alert_level, symbol, symbol_name, current_price, alert_summary, "

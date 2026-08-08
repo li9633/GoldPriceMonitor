@@ -2,10 +2,9 @@ import gzip
 import logging
 import os
 import shutil
-from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
-from config import CHINA_TZ
+from utils.time_utils import now
 
 _LOG_DIR = "logs"
 _LOG_NAME = "GoldPriceMonitor"
@@ -121,7 +120,7 @@ def get_log_size() -> int:
 
 
 def cleanup_old_logs(keep_days: int = 30) -> None:
-    cutoff = datetime.now(CHINA_TZ).timestamp() - keep_days * 86400
+    cutoff = now().timestamp() - keep_days * 86400
     if not os.path.exists(_LOG_DIR):
         return
     for f in os.listdir(_LOG_DIR):

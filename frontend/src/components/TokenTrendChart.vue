@@ -3,7 +3,12 @@
     <template #header>
       <span class="card-title"> <font-awesome-icon :icon="icon" /> {{ title }} </span>
     </template>
-    <div ref="chartRef" class="chart-container"></div>
+    <div class="chart-wrapper">
+      <div ref="chartRef" class="chart-container"></div>
+      <div v-show="!data.length" class="empty-overlay">
+        <el-empty description="暂无Token数据" :image-size="60" />
+      </div>
+    </div>
   </el-card>
 </template>
 
@@ -20,7 +25,7 @@ import {
   axisColor,
   splitColor,
   fillEmptyTokenDates,
-  fillEmptyTokenHours,
+  fillEmptyTokenHours
 } from '@/utils/aiStatsHelpers'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -44,11 +49,10 @@ function formatTokenNum(n: number): string {
 }
 
 function renderChart() {
-  if (!chart) return
-  if (!props.data.length) {
-    chart.clear()
-    return
-  }
+  if (!chartRef.value) return
+  if (!chart) chart = echarts.init(chartRef.value)
+  if (!props.data.length) return
+  chart.resize()
   const first = props.data[0]!
   const isHourly = first.hour !== null
 
@@ -80,12 +84,12 @@ function renderChart() {
         data: ['输入Token', '输出Token', '总Token'],
         top: 0,
         right: 0,
-        textStyle: { color: axisColor(), fontSize: 11 },
+        textStyle: { color: axisColor(), fontSize: 11 }
       },
       xAxis: {
         type: 'category',
         data: xLabels,
-        axisLabel: { color: axisColor(), fontSize: 11 },
+        axisLabel: { color: axisColor(), fontSize: 11 }
       },
       yAxis: {
         type: 'value',
@@ -93,9 +97,9 @@ function renderChart() {
         axisLabel: {
           color: axisColor(),
           fontSize: 11,
-          formatter: (v: number) => formatTokenNum(v),
+          formatter: (v: number) => formatTokenNum(v)
         },
-        splitLine: { lineStyle: { color: splitColor() } },
+        splitLine: { lineStyle: { color: splitColor() } }
       },
       series: [
         {
@@ -106,7 +110,7 @@ function renderChart() {
           symbol: 'circle',
           symbolSize: 4,
           lineStyle: { color: '#409eff', width: 2 },
-          itemStyle: { color: '#409eff' },
+          itemStyle: { color: '#409eff' }
         },
         {
           name: '输出Token',
@@ -116,7 +120,7 @@ function renderChart() {
           symbol: 'circle',
           symbolSize: 4,
           lineStyle: { color: '#67c23a', width: 2 },
-          itemStyle: { color: '#67c23a' },
+          itemStyle: { color: '#67c23a' }
         },
         {
           name: '总Token',
@@ -126,8 +130,8 @@ function renderChart() {
           symbol: 'circle',
           symbolSize: 4,
           lineStyle: { color: '#e6a23c', width: 2 },
-          itemStyle: { color: '#e6a23c' },
-        },
+          itemStyle: { color: '#e6a23c' }
+        }
       ],
       tooltip: {
         trigger: 'axis',
@@ -137,21 +141,20 @@ function renderChart() {
             html += `<br/>${p.seriesName}：${p.value.toLocaleString()}`
           })
           return html
-        },
-      },
+        }
+      }
     },
-    true,
+    true
   )
 }
 
 onMounted(() => {
   if (chartRef.value) {
-    chart = echarts.init(chartRef.value)
     renderChart()
   }
 })
 
-watch(() => props.data, renderChart, { deep: true })
+watch(() => props.data, renderChart, { deep: true, flush: 'post' })
 
 onUnmounted(() => {
   chart?.dispose()
@@ -163,8 +166,21 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.chart-wrapper {
+  position: relative;
+}
+
 .chart-container {
   width: 100%;
   height: 260px;
+}
+
+.empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--el-bg-color);
 }
 </style>

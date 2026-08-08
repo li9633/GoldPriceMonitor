@@ -1,6 +1,3 @@
-from datetime import datetime
-
-from config import CHINA_TZ
 from mapper.ai_stats_mapper import AiStatsMapper
 from mapper.model_pricing_mapper import ModelPricingMapper
 from models.ai_stats import (
@@ -19,6 +16,7 @@ from models.ai_stats import (
     TopProviderItem,
 )
 from utils.logger import get_logger
+from utils.time_utils import now
 
 logger = get_logger("AiStatsService")
 
@@ -43,7 +41,7 @@ class AiStatsService:
         self.mapper.insert_log(
             provider_name=provider_name,
             model_name=model_name,
-            call_time=datetime.now(CHINA_TZ),
+            call_time=now(),
             success=success,
             latency_ms=latency_ms,
             error_reason=error_reason,

@@ -1,9 +1,7 @@
-from datetime import datetime
-
-from config import CHINA_TZ
 from mapper.price_mapper import PriceMapper, PriceSnapshot
 from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
+from utils.time_utils import now
 
 logger = get_logger("AlertService")
 
@@ -61,16 +59,16 @@ class AlertService:
         return alerts, suggestions
 
     def _should_send_alert(self, alert_type: str, current_price: float) -> bool:
-        now = datetime.now(CHINA_TZ)
+        now_dt = now()
         if alert_type not in self.alert_records:
             self.alert_records[alert_type] = {
-                "last_time": now,
+                "last_time": now_dt,
                 "last_price": current_price,
             }
             return True
 
         record = self.alert_records[alert_type]
-        time_diff = (now - record["last_time"]).total_seconds() / 60
+        time_diff = (now_dt - record["last_time"]).total_seconds() / 60
         if time_diff < self.alert_cooldown_minutes:
             price_change = (
                 abs(current_price - record["last_price"]) / record["last_price"]
@@ -81,7 +79,7 @@ class AlertService:
                 logger.debug(f"报警去重跳过：{alert_type}")
                 return False
 
-        record["last_time"] = now
+        record["last_time"] = now_dt
         record["last_price"] = current_price
         return True
 

@@ -1,12 +1,11 @@
 import time
-from datetime import datetime
 
-from config import CHINA_TZ
 from providers.base import BaseExchangeRateProvider, ExchangeRateResult
 from providers.currency_exchange_tool import CurrencyExchangeToolProvider
 from providers.exchangerate_dev import ExchangerateDevProvider
 from providers.open_er_api import OpenERApiProvider
 from utils.logger import get_logger
+from utils.time_utils import CHINA_TZ, now
 
 logger = get_logger("ExchangeRateManager")
 
@@ -90,9 +89,9 @@ class ExchangeRateProviderManager:
     def _check_data_freshness(self, result: ExchangeRateResult) -> None:
         if result.data_updated_at is None:
             return
-        now = datetime.now(CHINA_TZ)
+        now_dt = now()
         delay_seconds = (
-            now - result.data_updated_at.replace(tzinfo=CHINA_TZ)
+            now_dt - result.data_updated_at.replace(tzinfo=CHINA_TZ)
         ).total_seconds()
         if delay_seconds > 600:
             logger.warning(

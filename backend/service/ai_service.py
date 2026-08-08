@@ -1,12 +1,11 @@
 import json
-from datetime import datetime
 
-from config import CHINA_TZ
 from mapper.model_pool_mapper import ModelPoolMapper
 from mapper.price_mapper import PriceSnapshot
 from service.model_pool_engine import ModelPool
 from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
+from utils.time_utils import now
 from utils.trading_utils import get_trading_status_text
 
 logger = get_logger("AIService")
@@ -147,9 +146,9 @@ class AIAnalysisService:
             f"【当前行情】\n- 品种：{symbol_name}\n- 当前价格：¥{current_price:.2f}/克"
         )
 
-        now = datetime.now(CHINA_TZ)
+        now_dt = now()
         weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-        date_str = f"{now.strftime('%Y-%m-%d')}（{weekday_names[now.weekday()]}）"
+        date_str = f"{now_dt.strftime('%Y-%m-%d')}（{weekday_names[now_dt.weekday()]}）"
         parts.append(f"- 📅 {date_str} | {get_trading_status_text()}")
 
         if london_cny is not None and london_usd is not None:

@@ -6,10 +6,10 @@ from datetime import datetime, timedelta
 
 import requests
 
-from config import CHINA_TZ
 from mapper.ai_stats_mapper import AiStatsMapper
 from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
+from utils.time_utils import now
 
 logger = get_logger("ModelPool")
 
@@ -288,14 +288,14 @@ class ModelPool:
             )
 
     def _update_cache(self, key: str, result: ModelResult):
-        self._cache[key] = (datetime.now(CHINA_TZ), result)
+        self._cache[key] = (now(), result)
 
     def _graceful_degradation(self, cache_key: str) -> ModelResult:
         """L4: 优雅降级"""
         if cache_key in self._cache:
             cached_time, cached_result = self._cache[cache_key]
-            if datetime.now(CHINA_TZ) - cached_time < self.cache_ttl:
-                age = (datetime.now(CHINA_TZ) - cached_time).total_seconds()
+            if now() - cached_time < self.cache_ttl:
+                age = (now() - cached_time).total_seconds()
                 logger.warning(
                     f"[L4] 所有模型均不可用，返回缓存结果"
                     f" | 缓存年龄={age:.0f}s"
@@ -322,7 +322,7 @@ class ModelPool:
             self._stats_mapper.insert_log(
                 provider_name=result.provider or "unknown",
                 model_name=result.model or "unknown",
-                call_time=datetime.now(CHINA_TZ),
+                call_time=now(),
                 success=result.success,
                 latency_ms=latency_ms,
                 error_reason=result.error[:200] if result.error else None,

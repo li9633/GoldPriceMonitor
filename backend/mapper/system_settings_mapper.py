@@ -1,9 +1,9 @@
 import json
 import sqlite3
-from datetime import datetime
 
-from config import CHINA_TZ, SYSTEM_SETTINGS_DB_FILE
+from config import SYSTEM_SETTINGS_DB_FILE
 from utils.logger import get_logger
+from utils.time_utils import now_str
 
 
 def _apply_log_level_if_changed(kwargs: dict) -> None:
@@ -323,7 +323,7 @@ class SystemSettingsMapper:
     def _upsert(self, table: str, columns: list[str], values: list) -> None:
         conn = self._get_connection()
         c = conn.cursor()
-        now = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        now = now_str()
         placeholders = ", ".join([f"{col}=?" for col in columns])
         params = list(values) + [now] + list(values)
         c.execute(
@@ -390,7 +390,7 @@ class SystemSettingsMapper:
     ) -> None:
         conn = self._get_connection()
         c = conn.cursor()
-        now = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        now = now_str()
         c.execute(
             "INSERT INTO symbol_config (symbol, display_name, sort_order, updated_at) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(symbol) DO UPDATE SET display_name=excluded.display_name, sort_order=excluded.sort_order, updated_at=excluded.updated_at",
@@ -454,7 +454,7 @@ class SystemSettingsMapper:
     ) -> None:
         conn = self._get_connection()
         c = conn.cursor()
-        now = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        now = now_str()
         c.execute(
             "INSERT INTO notification_channels (channel_type, display_name, enabled, priority, config, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?) "

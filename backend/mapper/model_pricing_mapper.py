@@ -1,7 +1,7 @@
 import sqlite3
-from datetime import datetime
 
-from config import CHINA_TZ, MODEL_POOL_DB_FILE
+from config import MODEL_POOL_DB_FILE
+from utils.time_utils import now_str
 
 
 class ModelPricingMapper:
@@ -62,7 +62,7 @@ class ModelPricingMapper:
         output_price: float,
         currency: str = "CNY",
     ) -> int:
-        now = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        now = now_str()
         conn = self._get_connection()
         c = conn.cursor()
         c.execute(
@@ -82,7 +82,7 @@ class ModelPricingMapper:
     def update(self, pricing_id: int, **kwargs) -> bool:
         if not kwargs:
             return False
-        kwargs["updated_at"] = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        kwargs["updated_at"] = now_str()
         fields = ", ".join(f"{k}=?" for k in kwargs)
         values = list(kwargs.values()) + [pricing_id]
         conn = self._get_connection()

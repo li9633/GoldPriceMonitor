@@ -1,8 +1,6 @@
-from datetime import datetime
-
 from chinese_calendar import is_workday
 
-from config import CHINA_TZ
+from utils.time_utils import now
 
 
 def _get_trading_hours() -> list[tuple[str, str]]:
@@ -26,13 +24,13 @@ def is_autd_trading() -> bool:
 
     自动处理：周末、法定节假日、调休工作日
     """
-    now = datetime.now(CHINA_TZ)
+    now_dt = now()
 
     # 非工作日（周末/节假日）直接返回休市
-    if not is_workday(now.date()):
+    if not is_workday(now_dt.date()):
         return False
 
-    current_minutes = now.hour * 60 + now.minute
+    current_minutes = now_dt.hour * 60 + now_dt.minute
 
     for start_str, end_str in _get_trading_hours():
         start_h, start_m = map(int, start_str.split(":"))
@@ -52,13 +50,13 @@ def is_autd_trading() -> bool:
 
 def get_trading_status_text() -> str:
     """获取当前交易状态描述文本，区分周末/节假日/非交易时段"""
-    now = datetime.now(CHINA_TZ)
+    now_dt = now()
 
     if is_autd_trading():
         return "Au(T+D) 当前处于交易时段，价格实时更新"
 
-    if not is_workday(now.date()):
-        if now.weekday() >= 5:
+    if not is_workday(now_dt.date()):
+        if now_dt.weekday() >= 5:
             return "Au(T+D) 周末休市，伦敦金同样休市，价格均为上一个交易日收盘价，无需过度关注"
         return "Au(T+D) 法定节假日休市，伦敦金正常交易，请以伦敦金走势为主要参考"
 

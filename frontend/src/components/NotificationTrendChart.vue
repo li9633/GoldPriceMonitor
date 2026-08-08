@@ -14,7 +14,12 @@
         </el-radio-group>
       </div>
     </template>
-    <div ref="chartRef" class="chart-container chart-tall"></div>
+    <div class="chart-wrapper">
+      <div ref="chartRef" class="chart-container chart-tall"></div>
+      <div v-show="!data.length" class="empty-overlay">
+        <el-empty description="暂无通知数据" :image-size="60" />
+      </div>
+    </div>
   </el-card>
 </template>
 
@@ -38,10 +43,9 @@ let chart: echarts.ECharts | null = null
 function render() {
   if (!chartRef.value) return
   if (!chart) chart = echarts.init(chartRef.value)
-  if (!props.data.length) {
-    chart.clear()
-    return
-  }
+  if (!props.data.length) return
+
+  // 填充缺失日期chart.resize()
 
   // 填充缺失日期，保证 X 轴连续
   const filled: DailyTrendItem[] = []
@@ -63,18 +67,18 @@ function render() {
       legend: {
         data: ['成功', '失败'],
         bottom: 0,
-        textStyle: { color: axisColor(), fontSize: 11 },
+        textStyle: { color: axisColor(), fontSize: 11 }
       },
       xAxis: {
         type: 'category',
         data: dates,
-        axisLabel: { color: axisColor(), fontSize: 11 },
+        axisLabel: { color: axisColor(), fontSize: 11 }
       },
       yAxis: {
         type: 'value',
         scale: true,
         axisLabel: { color: axisColor(), fontSize: 11 },
-        splitLine: { lineStyle: { color: splitColor() } },
+        splitLine: { lineStyle: { color: splitColor() } }
       },
       series: [
         {
@@ -85,7 +89,7 @@ function render() {
           symbol: 'circle',
           symbolSize: 4,
           lineStyle: { color: '#67c23a', width: 2 },
-          itemStyle: { color: '#67c23a' },
+          itemStyle: { color: '#67c23a' }
         },
         {
           name: '失败',
@@ -95,17 +99,17 @@ function render() {
           symbol: 'circle',
           symbolSize: 4,
           lineStyle: { color: '#f56c6c', width: 2 },
-          itemStyle: { color: '#f56c6c' },
-        },
+          itemStyle: { color: '#f56c6c' }
+        }
       ],
-      tooltip: { trigger: 'axis' },
+      tooltip: { trigger: 'axis' }
     },
-    true,
+    true
   )
 }
 
 onMounted(render)
-watch(() => props.data, render, { deep: true })
+watch(() => props.data, render, { deep: true, flush: 'post' })
 onUnmounted(() => chart?.dispose())
 </script>
 
@@ -120,11 +124,24 @@ onUnmounted(() => chart?.dispose())
   justify-content: space-between;
 }
 
+.chart-wrapper {
+  position: relative;
+}
+
 .chart-container {
   width: 100%;
 }
 
 .chart-tall {
   height: 320px;
+}
+
+.empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--el-bg-color);
 }
 </style>

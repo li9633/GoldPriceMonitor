@@ -1,8 +1,8 @@
 import re
-from datetime import datetime
 from pathlib import Path
 
-from config import CHINA_TZ, DEBUG
+from config import DEBUG
+from utils.time_utils import now, now_str
 
 
 def _get_symbol_name_map() -> dict[str, str]:
@@ -159,8 +159,8 @@ class MessageTemplate:
         display_price = (
             f"{price:.2f}" if isinstance(price, (int, float)) else str(price)
         )
-        display_time = datetime.now(CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        display_year = str(datetime.now(CHINA_TZ).year)
+        display_time = now_str("%Y-%m-%d %H:%M:%S")
+        display_year = str(now().year)
 
         debug_notice = ""
         if DEBUG:

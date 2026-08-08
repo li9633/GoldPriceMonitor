@@ -1,10 +1,6 @@
 import os
-from datetime import timedelta, timezone
 
 # ==================== 基础设施常量（不可迁移） ====================
-
-# 统一时区：UTC+8（北京时间）
-CHINA_TZ = timezone(timedelta(hours=8))
 
 # 运行模式：通过环境变量 GOLD_MONITOR_DEBUG 控制（true=开发模式，false=生产模式）
 # Windows: set GOLD_MONITOR_DEBUG=true

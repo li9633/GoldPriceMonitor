@@ -1,8 +1,9 @@
 import sqlite3
 from datetime import datetime, timedelta
 
-from config import CHINA_TZ, PRICE_HISTORY_DB_FILE
+from config import PRICE_HISTORY_DB_FILE
 from utils.logger import get_logger
+from utils.time_utils import from_timestamp, now, parse_date, today, today_end
 
 logger = get_logger("PriceMapper")
 
@@ -24,7 +25,7 @@ class PriceSnapshot:
         self.min_6m = min_6m
 
     def prices_in_hours(self, hours: float) -> list[float]:
-        cutoff = datetime.now(CHINA_TZ) - timedelta(hours=hours)
+        cutoff = now() - timedelta(hours=hours)
         return [p for t, p in zip(self._timestamps, self._all) if t >= cutoff]
 
     def prices_last_n(self, n: int) -> list[float]:
@@ -34,7 +35,7 @@ class PriceSnapshot:
         subset = [
             (t, p)
             for t, p in zip(self._timestamps, self._all)
-            if t >= datetime.now(CHINA_TZ) - timedelta(hours=hours)
+            if t >= now() - timedelta(hours=hours)
         ]
         if len(subset) < 2:
             return {"slope": 0, "direction": "stable"}
@@ -130,7 +131,7 @@ class PriceMapper:
             return False
 
     def save_price(self, symbol: str, price: float):
-        ts = int(datetime.now(CHINA_TZ).timestamp())
+        ts = int(now().timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -140,7 +141,7 @@ class PriceMapper:
             conn.commit()
 
     def get_prices_in_window(self, symbol: str, hours: float) -> list[float]:
-        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+        cutoff = int((now() - timedelta(hours=hours)).timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -151,10 +152,10 @@ class PriceMapper:
 
     def get_check_snapshot(self, symbol: str) -> PriceSnapshot | None:
         """一次查询获取所有检查所需数据"""
-        now = datetime.now(CHINA_TZ)
+        now_dt = now()
         with self._get_connection() as conn:
             c = conn.cursor()
-            cutoff_24h = int((now - timedelta(hours=24)).timestamp())
+            cutoff_24h = int((now_dt - timedelta(hours=24)).timestamp())
             c.execute(
                 "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
                 (symbol, cutoff_24h),
@@ -162,22 +163,20 @@ class PriceMapper:
             rows = c.fetchall()
             if not rows:
                 return None
-            prices_with_time = [
-                (datetime.fromtimestamp(r[0], tz=CHINA_TZ), r[1]) for r in rows
-            ]
+            prices_with_time = [(from_timestamp(r[0]), r[1]) for r in rows]
             c.execute(
                 "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT 48",
                 (symbol,),
             )
             ma_prices = [row[0] for row in c.fetchall()]
             ma_prices.reverse()
-            cutoff_90d = int((now - timedelta(days=90)).timestamp())
+            cutoff_90d = int((now_dt - timedelta(days=90)).timestamp())
             c.execute(
                 "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
                 (symbol, cutoff_90d),
             )
             min_3m = c.fetchone()[0]
-            cutoff_180d = int((now - timedelta(days=180)).timestamp())
+            cutoff_180d = int((now_dt - timedelta(days=180)).timestamp())
             c.execute(
                 "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
                 (symbol, cutoff_180d),
@@ -275,16 +274,14 @@ class PriceMapper:
         self, symbol: str, hours: float
     ) -> list[tuple[datetime, float]]:
         """获取原始价格序列，用于最近记录等需要精确数据的场景"""
-        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+        cutoff = int((now() - timedelta(hours=hours)).timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
                 (symbol, cutoff),
             )
-            return [
-                (datetime.fromtimestamp(r[0], tz=CHINA_TZ), r[1]) for r in c.fetchall()
-            ]
+            return [(from_timestamp(r[0]), r[1]) for r in c.fetchall()]
 
     def get_chart_series(
         self,
@@ -306,10 +303,7 @@ class PriceMapper:
                 "GROUP BY bucket ORDER BY bucket",
                 (symbol, *where_params),
             )
-            return [
-                (datetime.fromtimestamp(r[0], tz=CHINA_TZ), round(r[1], 2))
-                for r in c.fetchall()
-            ]
+            return [(from_timestamp(r[0]), round(r[1], 2)) for r in c.fetchall()]
 
     def get_record_count(self, symbol: str) -> int:
         try:
@@ -333,37 +327,24 @@ class PriceMapper:
         优先级：hours > start_date/end_date > 默认今天
         使用原始时间戳比较，确保索引可用"""
         if hours is not None and hours > 0:
-            cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+            cutoff = int((now() - timedelta(hours=hours)).timestamp())
             return "timestamp > ?", (cutoff,)
         if start_date and end_date:
-            start_ts = int(
-                datetime.strptime(start_date, "%Y-%m-%d")
-                .replace(hour=0, minute=0, second=0, tzinfo=CHINA_TZ)
-                .timestamp()
-            )
+            start_ts = int(parse_date(start_date).timestamp())
             end_ts = int(
-                datetime.strptime(end_date, "%Y-%m-%d")
-                .replace(hour=23, minute=59, second=59, tzinfo=CHINA_TZ)
-                .timestamp()
+                parse_date(end_date, hour=23, minute=59, second=59).timestamp()
             )
             return "timestamp BETWEEN ? AND ?", (start_ts, end_ts)
         if start_date:
-            start_ts = int(
-                datetime.strptime(start_date, "%Y-%m-%d")
-                .replace(hour=0, minute=0, second=0, tzinfo=CHINA_TZ)
-                .timestamp()
-            )
+            start_ts = int(parse_date(start_date).timestamp())
             return "timestamp >= ?", (start_ts,)
         if end_date:
             end_ts = int(
-                datetime.strptime(end_date, "%Y-%m-%d")
-                .replace(hour=23, minute=59, second=59, tzinfo=CHINA_TZ)
-                .timestamp()
+                parse_date(end_date, hour=23, minute=59, second=59).timestamp()
             )
             return "timestamp <= ?", (end_ts,)
-        today = datetime.now(CHINA_TZ)
-        start_ts = int(today.replace(hour=0, minute=0, second=0).timestamp())
-        end_ts = int(today.replace(hour=23, minute=59, second=59).timestamp())
+        start_ts = int(today().timestamp())
+        end_ts = int(today_end().timestamp())
         return "timestamp BETWEEN ? AND ?", (start_ts, end_ts)
 
     def get_dashboard_data(
@@ -396,7 +377,7 @@ class PriceMapper:
                 r[0]: {"today_high": r[1], "today_low": r[2]} for r in c.fetchall()
             }
 
-            now = datetime.now(CHINA_TZ)
+            now_dt = now()
             symbol_data = []
             for symbol, count in rows:
                 c.execute(
@@ -405,11 +386,9 @@ class PriceMapper:
                     (symbol,),
                 )
                 row = c.fetchone()
-                latest_time = (
-                    datetime.fromtimestamp(row[1], tz=CHINA_TZ) if row else None
-                )
+                latest_time = from_timestamp(row[1]) if row else None
                 freshness = (
-                    int((now - latest_time).total_seconds()) if latest_time else None
+                    int((now_dt - latest_time).total_seconds()) if latest_time else None
                 )
                 tr = today_range.get(symbol, {})
                 symbol_data.append(

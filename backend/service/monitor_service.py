@@ -1,7 +1,6 @@
 import time
 from datetime import datetime
 
-from config import CHINA_TZ
 from mapper.price_mapper import PriceMapper
 from service.ai_service import AIAnalysisService
 from service.alert_service import AlertService
@@ -10,6 +9,7 @@ from service.notification_service import NotificationService
 from service.price_service import PriceService
 from service.system_settings_service import SystemSettingsService
 from utils.logger import cleanup_old_logs, get_log_size, get_logger
+from utils.time_utils import now
 
 
 class MonitorService:
@@ -20,11 +20,11 @@ class MonitorService:
         self.price_service = PriceService()
         self.notification_service = NotificationService()
         self.ai_service = AIAnalysisService()
-        self.start_time = datetime.now(CHINA_TZ)
+        self.start_time = now()
         self.check_count = 0
         self.alert_count = 0
-        self._last_ai_check_time: datetime | None = None
-        self._last_settings_refresh = datetime.now(CHINA_TZ)
+        self._last_ai_check_time = None
+        self._last_settings_refresh = now()
         self._last_notification_time: datetime | None = None
         self._notification_cooldown_minutes = 5
 
@@ -45,7 +45,7 @@ class MonitorService:
         if hasattr(self, "alert_service"):
             self.alert_service.refresh_config(self.main_symbol)
 
-        self._last_settings_refresh = datetime.now(CHINA_TZ)
+        self._last_settings_refresh = now()
 
     def run(self) -> None:
         self._print_banner()
@@ -97,14 +97,14 @@ class MonitorService:
         main_symbol_data = prices_data.get(self.main_symbol)
         if not main_symbol_data:
             self.logger.warning(
-                f"[{datetime.now(CHINA_TZ)}] 获取主品种 {self.main_symbol} 价格失败，等待下次检查"
+                f"[{now()}] 获取主品种 {self.main_symbol} 价格失败，等待下次检查"
             )
             self.check_count += 1
             return
 
         current_price = main_symbol_data["price"]
         self.logger.debug(
-            f"[{datetime.now(CHINA_TZ).strftime('%H:%M:%S')}] {main_symbol_data['name']} 价格：{current_price}"
+            f"[{now().strftime('%H:%M:%S')}] {main_symbol_data['name']} 价格：{current_price}"
         )
 
         self._save_prices(prices_data, current_price)
@@ -166,7 +166,7 @@ class MonitorService:
 
         self.logger.info("正在调用 AI 分析行情...")
         ai_result = self._call_ai(prices_data, current_price)
-        self._last_ai_check_time = datetime.now(CHINA_TZ)
+        self._last_ai_check_time = now()
 
         if not ai_result or not ai_result.get("should_alert"):
             return
@@ -190,25 +190,23 @@ class MonitorService:
             ai_suggestions,
             extra_info=extra_info,
         )
-        self._last_notification_time = datetime.now(CHINA_TZ)
+        self._last_notification_time = now()
 
     def _should_ai_check(self) -> bool:
         if self._last_ai_check_time is None:
             return True
-        elapsed = (datetime.now(CHINA_TZ) - self._last_ai_check_time).total_seconds()
+        elapsed = (now() - self._last_ai_check_time).total_seconds()
         return elapsed >= self.ai_check_interval_minutes * 60
 
     def _refresh_settings_if_needed(self) -> None:
-        elapsed = (datetime.now(CHINA_TZ) - self._last_settings_refresh).total_seconds()
+        elapsed = (now() - self._last_settings_refresh).total_seconds()
         if elapsed >= 60:
             self._refresh_settings()
 
     def _is_in_cooldown(self) -> bool:
         if self._last_notification_time is None:
             return False
-        elapsed = (
-            datetime.now(CHINA_TZ) - self._last_notification_time
-        ).total_seconds() / 60
+        elapsed = (now() - self._last_notification_time).total_seconds() / 60
         return elapsed < self._notification_cooldown_minutes
 
     def _call_ai(
@@ -241,7 +239,7 @@ class MonitorService:
     def _log_statistics(self) -> None:
         if self.check_count % 100 != 0:
             return
-        run_time = (datetime.now(CHINA_TZ) - self.start_time).total_seconds() / 60
+        run_time = (now() - self.start_time).total_seconds() / 60
         self.logger.info("=== 运行统计 ===")
         self.logger.info(f"运行时长：{run_time:.2f} 分钟")
         self.logger.info(f"检查次数：{self.check_count}")

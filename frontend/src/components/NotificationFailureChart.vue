@@ -3,7 +3,12 @@
     <template #header>
       <span class="card-title">失败原因 TOP5</span>
     </template>
-    <div ref="chartRef" class="chart-container"></div>
+    <div class="chart-wrapper">
+      <div ref="chartRef" class="chart-container"></div>
+      <div v-show="!data.length" class="empty-overlay">
+        <el-empty description="暂无失败记录" :image-size="60" />
+      </div>
+    </div>
   </el-card>
 </template>
 
@@ -26,10 +31,8 @@ let chart: echarts.ECharts | null = null
 function render() {
   if (!chartRef.value) return
   if (!chart) chart = echarts.init(chartRef.value)
-  if (!props.data.length) {
-    chart.clear()
-    return
-  }
+  if (!props.data.length) return
+  chart.resize()
 
   chart.setOption(
     {
@@ -39,29 +42,29 @@ function render() {
         type: 'category',
         data: props.data.map((f) => f.error_type_label).reverse(),
         axisLabel: { color: axisColor(), fontSize: 11 },
-        inverse: true,
+        inverse: true
       },
       series: [
         {
           type: 'bar',
           data: props.data.map((f) => f.fail_count).reverse(),
-          itemStyle: { color: '#f56c6c', borderRadius: [0, 4, 4, 0] },
-        },
+          itemStyle: { color: '#f56c6c', borderRadius: [0, 4, 4, 0] }
+        }
       ],
       tooltip: {
         trigger: 'axis',
         formatter: (p: { name: string; value: number }[]) => {
           if (!p[0]) return ''
           return `${p[0].name}<br/>${p[0].value} 次`
-        },
-      },
+        }
+      }
     },
-    true,
+    true
   )
 }
 
 onMounted(render)
-watch(() => props.data, render, { deep: true })
+watch(() => props.data, render, { deep: true, flush: 'post' })
 onUnmounted(() => chart?.dispose())
 </script>
 
@@ -70,8 +73,21 @@ onUnmounted(() => chart?.dispose())
   font-weight: 600;
 }
 
+.chart-wrapper {
+  position: relative;
+}
+
 .chart-container {
   width: 100%;
   height: 260px;
+}
+
+.empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--el-bg-color);
 }
 </style>

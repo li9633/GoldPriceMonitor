@@ -1,13 +1,13 @@
 import sqlite3
-from datetime import datetime
 
 import requests
 
-from config import CHINA_TZ, PRICE_HISTORY_DB_FILE
+from config import PRICE_HISTORY_DB_FILE
 from mapper.price_mapper import PriceMapper
 from service.system_settings_service import SystemSettingsService
 from utils.http_utils import safe_get
 from utils.logger import get_logger
+from utils.time_utils import from_timestamp
 
 logger = get_logger("HistoryImportService")
 
@@ -38,9 +38,7 @@ class HistoryImportService:
         records = []
         for item in data_list:
             try:
-                date_time = datetime.fromtimestamp(
-                    item["date_time"] / 1000, tz=CHINA_TZ
-                )
+                date_time = from_timestamp(item["date_time"] / 1000)
                 price = float(item["price"])
                 records.append((self.symbol, price, date_time))
             except (ValueError, KeyError, TypeError) as e:

@@ -1,8 +1,9 @@
 import sqlite3
 from datetime import datetime, timedelta
 
-from config import CHINA_TZ, SYSTEM_SETTINGS_DB_FILE
+from config import SYSTEM_SETTINGS_DB_FILE
 from utils.logger import get_logger
+from utils.time_utils import from_timestamp, now, parse_date, today, today_end
 
 logger = get_logger("ExchangeRateMapper")
 
@@ -63,7 +64,7 @@ class ExchangeRateMapper:
         provider: str = "",
         data_updated_at: int = 0,
     ) -> None:
-        ts = int(datetime.now(CHINA_TZ).timestamp())
+        ts = int(now().timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -171,15 +172,12 @@ class ExchangeRateMapper:
                 "GROUP BY bucket ORDER BY bucket",
                 where_params,
             )
-            return [
-                (datetime.fromtimestamp(r[0], tz=CHINA_TZ), round(r[1], 4))
-                for r in c.fetchall()
-            ]
+            return [(from_timestamp(r[0]), round(r[1], 4)) for r in c.fetchall()]
 
     def get_recent_records(
         self, hours: float = 24, limit: int = 20
     ) -> list[tuple[datetime, float]]:
-        cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+        cutoff = int((now() - timedelta(hours=hours)).timestamp())
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -187,9 +185,7 @@ class ExchangeRateMapper:
                 "WHERE timestamp > ? ORDER BY timestamp",
                 (cutoff,),
             )
-            rows = [
-                (datetime.fromtimestamp(r[0], tz=CHINA_TZ), r[1]) for r in c.fetchall()
-            ]
+            rows = [(from_timestamp(r[0]), r[1]) for r in c.fetchall()]
         return rows[-limit:] if len(rows) > limit else rows
 
     def get_dashboard_data(
@@ -213,16 +209,16 @@ class ExchangeRateMapper:
             today_high = range_row[0] if range_row else None
             today_low = range_row[1] if range_row else None
 
-            now = datetime.now(CHINA_TZ)
+            now_dt = now()
             c.execute(
                 "SELECT rate, timestamp FROM exchange_rate_history "
                 "ORDER BY timestamp DESC LIMIT 1"
             )
             row = c.fetchone()
             latest_rate = row[0] if row else None
-            latest_time = datetime.fromtimestamp(row[1], tz=CHINA_TZ) if row else None
+            latest_time = from_timestamp(row[1]) if row else None
             freshness = (
-                int((now - latest_time).total_seconds()) if latest_time else None
+                int((now_dt - latest_time).total_seconds()) if latest_time else None
             )
 
             return {
@@ -241,37 +237,24 @@ class ExchangeRateMapper:
         end_date: str | None = None,
     ) -> tuple[str, tuple]:
         if hours is not None and hours > 0:
-            cutoff = int((datetime.now(CHINA_TZ) - timedelta(hours=hours)).timestamp())
+            cutoff = int((now() - timedelta(hours=hours)).timestamp())
             return "timestamp > ?", (cutoff,)
         if start_date and end_date:
-            start_ts = int(
-                datetime.strptime(start_date, "%Y-%m-%d")
-                .replace(hour=0, minute=0, second=0, tzinfo=CHINA_TZ)
-                .timestamp()
-            )
+            start_ts = int(parse_date(start_date).timestamp())
             end_ts = int(
-                datetime.strptime(end_date, "%Y-%m-%d")
-                .replace(hour=23, minute=59, second=59, tzinfo=CHINA_TZ)
-                .timestamp()
+                parse_date(end_date, hour=23, minute=59, second=59).timestamp()
             )
             return "timestamp BETWEEN ? AND ?", (start_ts, end_ts)
         if start_date:
-            start_ts = int(
-                datetime.strptime(start_date, "%Y-%m-%d")
-                .replace(hour=0, minute=0, second=0, tzinfo=CHINA_TZ)
-                .timestamp()
-            )
+            start_ts = int(parse_date(start_date).timestamp())
             return "timestamp >= ?", (start_ts,)
         if end_date:
             end_ts = int(
-                datetime.strptime(end_date, "%Y-%m-%d")
-                .replace(hour=23, minute=59, second=59, tzinfo=CHINA_TZ)
-                .timestamp()
+                parse_date(end_date, hour=23, minute=59, second=59).timestamp()
             )
             return "timestamp <= ?", (end_ts,)
-        today = datetime.now(CHINA_TZ)
-        start_ts = int(today.replace(hour=0, minute=0, second=0).timestamp())
-        end_ts = int(today.replace(hour=23, minute=59, second=59).timestamp())
+        start_ts = int(today().timestamp())
+        end_ts = int(today_end().timestamp())
         return "timestamp BETWEEN ? AND ?", (start_ts, end_ts)
 
 
