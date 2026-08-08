@@ -231,10 +231,7 @@
               <span class="price-value">
                 {{ item.latest_price ? formatPrice(item.latest_price) : '暂无数据' }}
               </span>
-              <TrendBadge
-                v-if="item.latest_price"
-                :direction="item.latest_price >= (item.latest_price ?? 0) ? 'stable' : 'stable'"
-              />
+              <TrendBadge v-if="item.latest_price" :direction="getTrendDirection(item)" />
             </div>
             <div class="symbol-range">
               <span>最高 {{ item.today_high != null ? formatPrice(item.today_high) : '—' }}</span>
@@ -406,6 +403,20 @@ const loadStats = async () => {
 watch(timeRange, () => {
   loadStats()
 })
+
+function getTrendDirection(item: {
+  latest_price: number | null
+  today_high: number | null
+  today_low: number | null
+}): 'up' | 'down' | 'stable' {
+  if (item.latest_price == null || item.today_high == null || item.today_low == null)
+    return 'stable'
+  if (item.today_high === item.today_low) return 'stable'
+  const mid = (item.today_high + item.today_low) / 2
+  if (item.latest_price > mid) return 'up'
+  if (item.latest_price < mid) return 'down'
+  return 'stable'
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
