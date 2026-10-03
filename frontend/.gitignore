@@ -38,7 +38,8 @@ __screenshots__/
 # Vite
 *.timestamp-*-*.mjs
 
-auto-imports.d.ts
-components.d.ts
+# 注意：auto-imports.d.ts 与 components.d.ts 由 Vite 插件生成，但**故意纳入版本库** ——
+# 它们是类型检查的输入：不提交的话，全新检出时编辑器会报 ElMessage 之类「找不到名称」，
+# 且 vue-tsc 会因缺少组件声明而误报参数类型。
 
 docs/
