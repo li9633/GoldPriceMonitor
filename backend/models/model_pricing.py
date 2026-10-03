@@ -8,8 +8,8 @@ class ModelPricingBase(BaseModel):
 
 
 class ModelPricingCreate(ModelPricingBase):
-    provider_name: str = Field(..., description="供应商名称")
-    model_name: str = Field(..., description="模型名称")
+    provider_name: str = Field(default="", description="供应商名称")
+    model_name: str = Field(default="", description="模型名称")
 
 
 class ModelPricingUpdate(BaseModel):
