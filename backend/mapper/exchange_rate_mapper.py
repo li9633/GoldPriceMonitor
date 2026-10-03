@@ -1,4 +1,6 @@
 import sqlite3
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from config import SYSTEM_SETTINGS_DB_FILE
@@ -21,8 +23,26 @@ class ExchangeRateMapper:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
+        """打开连接，退出时提交并**关闭**。
+
+        `with sqlite3.connect(...) as conn` 只是事务上下文，不会关闭连接；
+        漏掉的 close() 会让连接一直留到循环 GC 碰巧回收为止，每次请求都会
+        多占一份内存和文件句柄。所有查询都应改用本上下文管理器。
+        """
+        conn = self._get_connection()
+        try:
+            yield conn
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def init_table(self) -> None:
-        with self._get_connection() as conn:
+        with self._connect() as conn:
             c = conn.cursor()
             c.execute("""CREATE TABLE IF NOT EXISTS exchange_rate_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +85,7 @@ class ExchangeRateMapper:
         data_updated_at: int = 0,
     ) -> None:
         ts = int(now().timestamp())
-        with self._get_connection() as conn:
+        with self._connect() as conn:
             c = conn.cursor()
             c.execute(
                 "INSERT INTO exchange_rate_history (rate, timestamp, source, provider, data_updated_at) "
@@ -77,7 +97,7 @@ class ExchangeRateMapper:
     def get_latest_rate(self) -> float | None:
         """获取数据库中最新的汇率记录，作为所有接口都失败时的兜底"""
         try:
-            with self._get_connection() as conn:
+            with self._connect() as conn:
                 c = conn.cursor()
                 c.execute(
                     "SELECT rate FROM exchange_rate_history ORDER BY timestamp DESC LIMIT 1"
@@ -90,7 +110,7 @@ class ExchangeRateMapper:
 
     def get_record_count(self) -> int:
         try:
-            with self._get_connection() as conn:
+            with self._connect() as conn:
                 c = conn.cursor()
                 c.execute("SELECT COUNT(*) FROM exchange_rate_history")
                 return c.fetchone()[0]
@@ -105,7 +125,7 @@ class ExchangeRateMapper:
         end_date: str | None = None,
     ) -> dict:
         where_clause, where_params = self._time_filter(hours, start_date, end_date)
-        with self._get_connection() as conn:
+        with self._connect() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT MIN(rate), MAX(rate), AVG(rate), COUNT(*), SUM(rate * rate) "
@@ -133,7 +153,7 @@ class ExchangeRateMapper:
         end_date: str | None = None,
     ) -> dict:
         where_clause, where_params = self._time_filter(hours, start_date, end_date)
-        with self._get_connection() as conn:
+        with self._connect() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT rate FROM exchange_rate_history WHERE {where_clause} ORDER BY timestamp",
@@ -164,7 +184,7 @@ class ExchangeRateMapper:
     ) -> list[tuple[datetime, float]]:
         where_clause, where_params = self._time_filter(hours, start_date, end_date)
         bucket_sql = _resolve_bucket(hours or 24)
-        with self._get_connection() as conn:
+        with self._connect() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT {bucket_sql} AS bucket, AVG(rate) AS rate "
@@ -178,7 +198,7 @@ class ExchangeRateMapper:
         self, hours: float = 24, limit: int = 20
     ) -> list[tuple[datetime, float]]:
         cutoff = int((now() - timedelta(hours=hours)).timestamp())
-        with self._get_connection() as conn:
+        with self._connect() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT timestamp, rate FROM exchange_rate_history "
@@ -194,7 +214,7 @@ class ExchangeRateMapper:
         end_date: str | None = None,
         hours: int | None = None,
     ) -> dict:
-        with self._get_connection() as conn:
+        with self._connect() as conn:
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM exchange_rate_history")
             total = c.fetchone()[0]
