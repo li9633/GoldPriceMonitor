@@ -52,6 +52,8 @@ const isDark = computed({
 
 const breadcrumbTitle = computed(() => {
   const titles: Record<string, string> = {
+    '/portfolio': '我的持仓',
+    '/advice-history': '建议历史',
     '/dashboard': '监控面板',
     '/price-history': '价格历史',
     '/providers': '模型池',

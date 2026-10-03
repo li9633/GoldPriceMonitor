@@ -112,7 +112,7 @@ class LogService:
             with open(file_path, "rb") as f:
                 return sum(1 for _ in f)
         count = 0
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.rstrip("\n").rstrip("\r")
                 if not line:

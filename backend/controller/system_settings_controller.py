@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from models.response import ApiResponse
 from models.system_settings import (
+    AdviceConfigModel,
     AIConfigModel,
     AlertConfigModel,
     InfrastructureConfigModel,
@@ -67,6 +68,19 @@ def update_message_config(data: MessageConfigModel):
     service.update_message_config(**data.model_dump())
     return ApiResponse.ok(
         MessageConfigModel(**service.get_message_config()), message="消息配置已更新"
+    )
+
+
+@router.get("/advice", response_model=ApiResponse[AdviceConfigModel])
+def get_advice_config():
+    return ApiResponse.ok(AdviceConfigModel(**service.get_advice_config()))
+
+
+@router.put("/advice", response_model=ApiResponse[AdviceConfigModel])
+def update_advice_config(data: AdviceConfigModel):
+    service.update_advice_config(**data.model_dump())
+    return ApiResponse.ok(
+        AdviceConfigModel(**service.get_advice_config()), message="建议配置已更新"
     )
 
 

@@ -127,6 +127,17 @@ class SystemSettingsMapper:
             log_level TEXT DEFAULT 'DEBUG',
             updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS advice_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            enabled INTEGER DEFAULT 1,
+            total_investable REAL DEFAULT 0,
+            target_grams REAL DEFAULT 0,
+            target_position_ratio REAL DEFAULT 0,
+            risk_level TEXT DEFAULT 'balanced',
+            enable_llm INTEGER DEFAULT 1,
+            price_move_trigger_pct REAL DEFAULT 0.5,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        )""")
         conn.commit()
         self._ensure_default_rows(conn)
         self._migrate_monitor_config(conn)
@@ -223,7 +234,7 @@ class SystemSettingsMapper:
 
     def _ensure_default_rows(self, conn: sqlite3.Connection | None = None) -> None:
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         for table in [
@@ -234,6 +245,7 @@ class SystemSettingsMapper:
             "monitor_config",
             "message_config",
             "log_config",
+            "advice_config",
         ]:
             c.execute(f"INSERT OR IGNORE INTO {table} (id) VALUES (1)")
         conn.commit()
@@ -243,7 +255,7 @@ class SystemSettingsMapper:
     def _migrate_ai_config(self, conn: sqlite3.Connection | None = None) -> None:
         new_columns = {"check_interval_minutes": "INTEGER DEFAULT 5"}
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(ai_config)")}
@@ -260,7 +272,7 @@ class SystemSettingsMapper:
     def _migrate_log_config(self, conn: sqlite3.Connection | None = None) -> None:
         new_columns = {"log_level": "TEXT DEFAULT 'DEBUG'"}
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(log_config)")}
@@ -283,7 +295,7 @@ class SystemSettingsMapper:
             "ounce_to_gram": "REAL DEFAULT 31.1035",
         }
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(monitor_config)")}
@@ -302,7 +314,7 @@ class SystemSettingsMapper:
     def _seed_symbol_config(self, conn: sqlite3.Connection | None = None) -> None:
         """初始化品种名称映射默认数据"""
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         defaults = [
@@ -416,6 +428,14 @@ class SystemSettingsMapper:
     def update_log_config(self, **kwargs) -> None:
         self._upsert("log_config", list(kwargs.keys()), list(kwargs.values()))
         _apply_log_level_if_changed(kwargs)
+
+    # ==================== 建议配置 ====================
+
+    def get_advice_config(self) -> dict | None:
+        return self._get_row("advice_config")
+
+    def update_advice_config(self, **kwargs) -> None:
+        self._upsert("advice_config", list(kwargs.keys()), list(kwargs.values()))
 
     # ==================== 汇率缓存 ====================
 

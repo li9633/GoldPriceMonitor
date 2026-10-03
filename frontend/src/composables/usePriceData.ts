@@ -22,6 +22,8 @@ export function usePriceData(options?: { autoStart?: boolean }) {
   }
 
   const startPolling = () => {
+    // 先清掉已有定时器，避免重复调用 startPolling 时留下无法回收的轮询
+    stopPolling()
     fetchDashboard()
     timer = setInterval(fetchDashboard, POLL_INTERVAL)
   }

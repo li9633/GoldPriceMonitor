@@ -1,9 +1,11 @@
 import uuid
 
-from channels import AlertData, get_channel
+from channels import AdviceData, AdvicePayload, get_channel
+from models.advice import ACTION_ALERT_LEVEL
 from service.notification_stats_service import NotificationStatsService
 from service.system_settings_service import SystemSettingsService
 from utils.logger import get_logger
+from utils.message_template import MessageTemplate
 
 logger = get_logger("NotificationService")
 
@@ -13,33 +15,73 @@ class NotificationService:
         self.settings = SystemSettingsService()
         self.stats_service = NotificationStatsService()
 
-    def send_alert(
+    def send_advice(
         self,
-        symbol: str,
+        advice,
         current_price: float,
-        alert_messages: list[str],
-        suggestions: list[str] | None = None,
         extra_info: dict | None = None,
         channel_filter: list[str] | None = None,
         stop_on_first_success: bool | None = None,
-        alert_level: str = "warning",
     ) -> bool:
-        suggestions = suggestions or []
-        symbol_name = self.settings.get_symbol_name_map().get(symbol, symbol)
-        alert_data = AlertData(
-            symbol=symbol,
+        """投递一条建议。
+
+        `advice` 是 `models.advice.AdviceRecord`；持仓上下文从它冻结的 `evidence`
+        里取，保证「消息里说的持仓」与「当时生成建议用的持仓」一致。
+        """
+        symbol_name = self.settings.get_symbol_name_map().get(advice.symbol, advice.symbol)
+        position = (advice.evidence or {}).get("position") or {}
+        action = advice.action.value
+        level = ACTION_ALERT_LEVEL.get(action, "warning")
+
+        data = AdviceData(
+            symbol=advice.symbol,
             symbol_name=symbol_name,
             current_price=current_price,
-            alert_messages=alert_messages,
-            suggestions=suggestions,
             extra_info=extra_info,
-            alert_level=alert_level,
+            alert_level=level,
+            advice=AdvicePayload(
+                action=action,
+                rationale=advice.rationale,
+                target_grams=advice.target_grams,
+                price_band_low=advice.price_band_low,
+                price_band_high=advice.price_band_high,
+                confidence=advice.confidence,
+                signals=[signal.summary for signal in advice.signals],
+                total_grams=position.get("total_grams"),
+                avg_cost=position.get("avg_cost"),
+                unrealized_pnl=position.get("unrealized_pnl"),
+                unrealized_pnl_pct=position.get("unrealized_pnl_pct"),
+                advice_id=advice.id,
+                subject_lot_id=advice.subject_lot_id,
+                review_horizon=advice.review_horizon,
+            ),
+        )
+        label = MessageTemplate.ACTION_LABELS.get(action, action)
+        return self._dispatch(
+            data,
+            summary=f"{label}：现价 {current_price}"[:100],
+            channel_filter=channel_filter,
+            stop_on_first_success=stop_on_first_success,
         )
 
-        logger.info("========== 开始发送报警通知 ==========")
+    def _dispatch(
+        self,
+        data: AdviceData,
+        *,
+        summary: str,
+        channel_filter: list[str] | None = None,
+        stop_on_first_success: bool | None = None,
+    ) -> bool:
+        """渠道扇出：按优先级依次投递，逐次记录，尊重 stop_on_first_success"""
+        symbol = data.symbol
+        symbol_name = data.symbol_name
+        current_price = data.current_price
+        alert_level = data.alert_level
+
+        logger.info("========== 开始发送建议 ==========")
         logger.info(f"品种：{symbol_name}, 价格：{current_price}, 级别：{alert_level}")
-        if extra_info:
-            logger.info(f"额外信息：{extra_info}")
+        if data.extra_info:
+            logger.info(f"额外信息：{data.extra_info}")
 
         if stop_on_first_success is None:
             strategy = self.settings.get_notification_strategy()
@@ -59,7 +101,7 @@ class NotificationService:
 
         chain_id = str(uuid.uuid4())
         chain_total = len(channel_configs)
-        alert_summary = "; ".join(alert_messages)[:100]
+        alert_summary = summary
         any_success = False
 
         for i, cfg in enumerate(channel_configs):
@@ -88,7 +130,7 @@ class NotificationService:
             logger.info(
                 f"[通知策略] [{i + 1}/{chain_total}] 尝试渠道：{channel.channel_name}"
             )
-            result = channel.send(alert_data, cfg)
+            result = channel.send(data, cfg)
 
             self._record_log(
                 alert_level,

@@ -15,6 +15,22 @@ const routes = [
         },
       },
       {
+        path: 'portfolio',
+        name: 'portfolio',
+        component: () => import('@/views/PortfolioOverview.vue'),
+        meta: {
+          title: '我的持仓',
+        },
+      },
+      {
+        path: 'advice-history',
+        name: 'advice-history',
+        component: () => import('@/views/AdviceHistory.vue'),
+        meta: {
+          title: '建议历史',
+        },
+      },
+      {
         path: 'price-history',
         name: 'price-history',
         component: () => import('@/views/PriceHistory.vue'),

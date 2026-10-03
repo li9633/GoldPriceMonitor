@@ -73,9 +73,21 @@ import {
   faTags,
   faFile,
   faServer,
+  faLightbulb,
 } from '@fortawesome/free-solid-svg-icons'
 
-library.add(faCog, faBell, faRobot, faEnvelope, faEye, faComment, faTags, faFile, faServer)
+library.add(
+  faCog,
+  faBell,
+  faRobot,
+  faEnvelope,
+  faEye,
+  faComment,
+  faTags,
+  faFile,
+  faServer,
+  faLightbulb,
+)
 
 const activeTab = ref('infrastructure')
 
@@ -83,6 +95,7 @@ const infrastructureTabs = [{ key: 'infrastructure', label: '基础设施', icon
 
 const businessTabs = [
   { key: 'monitor', label: '监控配置', icon: 'eye' },
+  { key: 'advice', label: '建议配置', icon: 'lightbulb' },
   { key: 'alert', label: '报警配置', icon: 'bell' },
   { key: 'symbols', label: '品种映射', icon: 'tags' },
 ]
@@ -99,6 +112,7 @@ const aiLogTabs = [
 
 const tabComponents: Record<string, ReturnType<typeof defineAsyncComponent>> = {
   alert: defineAsyncComponent(() => import('@/components/settings/AlertSettings.vue')),
+  advice: defineAsyncComponent(() => import('@/components/settings/AdviceSettings.vue')),
   ai: defineAsyncComponent(() => import('@/components/settings/AiSettings.vue')),
   notification: defineAsyncComponent(
     () => import('@/components/settings/NotificationSettings.vue'),

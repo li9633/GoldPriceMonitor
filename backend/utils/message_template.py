@@ -12,46 +12,195 @@ def _get_symbol_name_map() -> dict[str, str]:
 
 
 class MessageTemplate:
-    """消息模板管理 - 支持企业微信 markdown 和邮件 HTML 格式"""
+    """消息模板管理 —— 企业微信 markdown 与邮件 HTML 两种建议消息"""
 
-    # 企业微信 Markdown V2 模板
-    # 修改点：在“当前价格”下方增加了 {london_gold_info} 占位符
-    WECHAT_MARKDOWN_TEMPLATE = """## <font color="warning">[报警] 黄金价格监控</font>
+    _email_advice_template: str | None = None
+
+    #: 建议动作 → 中文标签（展示层职责，不放进数据模型）
+    ACTION_LABELS = {
+        "BUY_NOW": "可以买入",
+        "BUY_PARTIAL": "建议分批买入",
+        "WAIT": "建议观望",
+        "AVOID": "不建议买入",
+        "HOLD": "继续持有",
+        "ADD": "建议补仓",
+        "TAKE_PROFIT": "建议分批止盈",
+        "STOP_LOSS": "建议减仓止损",
+    }
+
+    #: 建议动作 → 颜色（红涨绿跌之外，用金色标买入、蓝色标止盈、红色标风险）
+    ACTION_COLORS = {
+        "BUY_NOW": "#d4a017",
+        "BUY_PARTIAL": "#d4a017",
+        "ADD": "#d4a017",
+        "TAKE_PROFIT": "#1976d2",
+        "STOP_LOSS": "#d32f2f",
+    }
+
+    # 企业微信 Markdown 建议模板
+    WECHAT_ADVICE_TEMPLATE = """## <font color="info">[建议] 黄金持仓建议</font>
 
 **品种**：{symbol_name}
 **当前价格**：<font color="{price_color}">{price}</font>
 {london_gold_info}
-**报警时间**：{time}
+**建议动作**：<font color="{action_color}">{action_label}</font>
+**建议数量**：{target_grams}
+**建议价位**：{price_band}
+**持仓状态**：{position_info}
+**生成时间**：{time}
 
-### <font color="comment">AI 分析</font>
-{conditions}
+### <font color="comment">判断依据</font>
+{signals}
 
-### <font color="info">AI 操作建议</font>
-{suggestions}
+### <font color="comment">说明</font>
+{rationale}
 {debug_notice}
-{ai_model_info}
+{model_info}
 ---
-*系统持续监控中，请及时处理*"""
-
-    _email_html_template: str | None = None
+*建议由规则计算生成，仅供参考，不构成投资建议*"""
 
     @classmethod
-    def _load_email_html_template(cls) -> str:
-        if cls._email_html_template is not None:
-            return cls._email_html_template
-        template_dir = Path(__file__).parent.parent / "templates"
-        template_path = template_dir / "email_alert.html"
+    def _load_email_advice_template(cls) -> str:
+        if cls._email_advice_template is not None:
+            return cls._email_advice_template
+        template_path = Path(__file__).parent.parent / "templates" / "email_advice.html"
         with open(template_path, encoding="utf-8") as f:
-            cls._email_html_template = f.read()
-        return cls._email_html_template
+            cls._email_advice_template = f.read()
+        return cls._email_advice_template
+
+    @classmethod
+    def format_advice(cls, data, template_type: str = "markdown") -> str:
+        """渲染建议消息。
+
+        动作、数量、价位区间与持仓上下文。
+        """
+        advice = getattr(data, "advice", None)
+        if advice is None:
+            raise ValueError("format_advice 需要 AdviceData.advice 载荷")
+
+        symbol_name = _get_symbol_name_map().get(data.symbol, data.symbol)
+        price = data.current_price
+        price_color = "#d4a017"
+        action_label = cls.ACTION_LABELS.get(advice.action, advice.action)
+        action_color = cls.ACTION_COLORS.get(advice.action, "#8c7a5c")
+
+        display_price = f"{price:.2f}" if isinstance(price, (int, float)) else str(price)
+
+        target_text = (
+            f"{advice.target_grams} 克" if advice.target_grams else "—（本次不涉及数量）"
+        )
+        if advice.price_band_low is not None and advice.price_band_high is not None:
+            band_text = f"¥{advice.price_band_low:.2f} ~ ¥{advice.price_band_high:.2f}"
+        else:
+            band_text = "—"
+
+        if advice.total_grams:
+            if advice.avg_cost is not None and advice.unrealized_pnl_pct is not None:
+                position_text = (
+                    f"{advice.total_grams}g，成本价 ¥{advice.avg_cost:.2f}"
+                    f"（浮动 {advice.unrealized_pnl_pct:+.2f}%）"
+                )
+            else:
+                position_text = f"{advice.total_grams}g"
+        else:
+            position_text = "暂无持仓"
+
+        # 伦敦金参考
+        london_str = ""
+        extra_info = data.extra_info or {}
+        if extra_info.get("london_gold_cny") is not None:
+            cny = extra_info["london_gold_cny"]
+            usd = extra_info.get("london_gold_usd", "N/A")
+            if template_type == "email":
+                london_str = (
+                    f'<div class="meta">伦敦金参考：¥{cny}/g（${usd}）</div>'
+                )
+            else:
+                london_str = (
+                    f'\n**伦敦金参考**：¥{cny}/g（${usd}）'
+                )
+
+        debug_notice = ""
+        if DEBUG:
+            debug_notice = (
+                '<div class="debug-notice">[开发环境] 此消息为测试数据</div>'
+                if template_type == "email"
+                else '> <font color="comment">[开发环境] 此消息为测试数据</font>'
+            )
+
+        model_info = ""
+        if extra_info.get("ai_model_info"):
+            if template_type == "email":
+                model_info = (
+                    f'<div class="model-info">措辞模型：{extra_info["ai_model_info"]}</div>'
+                )
+            else:
+                model_info = (
+                    f'> <font color="comment">措辞模型：{extra_info["ai_model_info"]}</font>'
+                )
+
+        display_time = now_str("%Y-%m-%d %H:%M:%S")
+
+        if template_type == "email":
+            signals_html = "\n".join(
+                f'<div class="condition-item">{cls._escape_html(s)}</div>'
+                for s in advice.signals
+            ) or '<div class="condition-item">（无）</div>'
+            return (
+                cls._load_email_advice_template()
+                .replace("{{symbol_name}}", cls._escape_html(symbol_name))
+                .replace("{{price}}", display_price)
+                .replace("{{london_gold_info}}", london_str)
+                .replace("{{action_label}}", cls._escape_html(action_label))
+                .replace("{{action_color}}", action_color)
+                .replace("{{target_grams}}", cls._escape_html(target_text))
+                .replace("{{price_band}}", cls._escape_html(band_text))
+                .replace("{{position_info}}", cls._escape_html(position_text))
+                .replace("{{time}}", display_time)
+                .replace("{{year}}", str(now().year))
+                .replace("{{signals}}", signals_html)
+                .replace(
+                    "{{rationale}}", cls._escape_html(advice.rationale or "（无）")
+                )
+                .replace("{{debug_notice}}", debug_notice)
+                .replace("{{model_info}}", model_info)
+            )
+
+        signals_md = (
+            "\n".join(f"- {cls._escape_markdown(s)}" for s in advice.signals)
+            or "- （无）"
+        )
+        return cls.WECHAT_ADVICE_TEMPLATE.format(
+            symbol_name=cls._escape_markdown(symbol_name),
+            price=display_price,
+            price_color=price_color,
+            london_gold_info=london_str,
+            action_label=action_label,
+            action_color=action_color,
+            target_grams=target_text,
+            price_band=band_text,
+            position_info=position_text,
+            time=display_time,
+            signals=signals_md,
+            rationale=cls._escape_markdown(advice.rationale or "（无）"),
+            debug_notice=debug_notice,
+            model_info=model_info,
+        )
+
+    #: 企业微信 markdown 里**真正有语法含义**、必须转义的字符。
+    #:
+    #: 早先这里把 `.` `+` `-` `!` `=` 等也一并转义了，结果「¥911.00」「+1.22%」会变成
+    #: 「¥911\.00」「\+1.22%」。企业微信并不解析反斜杠转义（它的 markdown 是简化版），
+    #: 所以那些反斜杠会**原样显示**给用户，价格和百分比看起来就很脏。
+    #: 只保留真正会引起格式变化的字符。
+    _MARKDOWN_SPECIALS = r"([\\*_`\[\]#])"
 
     @classmethod
     def _escape_markdown(cls, text: str) -> str:
-        """转义企业微信 markdown 特殊字符"""
+        """转义企业微信 markdown 的特殊字符"""
         if not isinstance(text, str):
             return str(text)
-        special_chars = r"([\\*_`\[\]()~>#\+\-=|{}.!])"
-        return re.sub(special_chars, r"\\\1", text)
+        return re.sub(cls._MARKDOWN_SPECIALS, r"\\\1", text)
 
     @classmethod
     def _escape_html(cls, text: str) -> str:
@@ -68,139 +217,3 @@ class MessageTemplate:
         for key, value in html_escape_table.items():
             text = text.replace(key, value)
         return text
-
-    @classmethod
-    def format_alert(
-        cls,
-        symbol: str,
-        price: float,
-        conditions: list[str],
-        suggestions: list[str],
-        template_type: str = "alert",
-        avg_price: float | None = None,
-        extra_info: dict | None = None,
-    ) -> str:
-        """
-        格式化报警消息
-        :param extra_info: 额外信息字典，例如 {'london_gold_usd': 2300, 'london_gold_cny': 530.5}
-        """
-
-        if template_type == "email":
-            template = cls._load_email_html_template()
-        elif template_type == "markdown":
-            template = cls.WECHAT_MARKDOWN_TEMPLATE
-        else:
-            # 默认或其他类型 fallback 到 markdown
-            template = cls.WECHAT_MARKDOWN_TEMPLATE
-
-        # 计算主价格颜色
-        if avg_price is None:
-            avg_price = price
-        price_color = "#d32f2f" if price >= avg_price else "#1976d2"
-
-        # --- 构建伦敦金信息显示字符串 ---
-        london_gold_info_str = ""
-        if extra_info and "london_gold_cny" in extra_info:
-            cny_price = extra_info["london_gold_cny"]
-            usd_price = extra_info.get("london_gold_usd", "N/A")
-
-            if template_type == "markdown":
-                london_gold_info_str = f'\n**伦敦金参考**：<font color="#1976d2">¥{cny_price}/g</font> <font>~</font> <font color="#1976d2">(${usd_price})</font>'
-
-            elif template_type == "email":
-                # 邮件 HTML: 使用 CSS 类或内联样式
-                london_gold_info_str = f'<div class="london-price">伦敦金参考：¥{cny_price}/g (${usd_price})</div>'
-
-        # --- 格式化条件和建议 ---
-        if template_type == "markdown":
-            conditions_str = "\n".join(
-                [f"- {cls._escape_markdown(c)}" for c in conditions]
-            )
-            suggestions_str = (
-                "\n".join([f"- {cls._escape_markdown(s)}" for s in suggestions])
-                if suggestions
-                else "- 请密切关注市场动态"
-            )
-
-        elif template_type == "email":
-            conditions_str = "\n".join(
-                [
-                    f'<div class="condition-item">{cls._escape_html(c)}</div>'
-                    for c in conditions
-                ]
-            )
-            suggestions_str = (
-                "\n".join(
-                    [
-                        f'<div class="suggestion-item">{cls._escape_html(s)}</div>'
-                        for s in suggestions
-                    ]
-                )
-                if suggestions
-                else '<div class="suggestion-item">请密切关注市场动态</div>'
-            )
-        else:
-            # 默认文本格式
-            conditions_str = "\n".join([f"  - {c}" for c in conditions])
-            suggestions_str = (
-                "\n".join([f"  • {s}" for s in suggestions])
-                if suggestions
-                else "  • 请密切关注市场动态"
-            )
-            price_color = "#1976d2"
-
-        # 获取品种名称
-        symbol_name = _get_symbol_name_map().get(symbol, symbol)
-        display_name = (
-            cls._escape_markdown(symbol_name)
-            if template_type == "markdown"
-            else symbol_name
-        )
-        display_price = (
-            f"{price:.2f}" if isinstance(price, (int, float)) else str(price)
-        )
-        display_time = now_str("%Y-%m-%d %H:%M:%S")
-        display_year = str(now().year)
-
-        debug_notice = ""
-        if DEBUG:
-            if template_type == "markdown":
-                debug_notice = '> <font color="comment">[开发环境] 此消息为测试数据，不代表最终结果</font>'
-            elif template_type == "email":
-                debug_notice = '<div class="debug-notice">[开发环境] 此消息为测试数据，不代表最终结果</div>'
-
-        ai_model_info_str = ""
-        if extra_info and extra_info.get("ai_model_info"):
-            if template_type == "markdown":
-                ai_model_info_str = f'> <font color="comment">分析模型：{extra_info["ai_model_info"]}</font>'
-            elif template_type == "email":
-                ai_model_info_str = f'<div class="model-info">分析模型：{extra_info["ai_model_info"]}</div>'
-
-        # 邮件模板使用 {{placeholder}} 语法，通过 replace 渲染
-        if template_type == "email":
-            return (
-                template.replace("{{symbol_name}}", display_name)
-                .replace("{{price}}", display_price)
-                .replace("{{price_color}}", price_color)
-                .replace("{{london_gold_info}}", london_gold_info_str)
-                .replace("{{time}}", display_time)
-                .replace("{{year}}", display_year)
-                .replace("{{conditions}}", conditions_str)
-                .replace("{{suggestions}}", suggestions_str)
-                .replace("{{debug_notice}}", debug_notice)
-                .replace("{{ai_model_info}}", ai_model_info_str)
-            )
-
-        # Markdown 模板使用 {placeholder} 语法，通过 format 渲染
-        return template.format(
-            symbol_name=display_name,
-            price=display_price,
-            price_color=price_color,
-            london_gold_info=london_gold_info_str,
-            time=display_time,
-            year=display_year,
-            conditions=conditions_str,
-            suggestions=suggestions_str,
-            debug_notice=debug_notice,
-            ai_model_info=ai_model_info_str,
-        )

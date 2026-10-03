@@ -1,3 +1,5 @@
+"""通知渠道的基础设施。所有外发消息都是「建议」，载荷为 `AdviceData`。"""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -13,12 +15,38 @@ class ChannelResult:
 
 
 @dataclass
-class AlertData:
+class AdvicePayload:
+    """建议语义的载荷 —— 渠道渲染所需的一切"""
+
+    action: str
+    rationale: str = ""
+    target_grams: float | None = None
+    price_band_low: float | None = None
+    price_band_high: float | None = None
+    confidence: float = 0.5
+    signals: list[str] = field(default_factory=list)
+    #: 持仓上下文（没有持仓时为 None）
+    total_grams: float | None = None
+    avg_cost: float | None = None
+    unrealized_pnl: float | None = None
+    unrealized_pnl_pct: float | None = None
+    advice_id: int | None = None
+    #: 复盘类建议针对的那笔买入（None 表示不是复盘）
+    subject_lot_id: int | None = None
+    review_horizon: int | None = None
+
+
+@dataclass
+class AdviceData:
+    """通知载荷 —— 建议类消息的统一载体。
+
+    `alert_level` 对应通知日志列 `notification_send_logs.alert_level`，前端统计页按它上色。
+    """
+
     symbol: str
     symbol_name: str
     current_price: float
-    alert_messages: list[str]
-    suggestions: list[str] = field(default_factory=list)
+    advice: AdvicePayload
     extra_info: dict | None = None
     alert_level: str = "warning"
 
@@ -33,7 +61,7 @@ class BaseNotificationChannel(ABC):
     def channel_name(self) -> str: ...
 
     @abstractmethod
-    def send(self, alert_data: AlertData, config: dict) -> ChannelResult: ...
+    def send(self, data: AdviceData, config: dict) -> ChannelResult: ...
 
     def validate_config(self, config: dict) -> bool:
         return True

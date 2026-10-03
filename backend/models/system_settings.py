@@ -117,3 +117,19 @@ class InfrastructureConfigModel(BaseModel):
     db_file_count: int = 0
     db_files: list[str] = []
     db_dir_size_bytes: int = 0
+
+
+class AdviceConfigModel(BaseModel):
+    """建议配置 — 决定「这次该买多少克」与推送节奏。
+
+    `total_investable` / `target_grams` 是建议能否给出**具体克数**的前提：
+    没有它们，建议只能给方向（买/等/持有），给不出数量。
+    """
+
+    enabled: bool = True
+    total_investable: float = 0.0
+    target_grams: float = 0.0
+    target_position_ratio: float = 0.0
+    risk_level: str = "balanced"
+    enable_llm: bool = True
+    price_move_trigger_pct: float = 0.5
