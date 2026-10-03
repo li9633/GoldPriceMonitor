@@ -1,11 +1,10 @@
 """持仓与购买计划的持久化 — 独立存入 `portfolio.db`。
 
-为什么不放进 `system_settings.db`：那张库里的表都是**覆盖式**配置（固定 `id=1`），
-而买入记录是**追加式流水**，语义不同。独立库也便于单独备份。
+与 `system_settings.db` 分开：那张库里的表都是覆盖式配置（固定 `id=1`），
+而这里是追加式流水。
 
-所有查询都走 `_connect()` 上下文管理器 —— 它退出时提交并**必定关闭**连接。
-不要用 `with sqlite3.connect(...) as conn`，那只是事务上下文，不会关闭连接
-（详见 `docs/refactor-plan.md` 与 `backend/test/test_sqlite_connections.py`）。
+所有查询都走 `_connect()` 上下文管理器 —— 它退出时提交并必定关闭连接。
+不要用 `with sqlite3.connect(...) as conn`，那只是事务上下文，不会关闭连接。
 """
 
 import json
@@ -29,6 +28,7 @@ _LOT_COLUMNS = (
     "channel",
     "plan_id",
     "note",
+    "is_opening",
 )
 _PLAN_COLUMNS = (
     "symbol",
@@ -41,11 +41,27 @@ _PLAN_COLUMNS = (
     "end_date",
     "status",
 )
+_SALE_COLUMNS = (
+    "symbol",
+    "sale_date",
+    "grams",
+    "price_per_gram",
+    "fee",
+    "channel",
+    "note",
+)
 
 #: 与建表语句里的 DEFAULT 保持一致。
 #: INSERT 会显式列出每一列，因此不能依赖 DDL 的默认值 —— 缺失的字段必须在这里补齐，
 #: 否则会撞上 NOT NULL 约束。
-_LOT_DEFAULTS: dict[str, object] = {"fee": 0.0, "channel": "", "note": "", "plan_id": None}
+_LOT_DEFAULTS: dict[str, object] = {
+    "fee": 0.0,
+    "channel": "",
+    "note": "",
+    "plan_id": None,
+    # 0 = 正常买入；1 = 期初持仓
+    "is_opening": 0,
+}
 _PLAN_DEFAULTS: dict[str, object] = {
     "budget": None,
     "tranches": 1,
@@ -54,6 +70,7 @@ _PLAN_DEFAULTS: dict[str, object] = {
     "end_date": None,
     "status": "active",
 }
+_SALE_DEFAULTS: dict[str, object] = {"fee": 0.0, "channel": "", "note": ""}
 
 
 def _pick(data: dict, columns: tuple[str, ...], defaults: dict) -> dict:
@@ -104,6 +121,7 @@ class PortfolioMapper:
                 channel         TEXT    NOT NULL DEFAULT '',
                 plan_id         INTEGER NULL,
                 note            TEXT    NOT NULL DEFAULT '',
+                is_opening      INTEGER NOT NULL DEFAULT 0,
                 created_at      TEXT    NOT NULL
             )""")
             c.execute("""CREATE TABLE IF NOT EXISTS purchase_plans (
@@ -127,9 +145,34 @@ class PortfolioMapper:
             c.execute(
                 "CREATE INDEX IF NOT EXISTS idx_lots_plan ON purchase_lots(plan_id)"
             )
+            c.execute("""CREATE TABLE IF NOT EXISTS sale_records (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol          TEXT    NOT NULL,
+                sale_date       TEXT    NOT NULL,
+                grams           REAL    NOT NULL,
+                price_per_gram  REAL    NOT NULL,
+                fee             REAL    NOT NULL DEFAULT 0,
+                channel         TEXT    NOT NULL DEFAULT '',
+                note            TEXT    NOT NULL DEFAULT '',
+                created_at      TEXT    NOT NULL
+            )""")
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sales_symbol_date "
+                "ON sale_records(symbol, sale_date)"
+            )
             c.execute(
                 "CREATE INDEX IF NOT EXISTS idx_plans_symbol_status "
                 "ON purchase_plans(symbol, status)"
+            )
+            self._migrate_columns(c)
+
+    @staticmethod
+    def _migrate_columns(c: sqlite3.Cursor) -> None:
+        """老库补列"""
+        existing = {row[1] for row in c.execute("PRAGMA table_info(purchase_lots)")}
+        if "is_opening" not in existing:
+            c.execute(
+                "ALTER TABLE purchase_lots ADD COLUMN is_opening INTEGER NOT NULL DEFAULT 0"
             )
 
     # ==================== 买入批次 ====================
@@ -192,6 +235,56 @@ class PortfolioMapper:
             c = conn.cursor()
             c.execute("DELETE FROM purchase_lots WHERE plan_id = ?", (plan_id,))
             return c.rowcount
+
+    # ==================== 卖出记录 ====================
+
+    def list_sales(self, symbol: str | None = None) -> list[dict]:
+        """按卖出日期正序返回流水（账本顺序）"""
+        sql = "SELECT * FROM sale_records"
+        params: tuple = ()
+        if symbol:
+            sql += " WHERE symbol = ?"
+            params = (symbol,)
+        sql += " ORDER BY sale_date ASC, id ASC"
+        with self._connect() as conn:
+            return [dict(row) for row in conn.execute(sql, params).fetchall()]
+
+    def get_sale(self, sale_id: int) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM sale_records WHERE id = ?", (sale_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def insert_sale(self, data: dict) -> int:
+        payload = _pick(data, _SALE_COLUMNS, _SALE_DEFAULTS)
+        payload["created_at"] = now_str()
+        columns = ", ".join(payload)
+        placeholders = ", ".join(["?"] * len(payload))
+        with self._connect() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"INSERT INTO sale_records ({columns}) VALUES ({placeholders})",
+                tuple(payload.values()),
+            )
+            return int(c.lastrowid or 0)
+
+    def update_sale(self, sale_id: int, data: dict) -> bool:
+        fields = {key: value for key, value in data.items() if key in _SALE_COLUMNS}
+        if not fields:
+            return self.get_sale(sale_id) is not None
+        assignments = ", ".join(f"{key} = ?" for key in fields)
+        params = (*fields.values(), sale_id)
+        with self._connect() as conn:
+            c = conn.cursor()
+            c.execute(f"UPDATE sale_records SET {assignments} WHERE id = ?", params)
+            return c.rowcount > 0
+
+    def delete_sale(self, sale_id: int) -> bool:
+        with self._connect() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM sale_records WHERE id = ?", (sale_id,))
+            return c.rowcount > 0
 
     # ==================== 购买计划 ====================
 

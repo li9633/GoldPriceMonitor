@@ -8,8 +8,8 @@ from models.advice import AdviceAction, AdviceDraft, AdviceKind, Signal
 from service.advice.context import AdviceContext
 from service.advice.signals import has
 from service.advice.strategies.common import (
+    DraftBase,
     confidence_from,
-    market_context_text,
     price_band_around,
     suggest_buy_grams,
     suggest_sell_grams,
@@ -19,16 +19,18 @@ from service.advice.strategies.common import (
 TAKE_PROFIT_FRACTION = 1 / 3
 #: 止损时建议卖出的比例
 STOP_LOSS_FRACTION = 0.5
+#: 浮亏补仓时使用的剩余额度比例（再按风险偏好缩放）
+BOUNCE_FRACTION = 0.5
 
 
 def build(ctx: AdviceContext, signals: list[Signal]) -> AdviceDraft:
-    base = dict(
-        kind=AdviceKind.POST_PURCHASE,
-        symbol=ctx.symbol,
-        signals=signals,
-        evidence=ctx.to_evidence(),
-        confidence=confidence_from(signals),
-    )
+    base: DraftBase = {
+        "kind": AdviceKind.POST_PURCHASE,
+        "symbol": ctx.symbol,
+        "signals": signals,
+        "evidence": ctx.to_evidence(),
+        "confidence": confidence_from(signals),
+    }
     position = ctx.position
     pnl_pct = position.unrealized_pnl_pct
 
@@ -57,8 +59,9 @@ def build(ctx: AdviceContext, signals: list[Signal]) -> AdviceDraft:
             price_band_low=low,
             price_band_high=high,
             rationale=(
-                f"{cost_text}。浮亏已超过阈值且中期趋势仍在向下，"
-                f"建议减仓约 {grams}g（一半）控制风险，避免亏损继续扩大"
+                f"{cost_text}。浮亏已超过 {ctx.risk.deep_loss_pct:g}% 阈值"
+                f"（{ctx.risk.label}档）且中期趋势仍在向下，"
+                f"建议减仓约 {grams}g 控制风险，避免亏损继续扩大"
             ),
             **base,
         )
@@ -67,7 +70,8 @@ def build(ctx: AdviceContext, signals: list[Signal]) -> AdviceDraft:
     if has(signals, "in_loss") or has(signals, "deep_loss"):
         at_low = has(signals, "long_term_low_3m") or has(signals, "long_term_low_6m")
         if at_low and not has(signals, "position_ratio_high"):
-            grams = suggest_buy_grams(ctx, fraction=0.5)
+            fraction = ctx.risk.buy_fraction(BOUNCE_FRACTION)
+            grams = suggest_buy_grams(ctx, fraction=BOUNCE_FRACTION)
             low, high = price_band_around(ctx.current_price)
             if grams is None:
                 return AdviceDraft(
@@ -91,7 +95,7 @@ def build(ctx: AdviceContext, signals: list[Signal]) -> AdviceDraft:
                 price_band_high=high,
                 rationale=(
                     f"{cost_text}。价格处于长期低位，补仓可摊低成本，"
-                    f"建议加约 {grams}g（剩余额度的一半）"
+                    f"建议加约 {grams}g（剩余额度的 {fraction:.0%}，{ctx.risk.label}档）"
                 ),
                 **base,
             )
@@ -103,7 +107,8 @@ def build(ctx: AdviceContext, signals: list[Signal]) -> AdviceDraft:
 
     # ---- 浮盈较多 → 分批止盈 ----
     if has(signals, "big_profit"):
-        grams = suggest_sell_grams(ctx, TAKE_PROFIT_FRACTION)
+        sell_fraction = ctx.risk.sell_fraction(TAKE_PROFIT_FRACTION, take_profit=True)
+        grams = suggest_sell_grams(ctx, TAKE_PROFIT_FRACTION, take_profit=True)
         low, high = price_band_around(ctx.current_price, 0.8)
         return AdviceDraft(
             action=AdviceAction.TAKE_PROFIT,
@@ -111,8 +116,9 @@ def build(ctx: AdviceContext, signals: list[Signal]) -> AdviceDraft:
             price_band_low=low,
             price_band_high=high,
             rationale=(
-                f"{cost_text}。浮盈已达到止盈阈值，建议分批锁定收益，"
-                f"先卖出约 {grams}g（三分之一），剩余继续持有"
+                f"{cost_text}。浮盈已达到 {ctx.risk.profit_pct:g}% 阈值"
+                f"（{ctx.risk.label}档），建议分批锁定收益，"
+                f"先卖出约 {grams}g（持仓的 {sell_fraction:.0%}），剩余继续持有"
             ),
             **base,
         )

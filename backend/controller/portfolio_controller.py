@@ -14,6 +14,9 @@ from models.portfolio import (
     PurchasePlanCreate,
     PurchasePlanResponse,
     PurchasePlanUpdate,
+    SaleRecordCreate,
+    SaleRecordResponse,
+    SaleRecordUpdate,
 )
 from models.response import ApiResponse
 from service.portfolio_service import PortfolioService
@@ -54,8 +57,48 @@ def update_lot(lot_id: int, payload: PurchaseLotUpdate):
 
 @router.delete("/lots/{lot_id}", response_model=ApiResponse[None])
 def delete_lot(lot_id: int):
-    if not service.delete_lot(lot_id):
+    try:
+        deleted = service.delete_lot(lot_id)
+    except ValueError as exc:
+        # 删掉一笔买入可能让已有卖出变成超卖 —— 要给出 400 与原因，而不是 500
+        return ApiResponse.fail(str(exc), code=400)
+    if not deleted:
         return ApiResponse.fail(f"买入记录 {lot_id} 不存在", code=404)
+    return ApiResponse.success("已删除")
+
+
+# ==================== 卖出记录 ====================
+
+
+@router.get("/sales", response_model=ApiResponse[list[SaleRecordResponse]])
+def list_sales(symbol: str | None = Query(None, description=_SYMBOL_DESC)):
+    """卖出流水，每笔都带该笔的已实现盈亏（移动平均口径）"""
+    return ApiResponse.ok(service.list_sales(symbol))
+
+
+@router.post("/sales", response_model=ApiResponse[SaleRecordResponse])
+def create_sale(payload: SaleRecordCreate):
+    try:
+        return ApiResponse.ok(service.create_sale(payload))
+    except ValueError as exc:
+        return ApiResponse.fail(str(exc), code=400)
+
+
+@router.put("/sales/{sale_id}", response_model=ApiResponse[SaleRecordResponse])
+def update_sale(sale_id: int, payload: SaleRecordUpdate):
+    try:
+        updated = service.update_sale(sale_id, payload)
+    except ValueError as exc:
+        return ApiResponse.fail(str(exc), code=400)
+    if updated is None:
+        return ApiResponse.fail(f"卖出记录 {sale_id} 不存在", code=404)
+    return ApiResponse.ok(updated)
+
+
+@router.delete("/sales/{sale_id}", response_model=ApiResponse[None])
+def delete_sale(sale_id: int):
+    if not service.delete_sale(sale_id):
+        return ApiResponse.fail(f"卖出记录 {sale_id} 不存在", code=404)
     return ApiResponse.success("已删除")
 
 

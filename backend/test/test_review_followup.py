@@ -24,7 +24,6 @@ import tempfile
 
 import service.monitor_service as monitor_module
 from mapper.advice_mapper import AdviceMapper
-from mapper.portfolio_mapper import PortfolioMapper
 from models.advice import (
     AdviceAction,
     AdviceDraft,
@@ -97,11 +96,15 @@ def frozen(at: datetime.datetime):
 
 
 class FakeLotMapper:
-    def __init__(self, lots):
+    def __init__(self, lots, sales=None):
         self.lots = list(lots)
+        self.sales = list(sales or [])
 
     def list_lots(self, symbol=None):
         return [row for row in self.lots if symbol is None or row["symbol"] == symbol]
+
+    def list_sales(self, symbol=None):
+        return [row for row in self.sales if symbol is None or row["symbol"] == symbol]
 
     def list_plans(self, symbol=None, status=None):
         return []

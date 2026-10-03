@@ -19,6 +19,15 @@
         highlight
       />
     </el-col>
+    <el-col v-if="hasSales" :span="6">
+      <StatisticCard
+        label="已实现盈亏"
+        :value="realizedText"
+        format="raw"
+        :sub="realizedSubText"
+        :sub-class="realizedClass"
+      />
+    </el-col>
   </el-row>
 </template>
 
@@ -68,6 +77,27 @@ const pnlSubText = computed(() => {
 const pnlClass = computed<'up' | 'down' | 'stable'>(() => {
   const pnl = props.summary?.total_unrealized_pnl
   if (pnl == null) return 'stable'
+  if (pnl > 0) return 'up'
+  if (pnl < 0) return 'down'
+  return 'stable'
+})
+
+/** 没卖过就不显示这张卡，避免用「已实现 ¥0.00」占位置 */
+const hasSales = computed(() => (props.summary?.total_sold_grams ?? 0) > 0)
+
+const realizedText = computed(() => {
+  const pnl = props.summary?.total_realized_pnl ?? 0
+  const sign = pnl >= 0 ? '+' : '-'
+  return `${sign}¥${Math.abs(pnl).toFixed(2)}`
+})
+
+const realizedSubText = computed(() => {
+  const grams = props.summary?.total_sold_grams ?? 0
+  return `已卖出 ${grams} g（不含手续费）`
+})
+
+const realizedClass = computed<'up' | 'down' | 'stable'>(() => {
+  const pnl = props.summary?.total_realized_pnl ?? 0
   if (pnl > 0) return 'up'
   if (pnl < 0) return 'down'
   return 'stable'

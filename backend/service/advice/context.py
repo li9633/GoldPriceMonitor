@@ -1,8 +1,7 @@
 """建议上下文：把「行情 + 持仓 + 计划 + 偏好」整理成一次建议所需的全部输入。
 
-这里同时承担 `docs/refactor-plan.md` 里「阶段 0」的那件事 —— 把 `PriceSnapshot`
-序列化成可冻结的 `MarketIndicators`，用于写进 `advice_records.evidence`。
-建议必须可回溯，否则事后无法回答「当时凭什么这么建议」。
+同时把 `PriceSnapshot` 序列化成可冻结的 `MarketIndicators`，
+用于写进 `advice_records.evidence`。
 """
 
 from dataclasses import dataclass, field
@@ -12,6 +11,8 @@ from mapper.price_mapper import PriceSnapshot
 from models.advice import AdvicePrefs
 from models.portfolio import PlanProgress, PositionSummary
 from service.advice.entry_strategy import EntryStrategyResult
+from service.advice.risk import RiskProfile, position_ratio_limit, resolve_risk
+from utils.time_utils import now
 
 
 @dataclass
@@ -198,6 +199,16 @@ class AdviceContext:
         return self.subject_lot is not None
 
     @property
+    def risk(self) -> RiskProfile:
+        """当前生效的风险偏好档位（由 `prefs.risk_level` 解析而来）"""
+        return resolve_risk(self.prefs.risk_level)
+
+    @property
+    def position_ratio_limit(self) -> float:
+        """「仓位偏重」的判定线"""
+        return position_ratio_limit(self.prefs)
+
+    @property
     def current_price(self) -> float:
         return self.indicators.current_price
 
@@ -249,6 +260,9 @@ class AdviceContext:
                 "lot_count": self.position.lot_count,
                 "first_trade_date": self.position.first_trade_date,
                 "last_trade_date": self.position.last_trade_date,
+                "sale_count": self.position.sale_count,
+                "total_sold_grams": self.position.total_sold_grams,
+                "realized_pnl": self.position.realized_pnl,
             },
             "position_ratio_pct": self.position_ratio_pct(),
             "plans": [
@@ -307,7 +321,7 @@ class AdviceContext:
                 if self.entry_strategy
                 else None
             ),
-            "advised_at": (self.at or datetime.now()).isoformat(timespec="seconds"),
+            "advised_at": (self.at or now()).isoformat(timespec="seconds"),
         }
 
 

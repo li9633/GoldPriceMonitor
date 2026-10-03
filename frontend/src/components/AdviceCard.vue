@@ -79,6 +79,14 @@
       </span>
       <div v-if="showActions" class="footer-actions">
         <el-button
+          v-if="suggestsSell"
+          size="small"
+          type="primary"
+          @click="saleDialogVisible = true"
+        >
+          <font-awesome-icon icon="check" /> 记录这笔卖出
+        </el-button>
+        <el-button
           v-if="advice.status === 'delivered'"
           text
           size="small"
@@ -102,6 +110,17 @@
         </el-button>
       </div>
     </div>
+
+    <SaleFormDialog
+      v-model="saleDialogVisible"
+      :default-symbol="advice.symbol"
+      :default-grams="advice.target_grams"
+      :default-price="positionPrice"
+      :symbols="[advice.symbol]"
+      :available-grams="positionGrams"
+      :available-avg-cost="positionAvgCost"
+      @saved="onSaleSaved"
+    />
   </el-card>
 </template>
 
@@ -110,6 +129,7 @@ import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import {
+  faCheck,
   faChevronDown,
   faChevronRight,
   faLightbulb,
@@ -117,6 +137,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { adviceApi } from '@/api/modules/advice'
 import type { AdviceRecord } from '@/api/modules/advice'
+import SaleFormDialog from '@/components/SaleFormDialog.vue'
 import {
   ACTION_LABELS,
   ACTION_TAG_TYPES,
@@ -127,7 +148,7 @@ import {
   evidenceRows
 } from '@/utils/adviceHelpers'
 
-library.add(faChevronDown, faChevronRight, faLightbulb, faRotate)
+library.add(faCheck, faChevronDown, faChevronRight, faLightbulb, faRotate)
 
 const props = withDefaults(
   defineProps<{
@@ -149,6 +170,43 @@ const emit = defineEmits<{
 const showSignals = ref(true)
 const showEvidence = ref(false)
 const busy = ref(false)
+const saleDialogVisible = ref(false)
+
+/** 建议里带减仓动作时，直接给一个「记录这笔卖出」的入口 */
+const SELL_ACTIONS = new Set(['TAKE_PROFIT', 'STOP_LOSS'])
+const suggestsSell = computed(
+  () => SELL_ACTIONS.has(props.advice.action) && (props.advice.target_grams ?? 0) > 0
+)
+
+/** 从冻结的 evidence 里取持仓口径 —— 与生成建议时看到的完全一致 */
+const positionEvidence = computed<Record<string, unknown>>(() => {
+  const raw = props.advice.evidence
+  if (!raw || typeof raw !== 'object') return {}
+  const position = (raw as Record<string, unknown>).position
+  return position && typeof position === 'object' ? (position as Record<string, unknown>) : {}
+})
+
+const positionGrams = computed(() => {
+  const value = positionEvidence.value.total_grams
+  return typeof value === 'number' ? value : null
+})
+
+const positionAvgCost = computed(() => {
+  const value = positionEvidence.value.avg_cost
+  return typeof value === 'number' ? value : null
+})
+
+/** 卖出价默认填「建议价区间的中间价」，取自建议本身 */
+const positionPrice = computed(() => {
+  const { price_band_low: low, price_band_high: high } = props.advice
+  if (low === null || high === null) return null
+  return Number(((low + high) / 2).toFixed(2))
+})
+
+function onSaleSaved() {
+  ElMessage.success('已记录卖出，持仓已更新')
+  emit('changed')
+}
 
 const actionLabel = computed(() => ACTION_LABELS[props.advice.action] ?? props.advice.action)
 const actionTagType = computed(() => ACTION_TAG_TYPES[props.advice.action] ?? 'info')

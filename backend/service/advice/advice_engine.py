@@ -1,7 +1,6 @@
 """建议引擎 —— 编排「上下文 → 信号 → 策略 → 措辞 → 落库」。
 
-这是整个产品新中心的入口：给定行情与用户的持仓/计划/偏好，产出一条**结构化、
-可回溯**的建议，取代原来那个「价格越线就发通知」的流程。
+给定行情与用户的持仓/计划/偏好，产出一条结构化、可回溯的建议。
 
 `generate()` 刻意接受调用方传入的价格，这样 `MonitorService` 可以直接把实时抓到的
 价格传进来，不必为了生成建议再发一次网络请求。
@@ -42,8 +41,7 @@ logger = get_logger("AdviceEngine")
 
 #: 买入后的复盘档位（天）
 FOLLOWUP_HORIZONS = (1, 7, 30)
-#: 追补窗口：进程停机一两天后再启动，仍能把该做的复盘补上；
-#: 但补录很久以前的历史买入不会被一次性补出三条复盘。
+#: 追补窗口：距买入 N 天后仍在此窗口内才补做复盘
 FOLLOWUP_CATCHUP_DAYS = 2
 
 
@@ -81,7 +79,6 @@ class AdviceEngine:
             target_grams=float(config.get("target_grams") or 0.0),
             target_position_ratio=float(config.get("target_position_ratio") or 0.0),
             risk_level=str(config.get("risk_level") or "balanced"),
-            # 沿用原来的绝对低价安全线，让用户已配置的阈值不会因为改造而失效
             absolute_low_price=float(alert_config.get("absolute_low_price") or 0.0),
             absolute_alert_enabled=bool(alert_config.get("enable_absolute_alert", True)),
             enable_llm=bool(config.get("enable_llm", True)),
@@ -233,19 +230,18 @@ class AdviceEngine:
     def pending_reviews(self, at: datetime | None = None) -> list[tuple[dict, int]]:
         """找出该做复盘但还没做的「买入 × 档位」。
 
-        触发条件是 `距今 == T+n`（留 `FOLLOWUP_CATCHUP_DAYS` 天追补窗口），
-        而**不是** `距今 >= T+n`。这一点很关键：
-
-        - 用户今天买入 → 明天触发 T+1 ✓
-        - 用户补录了一笔三个月前的买入 → 它的 T+1/T+7/T+30 早已过去，
-          不会一次性补出三条复盘来（否则补录历史就等于被轰炸）
+        触发条件是 `距今 == T+n`（含 `FOLLOWUP_CATCHUP_DAYS` 天追补窗口），
+        不是 `距今 >= T+n` —— 否则补录一笔历史买入会被一次性补出三条复盘。
 
         `has_review` 只认非 suppressed 的记录，所以被闸门拦下的复盘会重试。
+        「期初持仓」不参与回访。
         """
         reference = at or now()
         today = reference.date()
         pending: list[tuple[dict, int]] = []
         for lot in self.portfolio_mapper.list_lots():
+            if lot.get("is_opening"):
+                continue
             try:
                 trade_date = date.fromisoformat(str(lot.get("trade_date")))
             except (ValueError, TypeError):
@@ -305,9 +301,13 @@ class AdviceEngine:
         )
 
         lots = self.portfolio_mapper.list_lots(symbol)
+        sales = self.portfolio_mapper.list_sales(symbol)
         plans_raw = self.portfolio_mapper.list_plans(symbol)
-        # 用「本次建议用的价格」算市值，保证建议与证据里的持仓口径一致
-        position = compute_position(symbol, lots, latest_price=current_price)
+        # 用「本次建议用的价格」算市值，保证建议与证据里的持仓口径一致；
+        # 必须带上卖出记录，否则止盈止损卖出后系统仍按原持仓判断
+        position = compute_position(
+            symbol, lots, latest_price=current_price, sales=sales
+        )
         progress = summarize_plans(plans_raw, lots)
         plan_states = build_plan_states(plans_raw, progress, lots, _today())
 

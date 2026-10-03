@@ -24,10 +24,9 @@ MA_GAP_PCT = 1.0  # 与 20 周期均线的距离在此以内算「缠绕」
 FAR_FROM_LOW_PCT = 15.0  # 高于近 180 日低点此比例以上，算「已经不便宜」
 
 # ---- 持仓类 ----
-DEEP_LOSS_PCT = -10.0  # 浮亏超过此比例触发止损提示
-LOSS_PCT = -3.0  # 浮亏超过此比例考虑补仓
-PROFIT_PCT = 8.0  # 浮盈超过此比例考虑部分止盈
-POSITION_RATIO_HIGH_PCT = 100.0  # 持仓市值超过总可投资金
+# 「浮亏/浮盈/仓位偏重」三类阈值**不在这里写死**：它们随风险偏好变化，
+# 由 `service.advice.risk` 的三个档位给出（见 `ctx.risk`）。
+# 用户设了「目标持仓占比」时，仓位判定线也改由它决定（`ctx.position_ratio_limit`）。
 
 
 def _signal(
@@ -53,9 +52,7 @@ def _market_signals(ctx: AdviceContext) -> list[Signal]:
     ind = ctx.indicators
     signals: list[Signal] = []
 
-    # 用户配置的绝对低价安全线 —— 原来 alert_service 里唯一活着的规则，
-    # 现在作为信号保留下来，避免改造后这条安全线失效。
-    # 注意要尊重开关：设置页关掉它就该真的不生效。
+    # 绝对低价安全线，受 enable_absolute_alert 开关控制
     if (
         ctx.prefs.absolute_alert_enabled
         and ctx.prefs.absolute_low_price > 0
@@ -234,19 +231,22 @@ def _position_signals(ctx: AdviceContext) -> list[Signal]:
         )
     )
 
+    risk = ctx.risk
     if pnl_pct is not None:
-        if pnl_pct <= DEEP_LOSS_PCT:
+        if pnl_pct <= risk.deep_loss_pct:
             signals.append(
                 _signal(
                     "deep_loss",
                     SignalCategory.POSITION,
-                    f"浮亏 {pnl_pct:.2f}%，已超过 {DEEP_LOSS_PCT}% 阈值",
+                    f"浮亏 {pnl_pct:.2f}%，已超过 {risk.deep_loss_pct:g}% 阈值"
+                    f"（{risk.label}档）",
                     "critical",
                     unrealized_pnl=position.unrealized_pnl,
                     unrealized_pnl_pct=pnl_pct,
+                    risk_level=risk.key,
                 )
             )
-        elif pnl_pct <= LOSS_PCT:
+        elif pnl_pct <= risk.loss_pct:
             signals.append(
                 _signal(
                     "in_loss",
@@ -257,15 +257,17 @@ def _position_signals(ctx: AdviceContext) -> list[Signal]:
                     unrealized_pnl_pct=pnl_pct,
                 )
             )
-        elif pnl_pct >= PROFIT_PCT:
+        elif pnl_pct >= risk.profit_pct:
             signals.append(
                 _signal(
                     "big_profit",
                     SignalCategory.POSITION,
-                    f"浮盈 {pnl_pct:.2f}%，已超过 {PROFIT_PCT}% 阈值",
+                    f"浮盈 {pnl_pct:.2f}%，已超过 {risk.profit_pct:g}% 阈值"
+                    f"（{risk.label}档）",
                     "notice",
                     unrealized_pnl=position.unrealized_pnl,
                     unrealized_pnl_pct=pnl_pct,
+                    risk_level=risk.key,
                 )
             )
         else:
@@ -280,14 +282,17 @@ def _position_signals(ctx: AdviceContext) -> list[Signal]:
             )
 
     ratio = ctx.position_ratio_pct()
-    if ratio is not None and ratio >= POSITION_RATIO_HIGH_PCT:
+    ratio_limit = ctx.position_ratio_limit
+    if ratio is not None and ratio >= ratio_limit:
         signals.append(
             _signal(
                 "position_ratio_high",
                 SignalCategory.POSITION,
-                f"持仓市值已占总可投资金的 {ratio:.0f}%，仓位偏重",
+                f"持仓市值已占总可投资金的 {ratio:.0f}%，"
+                f"达到你设定的 {ratio_limit:.0f}% 上限",
                 "warning",
                 position_ratio_pct=round(ratio, 2),
+                position_ratio_limit=round(ratio_limit, 2),
                 total_investable=ctx.prefs.total_investable,
             )
         )

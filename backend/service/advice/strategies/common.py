@@ -3,14 +3,31 @@
 这些是**算术**，必须留在代码里，绝不能交给 LLM 去估。
 """
 
-from models.advice import Signal
+from typing import TypedDict
+
+from models.advice import AdviceKind, Signal
 from service.advice.context import AdviceContext
+
+
+class DraftBase(TypedDict):
+    """`AdviceDraft` 的公共字段。
+
+    用 `TypedDict` 而非普通 `dict`：`dict` 展开进 `AdviceDraft(**base)` 时 mypy
+    无法校验各字段的类型，整个策略层会失去类型检查。
+    """
+
+    kind: AdviceKind
+    symbol: str
+    signals: list[Signal]
+    evidence: dict
+    confidence: float
 
 
 def suggest_buy_grams(ctx: AdviceContext, fraction: float = 1.0) -> float | None:
     """在偏好允许的范围内给出建议买入克数。
 
-    `fraction` 用于「分批」——只买剩余额度的一部分（例如 1/3）。
+    `fraction` 用于「分批」——只买剩余额度的一部分（例如 1/3）；实际比例还会按
+    **风险偏好**缩放（保守买得更少、进取买得更多，见 `service.advice.risk`）。
 
     返回 `None` 表示**偏好没配**，此时只能给方向（买/等），给不出数量；
     返回 `0.0` 表示额度已用尽，应当观望。
@@ -35,14 +52,21 @@ def suggest_buy_grams(ctx: AdviceContext, fraction: float = 1.0) -> float | None
         return None
 
     base = min(candidates)
-    return round(max(base * fraction, 0.0), 4)
+    return round(max(base * ctx.risk.buy_fraction(fraction), 0.0), 4)
 
 
-def suggest_sell_grams(ctx: AdviceContext, fraction: float) -> float | None:
-    """建议减持克数（按当前持仓的比例）"""
+def suggest_sell_grams(
+    ctx: AdviceContext, fraction: float, *, take_profit: bool = False
+) -> float | None:
+    """建议减持克数。
+
+    `fraction` 是「占当前持仓的比例」，实际比例再按风险偏好缩放 ——
+    保守档止损减得更多、止盈落袋更多，进取档反之。
+    """
     if ctx.position.total_grams <= 0:
         return None
-    return round(ctx.position.total_grams * fraction, 4)
+    scaled = ctx.risk.sell_fraction(fraction, take_profit=take_profit)
+    return round(ctx.position.total_grams * scaled, 4)
 
 
 def price_band_around(price: float, pct: float = 0.5) -> tuple[float, float]:

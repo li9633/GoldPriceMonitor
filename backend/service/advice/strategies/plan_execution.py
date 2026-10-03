@@ -7,6 +7,7 @@ from models.advice import AdviceAction, AdviceDraft, AdviceKind, Signal
 from service.advice.context import AdviceContext
 from service.advice.signals import has
 from service.advice.strategies.common import (
+    DraftBase,
     confidence_from,
     market_context_text,
     price_band_around,
@@ -17,13 +18,13 @@ def build(ctx: AdviceContext, signals: list[Signal]) -> AdviceDraft:
     state = ctx.active_plan
     assert state is not None  # 由 dispatch 保证
 
-    base = dict(
-        kind=AdviceKind.PLAN_EXECUTION,
-        symbol=ctx.symbol,
-        signals=signals,
-        evidence=ctx.to_evidence(),
-        confidence=confidence_from(signals),
-    )
+    base: DraftBase = {
+        "kind": AdviceKind.PLAN_EXECUTION,
+        "symbol": ctx.symbol,
+        "signals": signals,
+        "evidence": ctx.to_evidence(),
+        "confidence": confidence_from(signals),
+    }
 
     if has(signals, "no_market_data"):
         return AdviceDraft(

@@ -699,12 +699,16 @@ class FakePriceMapper:
 
 
 class FakePortfolioMapper:
-    def __init__(self, lots, plans):
+    def __init__(self, lots, plans, sales=None):
         self.lots = list(lots)
         self.plans = list(plans)
+        self.sales = list(sales or [])
 
     def list_lots(self, symbol=None):
         return [row for row in self.lots if symbol is None or row["symbol"] == symbol]
+
+    def list_sales(self, symbol=None):
+        return [row for row in self.sales if symbol is None or row["symbol"] == symbol]
 
     def list_plans(self, symbol=None, status=None):
         return [row for row in self.plans if symbol is None or row["symbol"] == symbol]

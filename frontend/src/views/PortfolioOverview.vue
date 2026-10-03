@@ -8,6 +8,9 @@
         <el-button type="primary" @click="openLotDialog()">
           <font-awesome-icon icon="plus" /> 记一笔买入
         </el-button>
+        <el-button @click="openSaleDialog()">
+          <font-awesome-icon icon="minus" /> 记一笔卖出
+        </el-button>
         <el-button @click="openPlanDialog()">
           <font-awesome-icon icon="layer-group" /> 新建计划
         </el-button>
@@ -134,10 +137,65 @@
       </el-table>
     </el-card>
 
+    <el-card class="section-card" shadow="hover">
+      <template #header>
+        <div class="card-header">
+          <span class="card-title">卖出记录</span>
+          <span class="card-hint">
+            共 {{ sales.length }} 笔，累计已实现盈亏
+            <span :class="realizedClass">{{ formatPrice(summary?.total_realized_pnl ?? 0) }}</span>
+            （不含手续费）
+          </span>
+        </div>
+      </template>
+      <el-table :data="sales" size="small" empty-text="还没有卖出记录">
+        <el-table-column prop="sale_date" label="日期" width="110" sortable />
+        <el-table-column prop="symbol" label="品种" width="120" />
+        <el-table-column label="克数" width="100" align="right">
+          <template #default="{ row }">{{ row.grams }}</template>
+        </el-table-column>
+        <el-table-column label="单价" width="110" align="right">
+          <template #default="{ row }">{{ formatPrice(row.price_per_gram) }}</template>
+        </el-table-column>
+        <el-table-column label="金额" width="120" align="right">
+          <template #default="{ row }">{{ formatPrice(row.amount) }}</template>
+        </el-table-column>
+        <el-table-column label="已实现盈亏" width="140" align="right">
+          <template #default="{ row }">
+            <span :class="row.realized_pnl >= 0 ? 'is-up' : 'is-down'">
+              {{ row.realized_pnl === null ? '—' : formatPrice(row.realized_pnl) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="channel" label="渠道" min-width="110">
+          <template #default="{ row }">{{ row.channel || '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="note" label="备注" min-width="100" show-overflow-tooltip />
+        <el-table-column label="操作" width="120" align="right">
+          <template #default="{ row }">
+            <el-button text type="primary" size="small" @click="openSaleDialog(row as SaleRecord)">
+              编辑
+            </el-button>
+            <el-button text type="danger" size="small" @click="removeSale(row as SaleRecord)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <LotFormDialog
       v-model="lotDialogVisible"
       :lot="editingLot"
       :plans="plans"
+      :symbols="symbolCodes"
+      :default-symbol="defaultSymbol"
+      @saved="refreshAll"
+    />
+
+    <SaleFormDialog
+      v-model="saleDialogVisible"
+      :sale="editingSale"
       :symbols="symbolCodes"
       :default-symbol="defaultSymbol"
       @saved="refreshAll"
@@ -209,8 +267,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { faCoins, faLayerGroup, faMinus, faPlus, faRotate } from '@fortawesome/free-solid-svg-icons'
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faCoins, faLayerGroup, faPlus, faRotate } from '@fortawesome/free-solid-svg-icons'
 import { portfolioApi } from '@/api/modules/portfolio'
 import type {
   PlanProgress,
@@ -218,24 +276,30 @@ import type {
   PortfolioSummary,
   PurchaseLot,
   PurchasePlan,
-  PurchasePlanPayload
+  PurchasePlanPayload,
+  SaleRecord
 } from '@/api/modules/portfolio'
 import { settingsApi } from '@/api/modules/settings'
 import { formatPrice, today } from '@/utils/format'
 import PositionSummary from '@/components/PositionSummary.vue'
 import LotFormDialog from '@/components/LotFormDialog.vue'
+import SaleFormDialog from '@/components/SaleFormDialog.vue'
 
-library.add(faCoins, faLayerGroup, faPlus, faRotate)
+library.add(faCoins, faLayerGroup, faMinus, faPlus, faRotate)
 
 const loading = ref(false)
 const summary = ref<PortfolioSummary | null>(null)
 const lots = ref<PurchaseLot[]>([])
+const sales = ref<SaleRecord[]>([])
 const plans = ref<PurchasePlan[]>([])
 const symbolCodes = ref<string[]>([])
 const defaultSymbol = ref('')
 
 const lotDialogVisible = ref(false)
 const editingLot = ref<PurchaseLot | null>(null)
+
+const saleDialogVisible = ref(false)
+const editingSale = ref<SaleRecord | null>(null)
 
 const planDialogVisible = ref(false)
 const planSaving = ref(false)
@@ -263,8 +327,16 @@ const trancheGrams = computed(() => {
   return (total / tranches).toFixed(2)
 })
 
+const realizedClass = computed(() =>
+  (summary.value?.total_realized_pnl ?? 0) >= 0 ? 'is-up' : 'is-down'
+)
+
 async function loadLots() {
   lots.value = await portfolioApi.listLots()
+}
+
+async function loadSales() {
+  sales.value = await portfolioApi.listSales()
 }
 
 async function loadPlans() {
@@ -289,7 +361,7 @@ async function loadSymbols() {
 async function refreshAll() {
   loading.value = true
   try {
-    await Promise.all([loadLots(), loadPlans(), loadSummary()])
+    await Promise.all([loadLots(), loadSales(), loadPlans(), loadSummary()])
   } catch {
     // 错误提示已由 request 拦截器统一处理
   } finally {
@@ -300,6 +372,30 @@ async function refreshAll() {
 function openLotDialog(row?: PurchaseLot) {
   editingLot.value = row ?? null
   lotDialogVisible.value = true
+}
+
+function openSaleDialog(row?: SaleRecord) {
+  editingSale.value = row ?? null
+  saleDialogVisible.value = true
+}
+
+async function removeSale(row: SaleRecord) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除 ${row.sale_date} 卖出 ${row.grams}g 的记录吗？删除后持仓会相应恢复。`,
+      '删除卖出记录',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await portfolioApi.deleteSale(row.id)
+    ElMessage.success('已删除')
+    await refreshAll()
+  } catch {
+    // 错误提示已由 request 拦截器统一处理
+  }
 }
 
 async function removeLot(row: PurchaseLot) {
@@ -483,6 +579,14 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-muted);
   margin-left: 8px;
+}
+
+.is-up {
+  color: var(--price-up);
+}
+
+.is-down {
+  color: var(--price-down);
 }
 
 .mono {
