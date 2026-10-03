@@ -13,6 +13,8 @@ class SystemSettingsService:
     """系统设置单例服务 — 内存缓存 + 分表存取"""
 
     _instance: Self | None = None
+    #: 单例标志 —— 显式标注，否则 `__new__` 里赋值会让类型检查器推不出类型
+    _initialized: bool = False
 
     def __new__(cls) -> Self:
         if cls._instance is None:

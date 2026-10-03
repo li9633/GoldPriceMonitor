@@ -24,7 +24,7 @@ from service.monitor_service import REVIEW_REFRESH_SECONDS, MonitorService
 from service.send_gate import GateDecision
 from utils.due_timer import DueTimer
 from utils.market_session import SendPolicy, Session
-from utils.time_utils import CHINA_TZ, now
+from utils.time_utils import CHINA_TZ
 
 _test_logger = logging.getLogger("test.review")
 _test_logger.addHandler(logging.NullHandler())

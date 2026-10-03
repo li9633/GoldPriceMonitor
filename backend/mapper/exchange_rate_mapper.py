@@ -24,7 +24,7 @@ class ExchangeRateMapper:
         return conn
 
     @contextmanager
-    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
+    def _connect(self) -> Generator[sqlite3.Connection]:
         """打开连接，退出时提交并**关闭**。
 
         `with sqlite3.connect(...) as conn` 只是事务上下文，不会关闭连接；

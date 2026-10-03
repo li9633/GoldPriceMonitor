@@ -34,9 +34,9 @@ from service.monitor_service import (
     MonitorService,
 )
 from service.send_gate import SendGate
+from test.test_market_session import frozen as _frozen_sessions
 from utils.due_timer import DueTimer
 from utils.market_session import SendPolicy, Session
-from test.test_market_session import frozen as _frozen_sessions
 
 _test_logger = logging.getLogger("test.monitor")
 _test_logger.addHandler(logging.NullHandler())

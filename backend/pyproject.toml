@@ -4,11 +4,56 @@ version = "1.0.0"
 description = "黄金价格智能监控系统"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
     "requests>=2.32.0",
     "beautifulsoup4>=4.12.0",
     "lxml>=5.0.0",
-    "chinese-calendar>=1.11.0",
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.30",
+    "chinese-calendar>=1.11.0", # 仅覆盖 2004–2026，超出范围时降级为按星期判断
     "python-dotenv>=1.0",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "ruff>=0.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.mypy]
+python_version = "3.13"
+files = ["."]
+exclude = [
+    '^\.venv/',
+    '^test/',
+]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+disable_error_code = ["prop-decorator"] # Pydantic @computed_field 叠 @property 的已知误报
+
+[tool.ruff]
+target-version = "py313"
+exclude = [".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E4",
+    "E7",
+    "E9",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "C4",
+    "DTZ", # 裸 datetime 与时区
+]
+ignore = [
+    "UP042", # 换 StrEnum 会改变 str(member) 的结果，影响日志与去重键
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test/*" = ["DTZ001", "DTZ005", "DTZ007"] # 测试里用裸 datetime 冻结时钟

@@ -3,8 +3,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
-from controller.ai_stats_controller import router as ai_stats_router
 from controller.advice_controller import router as advice_router
+from controller.ai_stats_controller import router as ai_stats_router
 from controller.exchange_rate_controller import router as exchange_rate_router
 from controller.log_controller import router as log_router
 from controller.model_pool_controller import router as model_pool_router

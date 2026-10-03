@@ -28,7 +28,9 @@ class PriceSnapshot:
 
     def prices_in_hours(self, hours: float) -> list[float]:
         cutoff = now() - timedelta(hours=hours)
-        return [p for t, p in zip(self._timestamps, self._all) if t >= cutoff]
+        # strict：两个序列都由 prices_with_time 推出，长度必须一致。
+        # 万一以后有人只改了一边，这里直接报错，而不是悄悄截断少算几个点。
+        return [p for t, p in zip(self._timestamps, self._all, strict=True) if t >= cutoff]
 
     def prices_last_n(self, n: int) -> list[float]:
         return self._all[-n:] if len(self._all) >= n else self._all
@@ -36,7 +38,7 @@ class PriceSnapshot:
     def trend(self, hours: float) -> dict:
         subset = [
             (t, p)
-            for t, p in zip(self._timestamps, self._all)
+            for t, p in zip(self._timestamps, self._all, strict=True)
             if t >= now() - timedelta(hours=hours)
         ]
         if len(subset) < 2:
@@ -98,7 +100,7 @@ class PriceMapper:
         return conn
 
     @contextmanager
-    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
+    def _connect(self) -> Generator[sqlite3.Connection]:
         """打开连接，退出时提交并**关闭**。
 
         注意：`with sqlite3.connect(...) as conn` 只是事务上下文，成功时 commit、

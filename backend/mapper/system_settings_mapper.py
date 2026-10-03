@@ -234,7 +234,7 @@ class SystemSettingsMapper:
 
     def _ensure_default_rows(self, conn: sqlite3.Connection | None = None) -> None:
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         for table in [
@@ -255,7 +255,7 @@ class SystemSettingsMapper:
     def _migrate_ai_config(self, conn: sqlite3.Connection | None = None) -> None:
         new_columns = {"check_interval_minutes": "INTEGER DEFAULT 5"}
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(ai_config)")}
@@ -272,7 +272,7 @@ class SystemSettingsMapper:
     def _migrate_log_config(self, conn: sqlite3.Connection | None = None) -> None:
         new_columns = {"log_level": "TEXT DEFAULT 'DEBUG'"}
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(log_config)")}
@@ -295,7 +295,7 @@ class SystemSettingsMapper:
             "ounce_to_gram": "REAL DEFAULT 31.1035",
         }
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         existing = {row[1] for row in c.execute("PRAGMA table_info(monitor_config)")}
@@ -314,7 +314,7 @@ class SystemSettingsMapper:
     def _seed_symbol_config(self, conn: sqlite3.Connection | None = None) -> None:
         """初始化品种名称映射默认数据"""
         own = conn is None
-        if own:
+        if conn is None:
             conn = self._get_connection()
         c = conn.cursor()
         defaults = [

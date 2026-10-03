@@ -21,7 +21,6 @@ from models.portfolio import (
     PurchaseLotResponse,
     PurchaseLotUpdate,
     PurchasePlanCreate,
-    PurchasePlanUpdate,
 )
 from service.portfolio_service import PortfolioService
 from service.position import (

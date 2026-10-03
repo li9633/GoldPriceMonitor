@@ -121,7 +121,7 @@ class AdviceMapper:
 
     @staticmethod
     def _migrate_columns(c: sqlite3.Cursor) -> None:
-        """老库补列 —— 沿用 `system_settings_mapper` 里已有的迁移写法"""
+        """老库补列"""
         existing = {row[1] for row in c.execute("PRAGMA table_info(advice_records)")}
         for column, ddl in (
             ("subject_lot_id", "INTEGER NULL"),
@@ -143,7 +143,7 @@ class AdviceMapper:
                 continue
             value = data.get(key)
             if key in _JSON_COLUMNS:
-                fallback = [] if key == "signals" else {}
+                fallback: list | dict = [] if key == "signals" else {}
                 value = json.dumps(
                     value if value is not None else fallback, ensure_ascii=False
                 )

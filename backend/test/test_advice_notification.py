@@ -10,8 +10,6 @@
     python -m test.test_advice_notification
 """
 
-import datetime
-
 from channels.base import AdviceData, AdvicePayload
 from models.advice import (
     AdviceAction,
