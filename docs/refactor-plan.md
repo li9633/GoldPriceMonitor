@@ -1097,3 +1097,454 @@ python -m test.test_sqlite_connections    #  3 项（回归）
    这是目前唯一已知的功能性缺口。
 3. `chinese-calendar` 依赖升级（§7.5）—— 数据只到 2026 年，年底前需处理
    （代码已降级兜底，不会崩，但节假日判断会退化为仅按星期）。
+
+---
+
+## 19. 实施记录（用户反馈：建议配置看不到持仓入口）
+
+记录日期：2026-10-03。起因是用户反馈：
+
+> 我当前已经有持仓，但前端界面的建议配置不够直观或没有这个功能，无法填写我当前的持仓信息。
+
+排查后确认**功能其实存在**（在「我的持仓」页逐笔录批次），但**入口不在用户会去找的地方**
+—— 用户先去「建议配置」里找，那里什么都没有。同时顺带查实了两个从未生效的配置项。
+
+### 19.1 两个「存得下、读得出、没人用」的字段
+
+| 字段 | 原先的实际状况 |
+|---|---|
+| `target_position_ratio` | 只被读进 `AdvicePrefs` 就没了下文；真正判定「仓位偏重」的是 `signals.py` 里**硬编码的 `POSITION_RATIO_HIGH_PCT = 100.0`** —— 用户会在一个自己没设过、也改不了的阈值上收到提示 |
+| `risk_level` | 同样只有定义、DDL 与读进 prefs，**没有任何消费者**；选保守还是进取对建议结果零影响 |
+
+这是同一个坑的第三、四次（前两次是 `ai_config.enabled` 与 `enable_absolute_alert`）。
+`target_position_ratio` 还是建议配置里**唯一没有说明文字**的字段。
+
+### 19.2 「期初持仓」—— 让老持仓用户能一次填完
+
+用户已经有持仓、且多半记不清每一笔的日期，逐笔录批次是不现实的。做法是新增
+「期初持仓」概念，而不是另起一套「汇总持仓」：
+
+| 方案 | 为什么不用 / 用 |
+|---|---|
+| 单独做一份「汇总持仓」 | 买入回访（T+1/T+7/T+30）与分批计划进度会**失去依据**，等于停用两个功能 |
+| **期初持仓 = 一条买入记录**（采用） | 底层仍是 `purchase_lots` 的一行，所以持仓成本、止盈止损、分批计划全部照常工作 |
+
+具体改动：
+
+- `purchase_lots` 新增 `is_opening INTEGER NOT NULL DEFAULT 0`，老库由 `_migrate_columns()`
+  自动 `ALTER TABLE` 补列（迁移可重复执行）；
+- 录入表单（`LotFormDialog` 的 `mode="opening"`）**只问三件事**：品种、持有克数、平均成本价
+  （+ 大致日期）。手续费 / 渠道 / 所属计划 / 备注全部隐藏 —— 那些是逐笔买入才需要的信息；
+- **期初持仓不触发买入回访**：那不是一次需要跟进的买入，否则用户一录入持仓就被回访；
+- 期初持仓**不顶替任何计划的批次**：它 `plan_id` 为空，`compute_plan_progress` 天然按
+  `plan_id` 匹配，无需改判断逻辑。
+
+前端在**建议配置页顶部**加了「我的当前持仓」卡片：没持仓时直接给出「录入我的持仓」按钮与
+说明，有持仓时显示克数 / 成本价 / 浮动盈亏，并提供入口去「我的持仓」页编辑明细。
+用户不用再猜持仓该去哪填。
+
+### 19.3 风险偏好真的控制阈值与买卖比例
+
+新增 `service/advice/risk.py`，把「保守 / 均衡 / 进取」三个词翻译成数字，
+**所有倍率集中在一张表里**：
+
+| | 止盈 | 浮亏提醒 | 止损 | 单次买入 | 止损力度 | 止盈卖出 |
+|---|---|---|---|---|---|---|
+| 保守 | +5% | -2% | -6% | 0.6× | 1.2× | 1.2× |
+| 均衡 | +8% | -3% | -10% | 1.0× | 1.0× | 1.0× |
+| 进取 | +12% | -5% | -15% | 1.4× | 0.8× | 0.8× |
+
+保守档「更早止损、且减得更多」是有意的：风险承受能力低的人，亏损扩大比卖早更难受。
+
+配套改动：
+
+- `AdviceContext.risk` / `.position_ratio_limit` 两个只读属性作为唯一取值口；
+- `signals.py` 顶部**删掉**了 `DEEP_LOSS_PCT` / `LOSS_PCT` / `PROFIT_PCT` /
+  `POSITION_RATIO_HIGH_PCT` 四个常量，改读 `ctx.risk.*` 与 `ctx.position_ratio_limit`；
+- `common.suggest_buy_grams` / `suggest_sell_grams` 内部按档位缩放，并**封顶在 1**
+  （进取档 0.5×1.4=0.7 没问题，但不能超过剩余额度或持仓量）；
+- 未知档位一律回落到均衡、不抛异常 —— 配置脏数据不该让建议生成失败；
+- 信号与理由里写明档位（「已超过 -6% 阈值（保守档）」），否则用户不知道为什么 -7% 就报止损。
+
+### 19.4 实测
+
+固定行情 ¥954/克，期初持仓 30g @ ¥900（浮盈 +6%），总资金 ¥50000：
+
+```
+1) 录入当前持仓（只有克数 + 均价）→ is_opening=True
+   持仓汇总：30.0g，成本价 ¥900.0，浮动 +6.00%
+2) 待回访：[]                      ← 期初持仓不触发买入回访
+3) 持仓市值 ¥28620 / ¥50000 = 57.2%
+   目标占比未设（默认上限 100%）：position_ratio_high = False
+   目标占比设为 50%：position_ratio_high = True
+     提示语：持仓市值已占总可投资金的 57%，达到你设定的 50% 上限
+4) 浮盈 +6%：
+   conservative → TAKE_PROFIT  建议 12.0g
+   balanced     → HOLD
+   aggressive   → HOLD
+   理由：……浮盈已达到 5% 阈值（保守档），建议分批锁定收益，
+        先卖出约 12.0g（持仓的 40%），剩余继续持有
+```
+
+第 3、4 项在改动前**完全不会发生**。
+
+### 19.5 验证方式
+
+```bash
+cd backend
+python -m test.test_advice_risk          # 19 项（新增）
+python -m test.test_advice               # 51 项（回归）
+python -m test.test_review_followup      # 26 项（回归）
+python -m test.test_review_scheduling     # 17 项（回归）
+python -m test.test_entry_strategy       # 29 项（回归）
+python -m test.test_portfolio            # 28 项（回归）
+python -m test.test_monitor_send_gate    # 13 项（回归）
+python -m test.test_market_session       # 14 项（回归）
+python -m test.test_sqlite_connections   #  3 项（回归）
+```
+
+共 **207 项全部通过**。前端 `vue-tsc` / `eslint` / `prettier --check` 均通过。
+
+### 19.6 还没做：卖出记账
+
+用户已确认要补，并选定了**移动平均**口径（卖出按当前均价结转，剩余持仓成本价不变；
+实现盈亏 =（卖价 − 均价）× 克数 —— 与现有「成本价 = 总投入 / 总克数」一致，界面不用改）。
+
+在此之前，系统会建议「止盈卖出 12g」但**没地方记录**，持仓会一直偏大，
+后续所有建议都建立在偏大的持仓上。这是下一轮的事。
+
+---
+
+## 20. 实施记录（卖出记账与移动平均结转）
+
+记录日期：2026-10-03。**止盈/止损建议现在可以落地了** —— §19.6 那个缺口补上了。
+
+### 20.1 口径（用户已确认：移动平均）
+
+卖出按**当时**的持仓均价结转，剩余持仓的**成本价不变**：
+
+```
+已实现盈亏 = (卖价 − 卖出当时的均价) × 卖出克数
+```
+
+数学上 `(cost − avg×s) / (grams − s) = avg`，所以卖出一部分不会改变成本价。
+
+**关键坑：均价会随买入变化，所以已实现盈亏必须按账本顺序逐笔推导。**
+拿最终的均价乘总卖出量是错的，而且不会报错 —— 只会安静地给出一个错数字。
+测试里专门锁了这个算例：
+
+```
+买 10g @900 → 卖 10g @1000（此时均价 900，已实现 +1000）→ 再买 10g @1000
+正确：+1000（按卖出当时的 900）
+错误：+500 （按最终均价 950）
+```
+
+手续费沿用「只记录、不摊入成本」的口径，**不冲减已实现盈亏**（即报税前数），
+`total_fee`（买入）与 `sale_fee`（卖出）分开返回。
+
+### 20.2 账本
+
+`service/position.py` 从「求和」改成**按时间走一遍账本**：
+
+- `build_ledger(lots, sales)` 把买入与卖出合并排序，**同一天买入排在卖出之前**
+  （当天先买后卖是自然读法，也避免「今天买、今天卖」被判成超卖）；
+- `walk_ledger(events)` 逐笔结转，产出剩余克数/成本、逐笔已实现盈亏；
+- 超卖时**不把克数扣成负数**，只结转真正持有的部分，把超出量记在 `oversold_grams`
+  —— 静默算出负持仓会让后面所有数字都不可信。
+
+`compute_position` 的 `sales` 做成**仅关键字参数**：它是在 `latest_price` 之后才加的，
+做成位置参数会把老调用里第三个位置上的价格当成卖出记录（`test_portfolio.py` 就有
+这种位置调用），静默算错。
+
+### 20.3 超卖守卫：先校验再落库
+
+账本一旦出现「卖出多于持仓」，后面的成本价与已实现盈亏全都失真。所以在
+**写入之前**用「改动之后的样子」预演一遍账本：
+
+| 操作 | 为什么要校验 |
+|---|---|
+| 新增/修改卖出 | 卖出量可能超过持仓 |
+| **改小**一笔买入 | 已有的卖出可能就超了 |
+| 删除一笔买入 | 同上 |
+| 删除卖出 | 不需要 —— 只会让持仓变多 |
+
+刻意**先校验再落库**，而不是写完再回滚：回滚要按原 id 重新插回一行，
+稍有不慎就会把 id 弄丢（进而让 `plan_id` 之类的引用悬空）。
+
+### 20.4 实测（闭环）
+
+期初持仓 30g @ ¥900，现价 ¥990（+10%），均衡档：
+
+```
+1) 引擎给出建议：TAKE_PROFIT，卖出 10.0g（30 × 1/3）
+2) 记录这笔卖出：10g @ ¥990，该笔已实现 ¥900
+3) 持仓与盈亏随之更新：20.0g，成本价仍 ¥900（移动平均）
+   浮动 ¥1800，已实现 ¥900
+4) 下一次建议：evidence.position.total_grams = 20.0，realized_pnl = 900
+   建议卖出 6.6667g ← 按 20g 重算，不再是 10g
+5) 卖出 999g → 400「卖出总量超出持仓 979g，请检查卖出记录…」
+6) 删掉被依赖的买入 → 400「卖出总量超出持仓 10g，…」
+```
+
+第 4 步是闭环的证据：建议的克数从 10g 变成 6.67g，说明引擎**看到的是卖出后的持仓**。
+（价格仍在 +8% 止盈线之上，所以继续分批止盈是正确行为，不是没生效。）
+
+### 20.5 顺手修掉的一个真 bug
+
+端到端跑的时候发现 `DELETE /portfolio/lots/{id}` **没有接 `ValueError`**：
+超卖守卫抛出的异常会变成 500，前端只看到「服务器错误」，用户根本不知道自己做错了什么。
+已改为 400 + 原因，并补了回归测试。
+
+> 这个 bug 只有把接口层真正跑一遍才会暴露 —— 单元测试直接调 service，
+> 看到的只是「异常抛对了」。
+
+### 20.6 前端
+
+- `SaleFormDialog.vue`：记一笔卖出（克数/单价/日期/手续费/渠道），带「最多可卖 Xg」
+  与「全部卖出」；填总金额也能反推单价；
+- 「我的持仓」页：新增**卖出记录**表（每笔带已实现盈亏）与「记一笔卖出」按钮；
+- 持仓总览多一张**已实现盈亏**卡（没卖过就不显示，避免用「¥0.00」占位置）；
+- **建议卡上直接给「记录这笔卖出」按钮**：动作是止盈/止损时出现，
+  自动带上建议克数、建议价位中间价与当前可卖克数 —— 这就是「让建议落地」的那一步。
+
+### 20.7 验证方式
+
+```bash
+cd backend
+python -m test.test_sales               # 25 项（新增）
+python -m test.test_advice              # 51 项（回归）
+python -m test.test_advice_risk         # 19 项（回归）
+python -m test.test_portfolio           # 28 项（回归）
+python -m test.test_review_followup     # 26 项（回归）
+python -m test.test_review_scheduling   # 17 项（回归）
+python -m test.test_entry_strategy      # 29 项（回归）
+python -m test.test_monitor_send_gate   # 13 项（回归）
+python -m test.test_market_session      # 14 项（回归）
+python -m test.test_sqlite_connections  #  3 项（回归）
+```
+
+共 **235 项全部通过**。前端 `vue-tsc` / `eslint` / `prettier --check` 均通过。
+接口路径从 60 条增至 62 条（新增 `/api/portfolio/sales` 的增删改查中的 4 条，含列表）。
+
+### 20.8 现在的完整闭环
+
+```
+记「我持有多少」（期初持仓，只填克数 + 均价）
+  → 建议：买什么 / 买多少 / 一次买还是分批
+  → 建议：持有 / 补仓 / 止盈 / 止损（基于你的真实成本）
+  → 一键把建议的卖出记成流水（超卖会被拦住）
+  → 持仓与已实现盈亏立刻反映，下一次建议基于新持仓
+  → T+1/T+7/T+30 自动回访「这笔买得怎么样」
+  → 回访价格自动回填 →「我的建议准不准」有据可查
+```
+
+---
+
+## 21. 实施记录（工具链：uv 依赖拆分 + mypy / ruff 门禁）
+
+记录日期：2026-10-03。起因是「用 uv 和 mypy 检查一下代码」，检查过程中发现
+**若干真问题**（见 §21.4），于是把工具链固化下来，避免下次还得靠临时命令。
+
+### 21.1 uv：运行依赖与开发依赖分开
+
+`backend/pyproject.toml` 原来只有一个 `[project].dependencies`，没有开发依赖也没有
+任何工具配置。按 uv 现在的标准（PEP 735 依赖组）拆成：
+
+| 位置 | 内容 | 说明 |
+|---|---|---|
+| `[project].dependencies` | fastapi / uvicorn / requests / bs4 / lxml / chinese-calendar / python-dotenv | **运行**依赖，按用途分组加注释 |
+| `[dependency-groups].dev` | mypy / ruff | **开发**依赖，不参与运行；用 `uv add --dev` 维护 |
+| `[tool.uv] package = false` | —— | 这是**应用**不是库：不把自身构建/安装。当前无 `[build-system]`，uv 已推断为 virtual，显式写出来是为了以后有人加了构建后端时行为不会突变 |
+
+锁定后 `uv.lock` 从 29 个包变成 35 个（多了 mypy、ruff 及其依赖）。
+
+> 索引镜像（清华源）配在**全局** `%APPDATA%\uv\uv.toml` 里，不在项目内 ——
+> 所以 `[tool.uv]` 没有、也不应该重复声明 index，否则会覆盖全局设置。
+
+### 21.2 mypy：只把生产代码纳入门槛
+
+```toml
+[tool.mypy]
+python_version = "3.13"
+files = ["."]
+exclude = ['^\.venv/', '^test/']
+disable_error_code = ["prop-decorator"]
+```
+
+- **排除 `test/`**：测试里有大量替身（`FakeSettings` / `FakePriceMapper` …）赋给具体类型的
+  属性、以及直接索引 `Optional` 返回值，共 95 条。先把生产代码管住，测试逐步收紧。
+- **`disable_error_code = ["prop-decorator"]`**：Pydantic 的 `@computed_field` 叠在
+  `@property` 上会被 mypy 误报，属框架层面的已知不兼容，不是我们的问题。
+
+结果：`uv run mypy` → **Success: no issues found in 85 source files**（exit 0）。
+
+### 21.3 ruff：显式规则集，且当前零告警
+
+```toml
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "C4", "DTZ"]
+ignore = ["UP042"]
+
+[tool.ruff.lint.per-file-ignores]
+"test/*" = ["DTZ001", "DTZ005", "DTZ007"]
+```
+
+三个刻意的选择：
+
+1. **显式 `select`**：ruff 0.16 的内置默认比经典的 `E4/E7/E9/F` 宽得多（会报 DTZ / RUF / I），
+   显式声明才能让「本地检查」和「CI 检查」看到同一套规则。
+2. **`DTZ`**：这一族规则**真的抓到过 bug** —— §19 里 `context.py` 的
+   `advised_at` 用了裸 `datetime.now()`，绕过项目统一的 `now()`。同类问题靠人眼很容易漏。
+3. **`ignore = ["UP042"]` 是有意的**，不是图省事：它建议把
+   `class AdviceKind(str, Enum)` 换成 `enum.StrEnum`，而 `StrEnum` 会改变
+   `str(member)` 的结果（`"AdviceAction.BUY_NOW"` → `"BUY_NOW"`）。
+   `monitor_service` 里既有**直接插进日志**的地方（`:175`），也用它**拼去重键**（`:189`）——
+   那属于行为变更，不该混在一次 lint 修复里。要改需单独评估。
+
+配套修掉的 7 处（让门禁真的能过，而不是加一个必然失败的配置）：
+
+| 位置 | 问题 |
+|---|---|
+| `app.py` / `test_monitor_send_gate.py` | import 顺序 |
+| `test_advice_notification.py` / `test_portfolio.py` | 未使用的 import |
+| `service/log_service.py` | `open(p, "r")` → `open(p)` |
+| `mapper/price_mapper.py` | 两处 `zip()` 加 `strict=True` —— 两个序列都由 `prices_with_time` 推出、长度必须一致；万一以后只改一边，会直接报错而不是悄悄截断少算 |
+| `models/portfolio.py` | `_validate_trade_date` 只校验格式、不做时区运算，给 `strptime` 加 `# noqa: DTZ007` 并说明原因 |
+
+结果：`uv run ruff check` → **All checks passed!**（exit 0）。
+
+### 21.4 这次检查找出的真问题
+
+| # | 问题 | 性质 |
+|---|---|---|
+| 1 | `service/advice/context.py` 用裸 `datetime.now()` 写 `advised_at`，绕过项目统一的 `now()`；且 `AdviceContext.at` 从未被赋值，永远走 fallback | **时区 bug**，非 +08:00 机器上记录的时间是错的 |
+| 2 | `DELETE /portfolio/lots/{id}` 不接 `ValueError`，超卖守卫变成 500 | **接口层 bug**，用户只看到「服务器错误」 |
+| 3 | `AdviceSettings.vue` 用 `positions[0]` 判断有无持仓，而全部卖光的品种也在列表里 → 会谎称「还没有录入持仓」 | **前端 bug** |
+| 4 | 三个策略文件用 `base = dict(...)` + `AdviceDraft(**base)`，mypy 为每个字段各报一条（共 113 条） | **类型检查被绕过** —— 整个策略层（决定买卖与数量）等于没检查。改用 `TypedDict` 修掉 |
+| 5 | `system_settings_mapper.py` 5 处 `if own:` 让 mypy 无法收窄（15 条误报） | 改为 `if conn is None:`，行为不变 |
+
+### 21.5 验证方式
+
+```bash
+cd backend
+uv run mypy                       # Success: no issues found in 85 source files
+uv run ruff check                 # All checks passed!
+uv lock --check                   # 锁文件与 pyproject 一致
+uv run python -m test.test_sales  # 235 项测试全部通过
+```
+
+顺手在根 `.gitignore` 补了 `.mypy_cache/`、`.ruff_cache/`、`.pytest_cache/`、
+`.uv-cache/` —— 加了 dev 依赖之后，跑一次工具就会在 `backend/` 下生成这些缓存目录。
+
+### 21.6 还没做
+
+- **把 mypy 收紧到 `test/`**：需要先给测试替身加 Protocol 或改用 `cast`，属于独立工作。
+- **`uv run ruff format --check`**：格式化目前交给编辑器（`.vscode/settings.json` 指定
+  Ruff 为 formatter + 保存时修复）。要当门禁得先跑一遍全量格式化，会产生较大 diff，
+  建议单独一次提交。
+
+---
+
+## 22. 实施记录（LLM 提示词同步）
+
+记录日期：2026-10-03。起因是「发给 LLM 的提示词需要同步修改优化吗」——
+一路改下来（风险偏好、建仓回测、复盘、卖出、期初持仓），提示词确实已经跟不上了。
+
+### 22.1 四条提示词与实现脱节的地方
+
+| 问题 | 证据 |
+|---|---|
+| **长度上限容不下规则理由** | 购买前（含建仓回测）的规则理由 **188 字**，而 system prompt 写的是「不超过 180 字」。模型必须压缩，最可能删掉的正是回测证据 —— 而那是这条建议唯一的量化依据 |
+| **提示词不含建议类型** | `draft.kind` 从未进入提示词。复盘建议（「回访你在 2026-01-13 买入的 10g」）可能被改写成一条**全新的买卖建议**，丢掉复盘的全部意义 |
+| **提示词不含已实现盈亏** | 用户已卖 10g、落袋 +¥1000，但提示词只写「持仓 20g，浮动 +¥1800」—— 模型不知道他已经止盈过，也无法解释「为什么现在只减 8g」 |
+| **缺失行情被写成了 0** | `f"浮动盈亏 ¥{position.unrealized_pnl or 0:.2f}"` —— `None or 0` 把「不知道」变成「持平 0%」，而提示词又要求模型「必须提及关键数字」，等于让它复述一个假数字。这一条与项目自己的原则（拿不到行情返回 `None` 而不是 0）直接冲突 |
+
+### 22.2 改法
+
+`advisor.py`：
+
+- 结论区新增 **`建议类型`**，并新增 `KIND_GUIDANCE`：四类建议各给一条写作要求。
+  复盘那条明确要求「必须保留『回访你在 <日期> 买入的 <克数>』这一指代，
+  不要让读者以为这是一条全新的买卖建议」
+- 【持仓】区在有卖出时补 **`已卖出 Xg（N 笔），已实现盈亏 ¥Y（不含手续费）`**；
+  全部卖光时写「当前已清仓」而不是「没有持仓」，否则已实现盈亏会被藏掉
+- 新增 **【风险偏好】** 区，写明档位与三个阈值（止盈 / 浮亏提醒 / 止损）——
+  否则模型解释不清「为什么 +5% 就提示止盈」
+- `RATIONALE_MAX_CHARS = 220`（原 180），并把这个数字写进 system prompt。
+  选 220 是因为最长的规则理由是 188 字
+- 缺失行情改标 **「无行情」**，不再退化成 0；system prompt 同时加一句
+  「标注为『无行情』的字段表示系统拿不到该数据，**不要猜测它的数值**」
+
+### 22.3 为什么保留 system + user 的结构
+
+曾考虑「合并成一个 user prompt 会不会更好」，结论是**不合并**：
+
+- **system prompt 确实送达了**。模型池只有一处构造 payload
+  （`model_pool_engine._call_single`），`{"role": "system"}` + `{"role": "user"}`，
+  所有供应商都是 OpenAI 兼容格式，不存在适配器丢掉 system role 的情况。
+- **契约与数据的生命周期不同**。system 里放的是**跨四类建议都不变**的东西
+  （不得改数字、只输出 JSON、长度上限），user 里是每条建议各自的行情/持仓/信号。
+  合并意味着契约文字每次调用都要重新拼一遍，更容易漂移。
+- 参数也合适：`temperature = 0.3`（低随机）、`max_tokens = 4096`（远大于 220 字）。
+
+但「指令位置」的担心是真实的，于是做了两处改动：
+
+**1. 关键约束在 user prompt 末尾重申。** 那两条最不能违反的要求原本距落笔位置有
+40 多行，而模型池是**多供应商故障转移**的 —— 换一个模型时对 system role 的遵守
+程度未必一致。末尾加一段：
+
+```
+【输出要求（重申）】
+- 只输出 JSON，不要任何其他内容：{"rationale": "改写后的理由"}
+- 不超过 220 字
+- 不得修改、重新计算或编造任何数字
+```
+
+**2. 缓存键纳入 system prompt。** 原来是 `sha1(user_prompt)` —— 只改 system prompt
+时缓存键不变，**在 60 分钟 TTL 内会继续命中用旧约束生成的措辞**。改为
+`sha1(system_prompt + "\0" + user_prompt)`。这也部分回答了下面 §22.5 的版本化问题。
+
+### 22.4 顺带清掉的死提示词
+
+`AIAnalysisService.analyze()` 及其 6 个辅助方法（`_price_bucket` / `_cache_key` /
+`_build_prompt` / `_trend_desc` / `_parse_response`）与它专用的 `SYSTEM_PROMPT`
+**完全没有调用方** —— §18 清理报警路径时漏掉了这一整块。而且那个提示词的内容是：
+
+> 系统已触发价格报警条件（见下方【触发条件】），请你结合市场数据判断是否值得向投资者发送通知
+
+与现在的产品（不再有报警、也不再让 LLM 决定发不发）完全相反。留着它比没有更糟：
+任何人打开 `ai_service.py` 都会以为 AI 还在做「该不该发通知」的判断。
+
+`backend/service/ai_service.py` 从 **327 行删到 110 行**，只保留仍在用的
+`complete()` / `_log_token_usage()` / `_ensure_model_pool()` 等。措辞层与行情分析层
+仍共用同一套模型池。
+
+### 22.5 验证方式
+
+```bash
+cd backend
+python -m test.test_advice_prompt     # 21 项（新增）
+uv run mypy                           # Success: no issues found in 85 source files
+uv run ruff check                     # All checks passed!
+```
+
+共 **256 项测试全部通过**。新增的 `test_advice_prompt.py` 把这几条硬要求固定下来，
+避免以后再改建议类型或卖出逻辑时又忘记同步提示词：
+
+- 提示词必须含 `建议类型：<kind>`，且每个 `AdviceKind` 都有对应的写作要求
+- 有卖出时必须含已实现盈亏；没卖过时不得出现
+- 必须含风险偏好档位与具体阈值，且随档位变化
+- 缺失行情必须标「无行情」，且**不得**出现 `¥0.00` / `+0.00%`
+- 最长的规则理由必须 ≤ `RATIONALE_MAX_CHARS`
+- 两条硬约束必须在 **user prompt 的最后一段**重申（不只是存在）
+- 改 system prompt 必须换缓存键；相同输入必须得到相同缓存键
+- 旧报警提示词与 `should_alert` 已从服务层消失
+
+### 22.6 还没做
+
+- **提示词版本落库**：缓存键现在覆盖了 system prompt，但建议记录里仍没有
+  「这条措辞是哪版提示词生成的」。若要事后对比措辞质量，需要把提示词摘要写进
+  `evidence`。
