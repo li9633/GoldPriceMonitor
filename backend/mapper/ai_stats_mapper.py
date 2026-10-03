@@ -545,3 +545,67 @@ class AiStatsMapper:
             ]
         conn.close()
         return rows
+
+    def get_token_daily_trend_by_model(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        hours: int | None = None,
+    ) -> list[dict]:
+        """Token 消耗趋势按日期/小时 × 模型分组（用于精确计算费用）"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        where = self._date_range_where(start_date, end_date, hours)
+        single_day = bool(start_date and start_date == end_date)
+        if single_day:
+            c.execute(
+                "SELECT strftime('%H', call_time) AS h, "
+                "provider_name, model_name, "
+                "COALESCE(SUM(prompt_tokens), 0), "
+                "COALESCE(SUM(completion_tokens), 0), "
+                "COALESCE(SUM(total_tokens), 0), "
+                "COUNT(*) AS calls "
+                "FROM ai_call_logs "
+                f"WHERE {where} AND success=1 "
+                "GROUP BY h, provider_name, model_name ORDER BY h"
+            )
+            rows = [
+                {
+                    "date": start_date,
+                    "hour": r[0],
+                    "provider_name": r[1],
+                    "model_name": r[2],
+                    "prompt_tokens": r[3],
+                    "completion_tokens": r[4],
+                    "total_tokens": r[5],
+                    "calls": r[6],
+                }
+                for r in c.fetchall()
+            ]
+        else:
+            c.execute(
+                "SELECT date(call_time) AS d, "
+                "provider_name, model_name, "
+                "COALESCE(SUM(prompt_tokens), 0), "
+                "COALESCE(SUM(completion_tokens), 0), "
+                "COALESCE(SUM(total_tokens), 0), "
+                "COUNT(*) AS calls "
+                "FROM ai_call_logs "
+                f"WHERE {where} AND success=1 "
+                "GROUP BY d, provider_name, model_name ORDER BY d"
+            )
+            rows = [
+                {
+                    "date": r[0],
+                    "hour": None,
+                    "provider_name": r[1],
+                    "model_name": r[2],
+                    "prompt_tokens": r[3],
+                    "completion_tokens": r[4],
+                    "total_tokens": r[5],
+                    "calls": r[6],
+                }
+                for r in c.fetchall()
+            ]
+        conn.close()
+        return rows
