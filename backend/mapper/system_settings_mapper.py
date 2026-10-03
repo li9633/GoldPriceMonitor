@@ -127,6 +127,17 @@ class SystemSettingsMapper:
             log_level TEXT DEFAULT 'DEBUG',
             updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS advice_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            enabled INTEGER DEFAULT 1,
+            total_investable REAL DEFAULT 0,
+            target_grams REAL DEFAULT 0,
+            target_position_ratio REAL DEFAULT 0,
+            risk_level TEXT DEFAULT 'balanced',
+            enable_llm INTEGER DEFAULT 1,
+            price_move_trigger_pct REAL DEFAULT 0.5,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        )""")
         conn.commit()
         self._ensure_default_rows(conn)
         self._migrate_monitor_config(conn)
@@ -234,6 +245,7 @@ class SystemSettingsMapper:
             "monitor_config",
             "message_config",
             "log_config",
+            "advice_config",
         ]:
             c.execute(f"INSERT OR IGNORE INTO {table} (id) VALUES (1)")
         conn.commit()
@@ -416,6 +428,14 @@ class SystemSettingsMapper:
     def update_log_config(self, **kwargs) -> None:
         self._upsert("log_config", list(kwargs.keys()), list(kwargs.values()))
         _apply_log_level_if_changed(kwargs)
+
+    # ==================== 建议配置 ====================
+
+    def get_advice_config(self) -> dict | None:
+        return self._get_row("advice_config")
+
+    def update_advice_config(self, **kwargs) -> None:
+        self._upsert("advice_config", list(kwargs.keys()), list(kwargs.values()))
 
     # ==================== 汇率缓存 ====================
 

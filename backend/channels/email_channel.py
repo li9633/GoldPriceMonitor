@@ -3,7 +3,7 @@ import time
 from email.mime.text import MIMEText
 
 from channels.base import (
-    AlertData,
+    AdviceData,
     BaseNotificationChannel,
     ChannelResult,
     classify_error,
@@ -30,7 +30,7 @@ class EmailChannel(BaseNotificationChannel):
                 return False
         return True
 
-    def send(self, alert_data: AlertData, config: dict) -> ChannelResult:
+    def send(self, data: AdviceData, config: dict) -> ChannelResult:
         start = time.monotonic()
         if not config.get("enabled", True):
             return ChannelResult(
@@ -62,16 +62,11 @@ class EmailChannel(BaseNotificationChannel):
                 error_detail=f"缺少配置项：{', '.join(missing)}",
             )
 
-        message = MessageTemplate.format_alert(
-            alert_data.symbol,
-            alert_data.current_price,
-            alert_data.alert_messages,
-            alert_data.suggestions,
-            template_type="email",
-            extra_info=alert_data.extra_info,
+        message = MessageTemplate.format_advice(data, template_type="email")
+        action_label = MessageTemplate.ACTION_LABELS.get(
+            data.advice.action, data.advice.action
         )
-
-        subject = f"[报警] 黄金价格监控 - {alert_data.symbol_name} - {alert_data.current_price:.2f}"
+        subject = f"[建议] {action_label} - {data.symbol_name} - {data.current_price:.2f}"
 
         try:
             msg = MIMEText(message, "html", "utf-8")

@@ -16,6 +16,14 @@
           <font-awesome-icon icon="chart-simple" class="menu-icon" />
           <span class="menu-text">监控与数据</span>
         </template>
+        <el-menu-item index="/portfolio">
+          <font-awesome-icon icon="coins" class="menu-icon" />
+          <span class="menu-text">我的持仓</span>
+        </el-menu-item>
+        <el-menu-item index="/advice-history">
+          <font-awesome-icon icon="lightbulb" class="menu-icon" />
+          <span class="menu-text">建议历史</span>
+        </el-menu-item>
         <el-menu-item index="/dashboard">
           <font-awesome-icon icon="desktop" class="menu-icon" />
           <span class="menu-text">监控面板</span>
@@ -75,9 +83,11 @@ import {
   faChartLine,
   faChartSimple,
   faChartPie,
+  faCoins,
   faDiagramProject,
   faFileLines,
   faGear,
+  faLightbulb,
   faRobot,
   faBell,
   faSliders,
@@ -90,9 +100,11 @@ library.add(
   faChartLine,
   faChartSimple,
   faChartPie,
+  faCoins,
   faDiagramProject,
   faFileLines,
   faGear,
+  faLightbulb,
   faRobot,
   faBell,
   faSliders,

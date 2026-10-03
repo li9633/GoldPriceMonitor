@@ -155,6 +155,17 @@ class SystemSettingsService:
             "db_dir_size_bytes": db_dir_size,
         }
 
+    # ==================== 建议配置 ====================
+
+    def get_advice_config(self) -> dict:
+        row = self.mapper.get_advice_config()
+        if row is None:
+            return {}
+        return {k: v for k, v in row.items() if k not in ("id", "updated_at")}
+
+    def update_advice_config(self, **kwargs) -> None:
+        self.mapper.update_advice_config(**kwargs)
+
     # ==================== 通知渠道 ====================
 
     def get_notification_channels(self) -> list[dict]:

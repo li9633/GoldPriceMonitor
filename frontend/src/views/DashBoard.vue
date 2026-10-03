@@ -22,6 +22,26 @@
       <div v-if="loading" class="loading-bar"></div>
     </div>
 
+    <!-- 持仓与当前建议 —— 产品的中心 -->
+    <PositionSummary :summary="portfolioSummary" />
+
+    <AdviceCard
+      v-if="latestAdvice"
+      :advice="latestAdvice"
+      @refresh="requestAdvice"
+      @changed="loadLatestAdvice"
+    />
+    <el-card v-else class="advice-placeholder" shadow="hover">
+      <div class="placeholder-body">
+        <span class="placeholder-hint">
+          还没有建议。建议由规则计算，结合你的持仓成本与购买计划给出。
+        </span>
+        <el-button type="primary" size="small" :loading="adviceLoading" @click="requestAdvice">
+          现在该不该买？
+        </el-button>
+      </div>
+    </el-card>
+
     <!-- 数据库总览 -->
     <el-row :gutter="20" class="stat-row">
       <el-col :span="6">
@@ -315,7 +335,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ElMessage } from 'element-plus'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import {
   faChartLine,
@@ -328,10 +349,16 @@ import { useThemeStore } from '@/stores/theme'
 import { usePriceData } from '@/composables/usePriceData'
 import { priceApi } from '@/api/modules/gold'
 import type { PriceStatistics } from '@/api/modules/gold'
+import { portfolioApi } from '@/api/modules/portfolio'
+import type { PortfolioSummary } from '@/api/modules/portfolio'
+import { adviceApi } from '@/api/modules/advice'
+import type { AdviceRecord } from '@/api/modules/advice'
 import { formatPrice } from '@/utils/format'
 import StatisticCard from '@/components/StatisticCard.vue'
 import TrendBadge from '@/components/TrendBadge.vue'
 import TimeRangeFilter from '@/components/TimeRangeFilter.vue'
+import PositionSummary from '@/components/PositionSummary.vue'
+import AdviceCard from '@/components/AdviceCard.vue'
 import type { TimeRangeOption, TimeRangeParams } from '@/components/TimeRangeFilter.vue'
 const PriceChart = defineAsyncComponent(() => import('@/components/PriceChart.vue'))
 
@@ -355,10 +382,62 @@ const stats = ref<PriceStatistics | null>(null)
 const isAbbreviated = ref(false)
 const autoRefresh = ref(true)
 
+// ---- 持仓与建议 ----
+const portfolioSummary = ref<PortfolioSummary | null>(null)
+const latestAdvice = ref<AdviceRecord | null>(null)
+const adviceLoading = ref(false)
+
+async function loadPortfolio() {
+  try {
+    portfolioSummary.value = await portfolioApi.getSummary()
+  } catch {
+    // 错误已在 request 拦截器中处理
+  }
+}
+
+/** 只读最近一条建议 —— 不生成、不落库，避免每次轮询都写一条记录 */
+async function loadLatestAdvice() {
+  try {
+    const response = await adviceApi.getHistory({ page: 1, page_size: 1 })
+    latestAdvice.value = response.items[0] ?? null
+  } catch {
+    // 错误已在 request 拦截器中处理
+  }
+}
+
+/** 「现在该不该买？」—— 显式生成一条新建议（会落库） */
+async function requestAdvice() {
+  adviceLoading.value = true
+  try {
+    const response = await adviceApi.getNow({ fast: true })
+    latestAdvice.value = response.advice
+    portfolioSummary.value = null
+    await Promise.all([loadPortfolio(), loadLatestAdvice()])
+    ElMessage.success('已生成一条新建议')
+  } catch {
+    // 错误已在 request 拦截器中处理
+  } finally {
+    adviceLoading.value = false
+  }
+}
+
 function refreshDashboard() {
   fetchDashboard()
   loadStats()
+  loadPortfolio()
+  loadLatestAdvice()
 }
+
+// 首页轮询刷新行情时，顺带同步持仓与最近一条建议
+watch(dashboard, () => {
+  loadPortfolio()
+  loadLatestAdvice()
+})
+
+onMounted(() => {
+  loadPortfolio()
+  loadLatestAdvice()
+})
 
 watch(
   autoRefresh,
@@ -489,6 +568,25 @@ function formatTime(iso: string): string {
 
 .stat-row {
   margin-bottom: 20px;
+}
+
+.advice-placeholder {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  margin-bottom: 20px;
+
+  .placeholder-body {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .placeholder-hint {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
 }
 
 .symbol-row {

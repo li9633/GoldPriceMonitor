@@ -1,4 +1,5 @@
 import json
+import math
 
 from mapper.model_pool_mapper import ModelPoolMapper
 from mapper.price_mapper import PriceSnapshot
@@ -13,6 +14,10 @@ logger = get_logger("AIService")
 
 class AIAnalysisService:
     """AI 行情分析服务 — 使用 GLM-4-Flash 模型"""
+
+    #: 缓存键的价格分桶粒度：价格变动超过该比例才视为「新的市场状态」。
+    #: 0.3% 沿用 `alert_service` 里已有的价格变动阈值约定。
+    _CACHE_PRICE_STEP = 0.003
 
     SYSTEM_PROMPT = """你是一位资深黄金市场分析师，专注于上海黄金交易所 Au(T+D) 品种。
 系统已触发价格报警条件（见下方【触发条件】），请你结合市场数据判断是否值得向投资者发送通知。
@@ -47,6 +52,14 @@ class AIAnalysisService:
         return self.model_pool is not None
 
     def _ensure_model_pool(self) -> bool:
+        # `ai_config.enabled` 之前从未被任何代码读取过 —— 设置页关掉 AI 也不生效。
+        # 在这里统一拦住，让 analyze 与 complete 两个入口都遵守该开关。
+        if not self._ai_enabled():
+            if self.model_pool is not None:
+                logger.warning("AI 已在设置中关闭，AI 分析停用")
+                self.model_pool = None
+            return False
+
         config_mapper = ModelPoolMapper()
         config_mapper.init_tables()
         providers = config_mapper.get_providers()
@@ -74,6 +87,42 @@ class AIAnalysisService:
             )
         return has_api_key
 
+    @staticmethod
+    def _ai_enabled() -> bool:
+        """AI 总开关 —— 由设置页的 `ai_config.enabled` 控制"""
+        try:
+            config = SystemSettingsService().get_ai_config()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"读取 AI 配置失败，按启用处理：{exc}")
+            return True
+        return bool(config.get("enabled", True))
+
+    def complete(self, system_prompt: str, prompt: str, cache_key: str) -> dict | None:
+        """通用补全入口 —— 复用模型池的重试、故障转移与缓存。
+
+        与 `analyze` 的区别：不做黄金专属的 JSON 解析，把原始内容交给调用方。
+        建议引擎用它来做「措辞」，这样措辞层和行情分析层共用同一套模型池。
+        """
+        if not self._ensure_model_pool():
+            return None
+        assert self.model_pool is not None
+        try:
+            result = self.model_pool.call(system_prompt, prompt, cache_key=cache_key)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"AI 调用失败：{exc}")
+            return None
+        if not result.success or not result.content:
+            logger.error(f"AI 返回不可用：{result.error}")
+            return None
+        if result.raw_response:
+            self._log_token_usage(result.provider, result.model, result.raw_response)
+        return {
+            "content": result.content,
+            "provider": result.provider,
+            "model": result.model,
+            "from_cache": result.from_cache,
+        }
+
     def analyze(
         self,
         symbol: str,
@@ -93,7 +142,13 @@ class AIAnalysisService:
         )
 
         try:
-            result = self.model_pool.call(self.SYSTEM_PROMPT, prompt, cache_key=symbol)
+            result = self.model_pool.call(
+                self.SYSTEM_PROMPT,
+                prompt,
+                cache_key=self._cache_key(
+                    symbol, current_price, london_cny, london_usd
+                ),
+            )
             if not result.success:
                 logger.error(f"AI 分析失败：{result.error}")
                 return None
@@ -123,6 +178,49 @@ class AIAnalysisService:
         except Exception as e:  # noqa: BLE001
             logger.error(f"AI 分析调用失败：{e}")
             return None
+
+    @classmethod
+    def _price_bucket(cls, price: float | None) -> str:
+        """把价格映射成对数分桶号：每变动约 0.3% 桶号 ±1。
+
+        用分桶而不是直接用价格，是为了让「几乎没变」的行情复用缓存（省钱），
+        同时让「明显变了」的行情重新分析（正确）。
+        """
+        if not price or price <= 0:
+            return "-"
+        return str(round(math.log(price) / math.log(1 + cls._CACHE_PRICE_STEP)))
+
+    @classmethod
+    def _cache_key(
+        cls,
+        symbol: str,
+        current_price: float | None,
+        london_cny: float | None,
+        london_usd: float | None,
+    ) -> str:
+        """按 prompt 的实际输入构造缓存键。
+
+        原先固定用 `symbol` 作键 + 60 分钟 TTL，会把一小时前的分析当作当前分析返回
+        （还给分析打上「[缓存结果，AI 实时分析暂不可用]」的前缀，把节流伪装成降级）。
+        改成按输入分桶后：
+
+        - 休市、价格停滞时输入不变 → 自然命中缓存，不花 AI 的钱；
+        - 行情明显变动时 → 自动重新分析。
+
+        这样缓存的职责回到「同样的输入不重复调用」，而「发不发消息」交给
+        `service.send_gate` 决定。
+
+        TODO(阶段 1)：持仓域落地后，把持仓与计划也并入这个键，
+        否则买入之后一小时内的建议仍可能是买入前的。
+        """
+        return "|".join(
+            (
+                symbol,
+                cls._price_bucket(current_price),
+                cls._price_bucket(london_cny),
+                cls._price_bucket(london_usd),
+            )
+        )
 
     def _build_prompt(
         self,

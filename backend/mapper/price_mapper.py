@@ -248,6 +248,45 @@ class PriceMapper:
                 return None
             return sum(prices) / len(prices)
 
+    def get_latest_price(self, symbol: str) -> float | None:
+        """最新价（元/克）—— 持仓市值计算用，走 idx_prices_symbol_ts 索引"""
+        with self._connect() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT price FROM prices WHERE symbol = ? "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (symbol,),
+            )
+            row = c.fetchone()
+            return row[0] if row else None
+
+    def get_price_near(self, symbol: str, timestamp: int) -> float | None:
+        """取「目标时刻当时」的价格。
+
+        优先该时刻之前的最后一条；若该时刻早于全部数据，则退而取之后的最近一条。
+
+        **建议回访必须用它，而不是 `get_latest_price`**：T+1 回访要的是「建议发出
+        一天后」的价格。如果停机几天后再回填，用最新价会把 T+1 写成 T+5 的价格，
+        有效性数据就废了 —— 而且这种错误不会报错，只会静默污染统计。
+        """
+        with self._connect() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT price FROM prices WHERE symbol = ? AND timestamp <= ? "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (symbol, timestamp),
+            )
+            row = c.fetchone()
+            if row:
+                return row[0]
+            c.execute(
+                "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? "
+                "ORDER BY timestamp ASC LIMIT 1",
+                (symbol, timestamp),
+            )
+            row = c.fetchone()
+            return row[0] if row else None
+
     def get_price_trend(
         self,
         symbol: str,

@@ -1,63 +1,45 @@
-from chinese_calendar import is_workday
+"""交易时段工具。
 
-from utils.time_utils import now
+具体判断逻辑已统一到 `utils.market_session`，本模块只保留既有的公开函数名，避免
+两处逻辑打架（`ai_service` 目前在 prompt 里调用 `get_trading_status_text()`）。
 
+修复的两个历史问题：
+- 原先用 `chinese_calendar.is_workday()` 判断交易日，而它对**调休上班的周末**返回
+  `True`（如 2025-09-28 周日），会把休市的周末误判成交易时段；
+- 原先用**当天**的工作日状态判断 `00:00-02:30` 窗口，而该窗口属于**前一个交易日**
+  的夜间盘，导致周六凌晨（周五夜盘尚未结束）被判为休市。
+"""
 
-def _get_trading_hours() -> list[tuple[str, str]]:
-    from service.system_settings_service import SystemSettingsService
-
-    settings = SystemSettingsService()
-    monitor_config = settings.get_monitor_config()
-    raw = monitor_config.get("trading_hours", [])
-    if not raw or isinstance(raw, str):
-        return [
-            ("09:00", "11:30"),
-            ("13:30", "15:30"),
-            ("20:00", "23:59"),
-            ("00:00", "02:30"),
-        ]
-    return [(str(s), str(e)) for s, e in raw]
+from utils.market_session import Session, intl_session, sge_session
 
 
 def is_autd_trading() -> bool:
-    """判断当前是否在 Au(T+D) 交易时段内
+    """当前是否在 Au(T+D) 交易时段内
 
-    自动处理：周末、法定节假日、调休工作日
+    自动处理：周末、法定节假日、调休、夜盘跨日。
     """
-    now_dt = now()
-
-    # 非工作日（周末/节假日）直接返回休市
-    if not is_workday(now_dt.date()):
-        return False
-
-    current_minutes = now_dt.hour * 60 + now_dt.minute
-
-    for start_str, end_str in _get_trading_hours():
-        start_h, start_m = map(int, start_str.split(":"))
-        end_h, end_m = map(int, end_str.split(":"))
-        start_minutes = start_h * 60 + start_m
-        end_minutes = end_h * 60 + end_m
-
-        if start_minutes <= end_minutes:
-            if start_minutes <= current_minutes <= end_minutes:
-                return True
-        else:
-            if current_minutes >= start_minutes or current_minutes <= end_minutes:
-                return True
-
-    return False
+    return sge_session() is Session.OPEN
 
 
 def get_trading_status_text() -> str:
-    """获取当前交易状态描述文本，区分周末/节假日/非交易时段"""
-    now_dt = now()
+    """当前两个市场的开市状态描述，供 AI prompt 使用"""
+    sge = sge_session()
+    intl = intl_session()
 
-    if is_autd_trading():
-        return "Au(T+D) 当前处于交易时段，价格实时更新"
+    if sge is Session.OPEN and intl is Session.OPEN:
+        return "Au(T+D) 与国际金均在交易，价格实时更新"
 
-    if not is_workday(now_dt.date()):
-        if now_dt.weekday() >= 5:
-            return "Au(T+D) 周末休市，伦敦金同样休市，价格均为上一个交易日收盘价，无需过度关注"
-        return "Au(T+D) 法定节假日休市，伦敦金正常交易，请以伦敦金走势为主要参考"
+    if sge is Session.OPEN:
+        return "Au(T+D) 正在交易，国际金已休市，价格波动通常有限"
 
-    return "Au(T+D) 当前处于休市时段（非交易时间），伦敦金正常交易，请以伦敦金走势为主要参考"
+    if intl is Session.OPEN:
+        reason = {
+            Session.WEEKEND: "周末",
+            Session.HOLIDAY: "法定节假日",
+        }.get(sge, "非交易时段")
+        return (
+            f"Au(T+D) 处于{reason}休市，价格为上一交易日收盘价；"
+            "国际金正常交易，请以国际金走势为主要参考"
+        )
+
+    return "Au(T+D) 与国际金均已休市，价格均为上一交易日收盘价，无需过度关注"

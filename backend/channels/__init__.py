@@ -1,5 +1,6 @@
 from channels.base import (
-    AlertData,
+    AdviceData,
+    AdvicePayload,
     BaseNotificationChannel,
     ChannelResult,
     classify_error,
@@ -29,7 +30,8 @@ def get_all_channels() -> dict[str, BaseNotificationChannel]:
 
 
 __all__ = [
-    "AlertData",
+    "AdviceData",
+    "AdvicePayload",
     "BaseNotificationChannel",
     "ChannelResult",
     "EmailChannel",
