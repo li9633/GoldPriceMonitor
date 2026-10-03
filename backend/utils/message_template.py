@@ -72,8 +72,7 @@ class MessageTemplate:
     def format_advice(cls, data, template_type: str = "markdown") -> str:
         """渲染建议消息。
 
-        建议回答的是「你该做什么」：动作、数量、价位区间与持仓上下文。
-        （报警路径已在阶段 4 的清理中移除，见 `docs/refactor-plan.md` §18）
+        动作、数量、价位区间与持仓上下文。
         """
         advice = getattr(data, "advice", None)
         if advice is None:

@@ -307,9 +307,7 @@ def evaluate_entry_strategy(
     result.outcomes = outcomes
     result.sufficient_data = True
 
-    # 容忍度随「一次性买入价本身的离散度」自适应：
-    # 一次性买入价本来就忽高忽低时，分批多付一点并不值得计较；
-    # 但也不能无限放宽，否则等于放弃风险约束。
+    # 容忍度随「一次性买入价本身的离散度」自适应，并受上下限约束
     lump_mean = sum(lump_costs) / len(lump_costs) if lump_costs else 0.0
     if lump_mean > 0 and len(lump_costs) > 1:
         variance = sum((cost - lump_mean) ** 2 for cost in lump_costs) / len(lump_costs)

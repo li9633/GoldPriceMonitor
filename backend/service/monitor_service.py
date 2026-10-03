@@ -33,8 +33,7 @@ class MonitorService:
         self.price_mapper = PriceMapper()
         self.price_service = PriceService()
         self.notification_service = NotificationService()
-        # 建议引擎取代了原来的 AlertService + AIAnalysisService 直连：
-        # 规则在 signals/strategies 里，LLM 只由 advisor 负责措辞
+        # 规则在 signals / strategies，LLM 只负责措辞
         self.advice_engine = AdviceEngine()
         self.send_gate = SendGate()
         self.start_time = now()
@@ -150,8 +149,7 @@ class MonitorService:
     ) -> None:
         """生成建议并按闸门决定是否推送。
 
-        取代了原来「价格越线 → 让 AI 判断要不要发通知」的流程：现在无论有没有越线
-        都会定期评估，产出的是结构化建议，而不是无主体的报警文案。
+        无论有没有越线都会定期评估，产出结构化建议。
         """
         # 1) 时段闸门：休市静默 —— 不生成建议、也不调用 AI
         if not decision.allowed:
@@ -236,7 +234,7 @@ class MonitorService:
 
         try:
             pending = self.advice_engine.pending_reviews(at)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.logger.error(f"查询待复盘买入失败：{exc}", exc_info=exc)
             return
 
@@ -321,7 +319,7 @@ class MonitorService:
         self._review_timer.mark(at)
         try:
             result = self.advice_engine.refresh_reviews(at)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.logger.error(f"回访价格回填失败：{exc}", exc_info=exc)
             return
         if result["filled"] or result["skipped"]:

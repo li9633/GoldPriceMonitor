@@ -1,17 +1,20 @@
 """策略调度。
 
-优先级：**复盘 > 计划执行 > 购买后 > 购买前**。
+优先级：复盘 > 计划执行 > 购买后 > 购买前。
 
-- **复盘**：带上 `subject_lot` 时，说明这是针对某笔买入的 T+n 回访。
-  它的**动作**沿用常规判断（见 `review.build`），只是把理由换成针对这笔买入的交代
-  —— 避免「复盘说补仓、常规建议说观望」这种自相矛盾。
-- **计划执行**：用户已经定好了分批计划时，系统要做的是帮他执行计划，而不是另起炉灶
-  给一个不相关的买点建议 —— 否则「分批还是一次性」这个诉求会被系统自己破坏掉。
+- **复盘**：带上 `subject_lot` 时，这是针对某笔买入的 T+n 回访；动作沿用常规判断
+  （见 `review.build`）。
+- **计划执行**：用户已有分批计划时，系统做的是执行计划，不另起炉灶给买点建议。
 """
 
 from models.advice import AdviceDraft, AdviceKind, Signal
 from service.advice.context import AdviceContext
-from service.advice.strategies import plan_execution, post_purchase, pre_purchase, review
+from service.advice.strategies import (
+    plan_execution,
+    post_purchase,
+    pre_purchase,
+    review,
+)
 
 __all__ = ["build_advice", "build_regular", "select_kind"]
 

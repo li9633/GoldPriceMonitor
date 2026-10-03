@@ -1,8 +1,4 @@
-"""通知渠道的基础设施。
-
-**报警路径已在阶段 4 的清理中移除**（见 `docs/refactor-plan.md` §18）：现在所有外发
-消息都是「建议」。因此载荷直接叫 `AdviceData`，字段也不再区分报警/建议两种形态。
-"""
+"""通知渠道的基础设施。所有外发消息都是「建议」，载荷为 `AdviceData`。"""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -44,8 +40,7 @@ class AdvicePayload:
 class AdviceData:
     """通知载荷 —— 建议类消息的统一载体。
 
-    `alert_level` 这个名字保留自原来的通知日志列（`notification_send_logs.alert_level`），
-    前端的通知统计页仍在按它上色，改名的收益不抵迁移成本。
+    `alert_level` 对应通知日志列 `notification_send_logs.alert_level`，前端统计页按它上色。
     """
 
     symbol: str
