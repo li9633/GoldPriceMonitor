@@ -175,9 +175,8 @@ class AiStatsService:
         hours: int | None = None,
     ) -> TokenOverview:
         raw = self.mapper.get_token_overview(start_date, end_date, hours)
-        cost = self._compute_cost(
-            "", "", raw["prompt_tokens"], raw["completion_tokens"]
-        )
+        by_model = self.get_token_by_model(start_date, end_date, hours)
+        cost = round(sum(m.estimated_cost for m in by_model), 6)
         return TokenOverview(estimated_cost=cost, **raw)
 
     def get_token_by_model(
@@ -206,18 +205,40 @@ class AiStatsService:
         end_date: str | None = None,
         hours: int | None = None,
     ) -> list[TokenDailyTrend]:
-        rows = self.mapper.get_token_daily_trend(start_date, end_date, hours)
+        rows = self.mapper.get_token_daily_trend_by_model(start_date, end_date, hours)
+        grouped: dict[tuple[str, str | None], dict] = {}
+        for r in rows:
+            key = (r["date"], r["hour"])
+            if key not in grouped:
+                grouped[key] = {
+                    "date": r["date"],
+                    "hour": r["hour"],
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "calls": 0,
+                    "estimated_cost": 0.0,
+                }
+            g = grouped[key]
+            g["prompt_tokens"] += r["prompt_tokens"]
+            g["completion_tokens"] += r["completion_tokens"]
+            g["total_tokens"] += r["total_tokens"]
+            g["calls"] += r["calls"]
+            g["estimated_cost"] += self._compute_cost(
+                r["provider_name"],
+                r["model_name"],
+                r["prompt_tokens"],
+                r["completion_tokens"],
+            )
         return [
             TokenDailyTrend(
-                date=r["date"],
-                hour=r["hour"],
-                prompt_tokens=r["prompt_tokens"],
-                completion_tokens=r["completion_tokens"],
-                total_tokens=r["total_tokens"],
-                calls=r["calls"],
-                estimated_cost=self._compute_cost(
-                    "", "", r["prompt_tokens"], r["completion_tokens"]
-                ),
+                date=g["date"],
+                hour=g["hour"],
+                prompt_tokens=g["prompt_tokens"],
+                completion_tokens=g["completion_tokens"],
+                total_tokens=g["total_tokens"],
+                calls=g["calls"],
+                estimated_cost=round(g["estimated_cost"], 6),
             )
-            for r in rows
+            for g in grouped.values()
         ]
