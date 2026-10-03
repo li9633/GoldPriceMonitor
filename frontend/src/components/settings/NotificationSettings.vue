@@ -38,7 +38,7 @@
             <el-switch
               :model-value="asChannel(row).enabled"
               size="small"
-              @change="(val) => toggleChannel(asChannel(row), !!val)"
+              @change="(val: boolean | string | number) => toggleChannel(asChannel(row), !!val)"
             />
           </template>
         </el-table-column>
