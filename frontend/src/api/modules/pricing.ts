@@ -35,10 +35,10 @@ export const pricingApi = {
   },
 
   patch(id: number, data: PricingPatch) {
-    return request.patch<PricingItem>(`/pricing/${id}`, data)
+    return request.patch<boolean>(`/pricing/${id}`, data)
   },
 
   remove(id: number) {
-    return request.delete<null>(`/pricing/${id}`)
+    return request.delete<boolean>(`/pricing/${id}`)
   },
 }

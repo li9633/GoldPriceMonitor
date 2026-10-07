@@ -12,6 +12,7 @@ from controller.model_pricing_controller import router as pricing_router
 from controller.notification_stats_controller import router as notification_stats_router
 from controller.portfolio_controller import router as portfolio_router
 from controller.price_history_controller import router as price_history_router
+from controller.runtime_status_controller import router as runtime_status_router
 from controller.system_settings_controller import router as settings_router
 
 app = FastAPI(
@@ -29,6 +30,7 @@ app.include_router(notification_stats_router, prefix="/api")
 app.include_router(portfolio_router, prefix="/api")
 app.include_router(pricing_router, prefix="/api")
 app.include_router(price_history_router, prefix="/api")
+app.include_router(runtime_status_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 
 DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"

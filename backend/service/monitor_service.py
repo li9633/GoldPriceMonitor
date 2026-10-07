@@ -6,6 +6,7 @@ from service.advice.advice_engine import AdviceEngine, ComputedAdvice
 from service.history_import_service import init_historical_data
 from service.notification_service import NotificationService
 from service.price_service import PriceService
+from service.runtime_status_service import get_runtime_status
 from service.send_gate import GateDecision, SendGate
 from service.system_settings_service import SystemSettingsService
 from service.triggers import (
@@ -19,7 +20,7 @@ from service.triggers import (
     VolatilityTrigger,
 )
 from utils.due_timer import DueTimer
-from utils.logger import cleanup_old_logs, get_log_size, get_logger
+from utils.logger import cleanup_old_logs, get_logger
 from utils.market_session import SendPolicy
 from utils.time_utils import now
 
@@ -66,10 +67,11 @@ class MonitorService:
                 self.reopen_gap_trigger,
             ]
         )
-        self.start_time = now()
         self.check_count = 0
         self.alert_count = 0
         self._last_suppressed: str | None = None
+        # 运行状态采集（替代原先每 100 轮打日志的做法）
+        self.runtime = get_runtime_status()
 
         # 定时任务统一用 DueTimer，不再各自维护 _last_xxx 时间戳
         self._settings_timer = DueTimer("设置刷新", SETTINGS_REFRESH_SECONDS)
@@ -97,6 +99,9 @@ class MonitorService:
         self._init_historical_data()
         self._init_modules()
         self._show_db_status()
+        self.runtime.record_startup(
+            check_interval=self.check_interval, monitor_symbols=self.monitor_symbols
+        )
 
         self.logger.info("=" * 50)
         self.logger.info("开始实时监控...\n")
@@ -109,6 +114,7 @@ class MonitorService:
                 break
             except Exception as e:
                 self.logger.error(f"主循环发生错误：{e}", exc_info=e)
+                self.runtime.record_error(f"{type(e).__name__}: {e}")
 
             time.sleep(self.check_interval)
 
@@ -137,6 +143,9 @@ class MonitorService:
             self.logger.error(f"启动时查询历史记录数失败 symbol={self.main_symbol}: {e}", exc_info=e)
 
     def _tick(self) -> None:
+        started = time.monotonic()
+        events_before = self.alert_count
+
         self._refresh_settings_if_needed()
 
         prices_data = self.price_service.fetch_all_gold_prices(self.monitor_symbols)
@@ -147,6 +156,11 @@ class MonitorService:
                 f"主品种价格缺失，跳过本轮 symbol={self.main_symbol}"
             )
             self.check_count += 1
+            self.runtime.record_tick(
+                ok=False,
+                latency_ms=(time.monotonic() - started) * 1000,
+                detail="main_price_missing",
+            )
             return
 
         current_price = main_symbol_data["price"]
@@ -168,10 +182,15 @@ class MonitorService:
         )
         self._handle_outcome(outcome, decision)
         self._refresh_reviews_if_due()
-        self._log_statistics()
         self._cleanup_logs()
 
         self.check_count += 1
+        self.runtime.record_tick(
+            ok=True,
+            latency_ms=(time.monotonic() - started) * 1000,
+            price=current_price,
+            events=self.alert_count - events_before,
+        )
 
     def _save_prices(self, prices_data: dict, current_price: float) -> None:
         self.price_mapper.save_price(self.main_symbol, current_price)
@@ -381,15 +400,6 @@ class MonitorService:
 
     def _clear_suppressed(self) -> None:
         self._last_suppressed = None
-
-    def _log_statistics(self) -> None:
-        if self.check_count % 100 != 0:
-            return
-        run_time = (now() - self.start_time).total_seconds() / 60
-        self.logger.info(
-            f"运行统计 runtime_min={run_time:.1f} checks={self.check_count} "
-            f"alerts={self.alert_count} log_kb={get_log_size() / 1024:.0f}"
-        )
 
     def _cleanup_logs(self) -> None:
         at = now()
