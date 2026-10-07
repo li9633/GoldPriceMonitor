@@ -133,3 +133,12 @@ class AdviceConfigModel(BaseModel):
     risk_level: str = "balanced"
     enable_llm: bool = True
     price_move_trigger_pct: float = 0.5
+    # ---- 通知触发器（阶段 D）----
+    volatility_enabled: bool = True
+    volatility_trigger_pct: float = 1.0
+    volatility_critical_pct: float = 2.5
+    volatility_cooldown_minutes: float = 60.0
+    digest_enabled: bool = True
+    digest_time: str = "20:00"
+    reopen_gap_enabled: bool = True
+    reopen_gap_time: str = "20:00"
