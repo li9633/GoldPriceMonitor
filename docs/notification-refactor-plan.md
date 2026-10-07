@@ -1,7 +1,6 @@
 # 价格获取与通知策略重构方案（草案）
 
-> 状态：**阶段 A、B 已实现**（2026-10-07，分支 refactor/notification-payload、refactor/market-view）；
-> 阶段 C、D 待做；阶段 E 价格 provider 化待做
+> 状态：**阶段 A、B、C、D 已实现**（2026-10-07）；阶段 E 价格 provider 化待做
 > 记录日期：2026-10-07
 > 起因：2026-10-01 ~ 10-07 法定节假日，7 天仅收到 1 条推送（见 §1 诊断）
 > 配套文档：[智能消息发送策略](./send-policy-plan.md)、[黄金购买建议系统重构方案](./refactor-plan.md)
@@ -164,6 +163,15 @@ class Trigger(ABC):
 浮盈口径按用户拍板落地：SGE 开市用 SGE 价，否则用国际金折算价，消息注明「可能与国内开盘价存在偏差」。
 行为与方案的一处偏差：`NotificationData.alert_level` 默认值保持旧值 `warning`（兼容旧测试契约），
 非建议类的 info 降级在 `send()` 分发时做。
+
+### 7.2 实施记录（阶段 C、D，已完成，2026-10-07）
+
+| 项 | 实现 | 测试 |
+|---|---|---|
+| 阶段 C | `service/triggers/`：Trigger / TickContext / NotificationEvent / TriggerRegistry；AdviceTrigger（评估节流+推送节流迁入）、FollowupTrigger（复盘迁入，`save_suppressed=False` 保留刻意不落库语义）；MonitorService 统一 `_handle_outcome`（闸门→落库→投递）；去重冷却由事件声明 | `test_trigger_framework` 10 项 |
+| 阶段 D | VolatilityTrigger（1%/2.5% 两档、双基准、60min 冷却、强提醒不受限）、DailyDigestTrigger（默认 20:00、每天一条、附假期累计与持仓）、ReopenGapTrigger（法定节假日最后一天 20:00、每假期一条）；阈值全部进 advice_config 表（列迁移 `_migrate_advice_config`） | `test_notification_triggers` 13 项 |
+
+三触发器均服从现有静默闸门（SILENT 不发），零流程豁免；波动提醒交易日同样生效（口径随市场走）。
 
 ---
 

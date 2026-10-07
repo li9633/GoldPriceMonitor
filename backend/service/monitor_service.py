@@ -11,10 +11,13 @@ from service.system_settings_service import SystemSettingsService
 from service.triggers import (
     KIND_REVIEW,
     AdviceTrigger,
+    DailyDigestTrigger,
     FollowupTrigger,
+    ReopenGapTrigger,
     TickContext,
     TriggerOutcome,
     TriggerRegistry,
+    VolatilityTrigger,
 )
 from utils.due_timer import DueTimer
 from utils.logger import cleanup_old_logs, get_log_size, get_logger
@@ -48,8 +51,21 @@ class MonitorService:
         self.followup_trigger = FollowupTrigger(
             self.advice_engine, self.price_mapper, FOLLOWUP_REVIEW_SECONDS
         )
+        self.volatility_trigger = VolatilityTrigger(self.settings)
+        self.digest_trigger = DailyDigestTrigger(
+            self.settings, self.price_mapper, self.advice_engine.portfolio_mapper
+        )
+        self.reopen_gap_trigger = ReopenGapTrigger(
+            self.settings, self.price_mapper, self.advice_engine.portfolio_mapper
+        )
         self.trigger_registry = TriggerRegistry(
-            [self.advice_trigger, self.followup_trigger]
+            [
+                self.advice_trigger,
+                self.followup_trigger,
+                self.volatility_trigger,
+                self.digest_trigger,
+                self.reopen_gap_trigger,
+            ]
         )
         self.start_time = now()
         self.check_count = 0

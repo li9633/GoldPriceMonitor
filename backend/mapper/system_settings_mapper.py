@@ -136,6 +136,14 @@ class SystemSettingsMapper:
             risk_level TEXT DEFAULT 'balanced',
             enable_llm INTEGER DEFAULT 1,
             price_move_trigger_pct REAL DEFAULT 0.5,
+            volatility_enabled INTEGER DEFAULT 1,
+            volatility_trigger_pct REAL DEFAULT 1.0,
+            volatility_critical_pct REAL DEFAULT 2.5,
+            volatility_cooldown_minutes REAL DEFAULT 60,
+            digest_enabled INTEGER DEFAULT 1,
+            digest_time TEXT DEFAULT '20:00',
+            reopen_gap_enabled INTEGER DEFAULT 1,
+            reopen_gap_time TEXT DEFAULT '20:00',
             updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )""")
         conn.commit()
@@ -143,6 +151,7 @@ class SystemSettingsMapper:
         self._migrate_monitor_config(conn)
         self._migrate_log_config(conn)
         self._migrate_ai_config(conn)
+        self._migrate_advice_config(conn)
         self._seed_symbol_config(conn)
         self._init_notification_stats(conn)
         self._init_notification_channels(conn)
@@ -248,6 +257,35 @@ class SystemSettingsMapper:
             "advice_config",
         ]:
             c.execute(f"INSERT OR IGNORE INTO {table} (id) VALUES (1)")
+        conn.commit()
+        if own:
+            conn.close()
+
+    def _migrate_advice_config(self, conn: sqlite3.Connection | None = None) -> None:
+        """触发器配置列（通知阶段 D）：已有库补列，不动已有值"""
+        new_columns = {
+            "volatility_enabled": "INTEGER DEFAULT 1",
+            "volatility_trigger_pct": "REAL DEFAULT 1.0",
+            "volatility_critical_pct": "REAL DEFAULT 2.5",
+            "volatility_cooldown_minutes": "REAL DEFAULT 60",
+            "digest_enabled": "INTEGER DEFAULT 1",
+            "digest_time": "TEXT DEFAULT '20:00'",
+            "reopen_gap_enabled": "INTEGER DEFAULT 1",
+            "reopen_gap_time": "TEXT DEFAULT '20:00'",
+        }
+        own = conn is None
+        if conn is None:
+            conn = self._get_connection()
+        c = conn.cursor()
+        existing = {row[1] for row in c.execute("PRAGMA table_info(advice_config)")}
+        for col_name, col_def in new_columns.items():
+            if col_name not in existing:
+                try:
+                    c.execute(
+                        f"ALTER TABLE advice_config ADD COLUMN {col_name} {col_def}"
+                    )
+                except sqlite3.OperationalError:
+                    pass
         conn.commit()
         if own:
             conn.close()
