@@ -1,6 +1,7 @@
 # 价格获取与通知策略重构方案（草案）
 
-> 状态：**讨论中，尚未开始实现**
+> 状态：**阶段 A、B 已实现**（2026-10-07，分支 refactor/notification-payload、refactor/market-view）；
+> 阶段 C、D 待做；阶段 E 价格 provider 化待做
 > 记录日期：2026-10-07
 > 起因：2026-10-01 ~ 10-07 法定节假日，7 天仅收到 1 条推送（见 §1 诊断）
 > 配套文档：[智能消息发送策略](./send-policy-plan.md)、[黄金购买建议系统重构方案](./refactor-plan.md)
@@ -150,6 +151,19 @@ class Trigger(ABC):
 
 依赖关系：A → B → C → D；E 独立可并行。
 **最小可用组合 = A + B**（解决本次问题），C/D 是把这次借的「if 债」还掉。
+
+---
+
+## 7. 实施记录（阶段 A、B，已完成，2026-10-07）
+
+| 项 | 实现 | 测试 |
+|---|---|---|
+| 阶段 A | `AdviceData` → `NotificationData(kind)`（保留别名）；`MessageTemplate.format(kind)` 分发 + 通用渲染器（`KIND_TITLES` 登记即用）；`NotificationService.send()` 新入口，非建议类默认 info 级 | `test_notification_payload` 9 项 |
+| 阶段 B | `AdviceContext.market_symbol`：主体不变、口径可切；`compute/build_context(market_symbol=…)`；INTL_ONLY 时评估价、节流基准、去重比较全部切国际金折算价；`extra_info.valuation_note` 渲染进两种模板；`evidence.market_view` 追溯 | `test_market_view` 8 项 |
+
+浮盈口径按用户拍板落地：SGE 开市用 SGE 价，否则用国际金折算价，消息注明「可能与国内开盘价存在偏差」。
+行为与方案的一处偏差：`NotificationData.alert_level` 默认值保持旧值 `warning`（兼容旧测试契约），
+非建议类的 info 降级在 `send()` 分发时做。
 
 ---
 

@@ -10,11 +10,12 @@ from utils.time_utils import CHINA_TZ, now
 logger = get_logger("ExchangeRateManager")
 
 _RATE_CACHE_DURATION = 300  # 内存缓存 5 分钟
+_FAILURE_CACHE_DURATION = 60  # 全源失败：60s 内直接用旧缓存兜底，不再逐源重打
 _MAX_FAILURES_BEFORE_SWITCH = 2  # 连续失败 2 次切换
 
 
 class ExchangeRateProviderManager:
-    """汇率数据源管理器 — 优先级链 + 失败切换 + 内存缓存"""
+    """汇率数据源管理器 — 优先级链 + 失败切换 + 内存缓存 + 失败负缓存"""
 
     def __init__(self) -> None:
         self._providers: list[BaseExchangeRateProvider] = [
@@ -28,6 +29,7 @@ class ExchangeRateProviderManager:
         self._current_index: int = 0
         self._cache: ExchangeRateResult | None = None
         self._cache_time: float = 0.0
+        self._failure_cache_until: float = 0.0
         self._last_alerted_provider: str = ""
 
     def get_rate(
@@ -37,16 +39,25 @@ class ExchangeRateProviderManager:
         if self._cache and (time.time() - self._cache_time) < _RATE_CACHE_DURATION:
             return self._cache
 
+        # 全源刚失败过：短时间内不再逐源重试（串行超时最长可拖 30s）
+        now_ts = time.time()
+        if now_ts < self._failure_cache_until:
+            return self._cache
+
         for offset in range(len(self._providers)):
             idx = (self._current_index + offset) % len(self._providers)
             provider = self._providers[idx]
             result = self._try_fetch(provider, base, symbol)
             if result is not None:
                 self._on_success(idx, result)
+                self._failure_cache_until = 0.0
                 return result
             self._on_failure(provider)
 
-        logger.error("所有汇率数据源均不可用")
+        logger.error(
+            f"所有汇率数据源均不可用，{_FAILURE_CACHE_DURATION}s 内直接使用旧缓存兜底"
+        )
+        self._failure_cache_until = time.time() + _FAILURE_CACHE_DURATION
         return self._cache  # 返回过期缓存作为兜底
 
     def _try_fetch(
