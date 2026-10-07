@@ -17,6 +17,7 @@
 import contextlib
 import datetime
 import logging
+import types
 
 import service.monitor_service as monitor_module
 from models.advice import (
@@ -34,6 +35,7 @@ from service.monitor_service import (
     MonitorService,
 )
 from service.send_gate import SendGate
+from service.triggers import AdviceTrigger, FollowupTrigger
 from test.test_market_session import frozen as _frozen_sessions
 from utils.due_timer import DueTimer
 from utils.market_session import SendPolicy, Session
@@ -101,7 +103,10 @@ class FakeAdviceEngine:
             "market_symbol": market_symbol,
         }
         return ComputedAdvice(
-            draft=self.draft, rationale="规则生成的理由", model_info="", price=price
+            draft=self.draft,
+        rationale="规则生成的理由",
+        model_info=getattr(self, "model_info", ""),
+        price=price,
         )
 
     def save(self, computed, *, status=AdviceStatus.DELIVERED.value, suppressed_reason=""):
@@ -151,7 +156,11 @@ def make_monitor(engine=None, notifier=None, interval_minutes=5) -> MonitorServi
     monitor.advice_engine = engine or FakeAdviceEngine()
     monitor.notification_service = notifier or FakeNotificationService()
     # 定时器与 __init__ 里保持一致
-    monitor._advice_timer = DueTimer("建议评估", interval_minutes * 60)
+    monitor.advice_trigger = AdviceTrigger(monitor.advice_engine, interval_minutes * 60)
+    monitor.followup_trigger = FollowupTrigger(
+        monitor.advice_engine,
+        types.SimpleNamespace(get_latest_price=lambda symbol: None),
+    )
     monitor._review_timer = DueTimer("回访价格回填", REVIEW_REFRESH_SECONDS)
     monitor._settings_timer = DueTimer("设置刷新", SETTINGS_REFRESH_SECONDS)
     monitor._cleanup_timer = DueTimer("日志清理", LOG_CLEANUP_SECONDS)
@@ -377,15 +386,40 @@ def _low_freq_decision():
 
 
 def test_build_extra_info_includes_london_and_model() -> None:
-    monitor = make_monitor()
-    extra = monitor._build_extra_info(
-        {"hf_XAU": {"price": 2300.0, "converted_cny_price": 531.2}}, "p/m"
+    """extra_info 组装已迁入 AdviceTrigger（london 参考 + 模型信息 + 估值说明）"""
+
+    engine = FakeAdviceEngine()
+    engine.model_info = "p/m"
+    trigger = AdviceTrigger(engine, 60.0)
+    from service.send_gate import GateDecision
+    from service.triggers import TickContext
+
+    decision = GateDecision(
+        policy=SendPolicy.INTL_ONLY,
+        sge=Session.HOLIDAY,
+        intl=Session.OPEN,
+        allowed=True,
+        reason="",
+        detail="休市",
     )
+    tick = TickContext(
+        at=WED,
+        decision=decision,
+        prices_data={},
+        main_symbol="gds_AUTD",
+        market_symbol="hf_XAU",
+        market_price=531.2,
+        london_cny=531.2,
+        london_usd=2300.0,
+        valuation_note="估算可能有偏差",
+    )
+    outcome = trigger.evaluate(tick)
+    assert outcome.events, "评估应产出事件"
+    extra = outcome.events[0].extra_info
     assert extra["london_gold_usd"] == 2300.0
     assert extra["london_gold_cny"] == 531.2
     assert extra["ai_model_info"] == "p/m"
-
-    assert monitor._build_extra_info({}, "") == {}
+    assert extra["valuation_note"] == "估算可能有偏差"
 
 
 if __name__ == "__main__":

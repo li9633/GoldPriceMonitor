@@ -561,6 +561,11 @@ def make_monitor(engine, notifier=None, latest=900.0) -> MonitorService:
     monitor.notification_service = notifier or FakeNotifier()
     monitor.price_mapper = FakePriceMapperForFollowup(latest)
     monitor._followup_timer = DueTimer("买入复盘", FOLLOWUP_REVIEW_SECONDS)
+    from service.triggers import FollowupTrigger
+
+    monitor.followup_trigger = FollowupTrigger(
+        engine, monitor.price_mapper, FOLLOWUP_REVIEW_SECONDS
+    )
     return monitor
 
 
