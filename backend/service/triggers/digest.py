@@ -53,8 +53,7 @@ class DailyDigestTrigger(Trigger):
 
         fields: dict[str, str] = {}
         price = tick.market_price
-        if price > 0:
-            fields["当前价格"] = f"¥{price:.2f}/g"
+        # 「当前价格」由通用模板的固定行展示，不放进 fields（避免重复渲染）
         change_24h = price_24h_change(
             self.price_mapper, tick.market_symbol or tick.main_symbol
         )
