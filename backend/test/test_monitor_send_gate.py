@@ -84,6 +84,17 @@ class FakeAdviceEngine:
         self.last_compute: dict = {}
         self.saved: list[tuple[str, str]] = []
         self._next_id = 0
+        # update_status 调用记录（投递失败回滚用）
+        self.rollback_calls: list[tuple[int, str, str | None]] = []
+        self.advice_mapper = types.SimpleNamespace(
+            update_status=self._record_rollback
+        )
+
+    def _record_rollback(
+        self, advice_id: int, status: str, suppressed_reason: str | None = None
+    ) -> bool:
+        self.rollback_calls.append((advice_id, status, suppressed_reason))
+        return True
 
     def compute(
         self,
@@ -229,6 +240,9 @@ def test_delivery_failure_does_not_count() -> None:
     assert len(notifier.sent) == 1, "仍然尝试投递了"
     assert monitor.alert_count == 0, "投递失败不应计入推送次数"
     assert engine.saved == [(AdviceStatus.DELIVERED.value, "")], "建议仍然落库"
+    assert engine.rollback_calls == [(1, "suppressed", "send_failed")], (
+        "投递失败应回滚为待重试，避免复盘/节流状态卡死"
+    )
 
 
 # ==================== 3. 节流 ====================

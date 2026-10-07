@@ -86,6 +86,23 @@ class PriceSnapshot:
             return None
         return sum(self._ma_prices[-periods:]) / periods
 
+    def scaled(self, factor: float) -> "PriceSnapshot":
+        """按系数缩放整份快照。
+
+        INTL_ONLY 时 hf_XAU 序列是美元/盎司而现价是折算 ¥/g，指标必须与
+        现价同口径 —— 用当前折算系数把序列换算成 ¥/g 后再提指标
+        （汇率日内波动通常 <1%，近似安全）。
+        """
+        return PriceSnapshot(
+            [
+                (t, p * factor)
+                for t, p in zip(self._timestamps, self._all, strict=True)
+            ],
+            [p * factor for p in self._ma_prices],
+            self.min_3m * factor if self.min_3m is not None else None,
+            self.min_6m * factor if self.min_6m is not None else None,
+        )
+
 
 class PriceMapper:
     def __init__(self, db_file: str = PRICE_HISTORY_DB_FILE):

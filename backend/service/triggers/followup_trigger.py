@@ -73,7 +73,13 @@ class FollowupTrigger(Trigger):
         return outcome
 
     def _evaluate_lot(self, tick: TickContext, lot: dict, horizon: int, outcome: TriggerOutcome) -> None:
-        symbol = str(lot.get("symbol"))
+        symbol = lot.get("symbol")
+        if not symbol:
+            logger.warning(
+                f"买入记录 id={lot.get('id')} 缺少 symbol，跳过 T+{horizon} 复盘"
+            )
+            return
+        symbol = str(symbol)
         price = self._price_for(symbol, tick.prices_data)
         if price is None:
             logger.warning(f"品种 {symbol} 没有可用价格，跳过 T+{horizon} 复盘")

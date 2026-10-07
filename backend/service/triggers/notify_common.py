@@ -1,6 +1,9 @@
 """非建议类触发器的公共工具：配置读取、涨跌幅、持仓摘要。"""
 
 from service.position import compute_position
+from utils.logger import get_logger
+
+logger = get_logger("TriggerCommon")
 
 #: 触发器配置默认值（与 advice_config 表列默认一致）
 TRIGGER_CONFIG_DEFAULTS = {
@@ -19,7 +22,8 @@ def trigger_config(settings) -> dict:
     """读取触发器配置，缺省键补默认值（存量库未迁移时也能工作）"""
     try:
         raw = settings.get_advice_config() or {}
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"读取触发器配置失败，使用默认值：{exc}", exc_info=exc)
         raw = {}
     config = dict(TRIGGER_CONFIG_DEFAULTS)
     for key in TRIGGER_CONFIG_DEFAULTS:
@@ -48,7 +52,8 @@ def position_summary(
     try:
         lots = portfolio_mapper.list_lots(symbol)
         sales = portfolio_mapper.list_sales(symbol)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"读取持仓记录失败 symbol={symbol}：{exc}", exc_info=exc)
         return None
     if not lots:
         return None
@@ -56,7 +61,8 @@ def position_summary(
         position = compute_position(
             symbol, lots, latest_price=latest_price, sales=sales
         )
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"计算持仓摘要失败 symbol={symbol}：{exc}", exc_info=exc)
         return None
     if not position or position.total_grams <= 0:
         return None
@@ -81,7 +87,8 @@ def price_24h_change(price_mapper, symbol: str) -> float | None:
     """24 小时涨跌幅：序列首尾对比；数据不足返回 None"""
     try:
         series = price_mapper.get_price_series(symbol, 24)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"读取 24h 价格序列失败 symbol={symbol}：{exc}", exc_info=exc)
         return None
     if not series or len(series) < 2:
         return None

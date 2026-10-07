@@ -56,7 +56,20 @@ class WechatWorkChannel(BaseNotificationChannel):
             )
 
         if response.status_code == 200:
-            resp_json = response.json()
+            try:
+                resp_json = response.json()
+            except ValueError:
+                # HTTP 200 但响应体不是 JSON（网关插页/被劫持的 webhook）
+                err_detail = f"响应不是 JSON：{response.text[:120]}"
+                logger.error(f"企业微信消息发送失败：{err_detail}")
+                return ChannelResult(
+                    success=False,
+                    channel_type=self.channel_type,
+                    message="企业微信响应解析失败",
+                    latency_ms=latency_ms,
+                    error_type="api_error",
+                    error_detail=err_detail,
+                )
             if resp_json.get("errcode") == 0:
                 logger.debug("企业微信消息发送成功")
                 return ChannelResult(

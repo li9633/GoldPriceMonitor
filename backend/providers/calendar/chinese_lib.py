@@ -7,6 +7,9 @@
 from datetime import date
 
 from providers.calendar.base import CalendarVerdict, TradingCalendarProvider
+from utils.logger import get_logger
+
+logger = get_logger("CalendarLib")
 
 
 class ChineseCalendarLibProvider(TradingCalendarProvider):
@@ -27,5 +30,7 @@ class ChineseCalendarLibProvider(TradingCalendarProvider):
             )
         except NotImplementedError:
             return CalendarVerdict.UNKNOWN
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            # 覆盖范围内的意外失败不该静默 —— 否则降级到在线源也查不到原因
+            logger.warning("chinese-calendar 查询 %s 失败：%s", day, exc)
             return CalendarVerdict.UNKNOWN

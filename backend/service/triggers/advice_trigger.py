@@ -41,6 +41,11 @@ class AdviceTrigger(Trigger):
             return TriggerOutcome()
         self._timer.mark(tick.at)
 
+        # 时段闸门：休市静默 —— 不生成建议、也不调用 AI。
+        # 抑制记录由 MonitorService 统一记（本触发器返回空即可）。
+        if not tick.decision.allowed:
+            return TriggerOutcome()
+
         computed = self.engine.compute(
             tick.main_symbol,
             tick.market_price,

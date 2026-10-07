@@ -1,3 +1,4 @@
+import threading
 import time
 
 from providers.base import BaseExchangeRateProvider, ExchangeRateResult
@@ -31,9 +32,18 @@ class ExchangeRateProviderManager:
         self._cache_time: float = 0.0
         self._failure_cache_until: float = 0.0
         self._last_alerted_provider: str = ""
+        # 监控线程与 FastAPI 请求线程共享单例，缓存与切换状态需要互斥
+        self._lock = threading.Lock()
 
     def get_rate(
         self, base: str = "USD", symbol: str = "CNY"
+    ) -> ExchangeRateResult | None:
+        """获取汇率，按优先级链依次尝试"""
+        with self._lock:
+            return self._get_rate_locked(base, symbol)
+
+    def _get_rate_locked(
+        self, base: str, symbol: str
     ) -> ExchangeRateResult | None:
         """获取汇率，按优先级链依次尝试"""
         if self._cache and (time.time() - self._cache_time) < _RATE_CACHE_DURATION:
@@ -101,10 +111,15 @@ class ExchangeRateProviderManager:
     def _check_data_freshness(self, result: ExchangeRateResult) -> None:
         if result.data_updated_at is None:
             return
-        now_dt = now()
-        delay_seconds = (
-            now_dt - result.data_updated_at.replace(tzinfo=CHINA_TZ)
-        ).total_seconds()
+        updated = result.data_updated_at
+        if updated.tzinfo is None:
+            # naive 值视为北京时间
+            updated = updated.replace(tzinfo=CHINA_TZ)
+        else:
+            # aware 值必须换算 —— replace 只改标签会把 UTC 时刻错算 8 小时，
+            # 导致「数据延迟过大」告警永远误报/漏报
+            updated = updated.astimezone(CHINA_TZ)
+        delay_seconds = (now() - updated).total_seconds()
         if delay_seconds > 600:
             logger.warning(
                 f"汇率数据延迟过大 delay_seconds={delay_seconds:.0f} provider={result.provider}"
