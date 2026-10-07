@@ -1,6 +1,7 @@
 # 基础设施重构方案（草案）—— 日历 · 模型池 · 价格源
 
-> 状态：**讨论中，尚未开始实现**
+> 状态：**§1 日历链、§2 模型池惩罚已实现**（2026-10-07，分支 refactor/calendar-provider、refactor/model-pool-penalty）；
+> §3 价格 provider 化待做；§4 清理项随本批完成
 > 记录日期：2026-10-07
 > 配套文档：[价格获取与通知策略重构方案](./notification-refactor-plan.md)（其阶段 E 的展开）
 > 原则：**接口 → 实现类**，调用方不关心实现与回退；流程保持不变，行为变化逐条列出（§5）
@@ -53,6 +54,20 @@ class TradingCalendar:              # 门面：回退链 + 缓存 + 观测
 
 **待决**：是否引入在线源（新增一个网络依赖）？不引入也成立——链路退化为
 `lib → weekly`，配合每年升级提醒；引入则 2027 年无感过渡。倾向引入（缓存兜底后风险很低）。
+
+### 1.4 实施记录（已完成，2026-10-07）与探测结论
+
+探测脚本 `scripts/probe_holiday_apis.py` 实测结论：
+
+- **haoshenqi**：判定方向全部正确（status 0=工作日 / 1=周末 / 2=调休上班 / 3=法定假日），
+  2026 覆盖完整 → **选为 OnlineCalendarProvider 实现**；
+- timor.tech：不稳定（超时 / 403 反爬）→ 弃用；
+- 两个源 2027 均无数据 —— **2027 放假安排本身尚未发布**（预计 2026-11 发布），
+  属预期行为，正是回退链存在的意义；
+- 已实现：`providers/calendar/{base,chinese_lib,online,weekly,manager}.py` +
+  `mapper/calendar_cache_mapper.py`（data/calendar.db，仅在线结果落库、不设过期）；
+  `market_session` 改走门面；降级状态经 `GET /api/settings/calendar/status` 暴露；
+  测试 `test_calendar_providers` 13 项。
 
 ---
 
@@ -111,6 +126,14 @@ class Cooldown:
 | 1 | `_log_call` 的延迟统计从**整次 call() 开始**计时，第二、三个模型的日志延迟包含了前面模型的失败耗时 | `model_pool_engine.py:77,92,95` `start_time` 贯穿整个循环 |
 | 2 | `_graceful_degradation` 原地修改缓存对象 `cached_result.from_cache = True`，污染缓存 | `:304` |
 | 3 | `triggered_alerts` 恒为 `None` | `:330`（refactor-plan §6.1 #9 已记录） |
+
+### 2.5 实施记录（已完成，2026-10-07）
+
+按 §2.2/§2.3 落地：`ErrorClass` 分类、`Cooldown`（模型级 60s 起 ×2 升级封顶 30min；
+供应商级 120s 起，2 个模型限速即整级冷却）、Retry-After 睡眠封顶 5s 且折算进冷却、
+成功清零该供应商全部冷却、冷却到期自动恢复优先级顺序。
+顺带修复 §2.4 的 #1（延迟按模型单独计）与 #2（`replace()` 替代原地改缓存）。
+测试 `test_model_pool` 12 项（假件替换 `_call_single`，零网络）。
 
 ---
 
