@@ -77,13 +77,25 @@ class SendDeduplicator:
         self.price_change_threshold = price_change_threshold
         self._sent: dict[str, _SentRecord] = {}
 
-    def check(self, key: str, price: float, at: datetime | None = None) -> SendDecision:
-        """判断是否可以发送；放行时会记录本次发送"""
+    def check(
+        self,
+        key: str,
+        price: float,
+        at: datetime | None = None,
+        cooldown_minutes: float | None = None,
+    ) -> SendDecision:
+        """判断是否可以发送；放行时会记录本次发送。
+
+        `cooldown_minutes` 为空时使用实例默认值 —— 事件可携带自己的冷却参数。
+        """
         at = at or now()
+        cooldown = (
+            self.cooldown_minutes if cooldown_minutes is None else cooldown_minutes
+        )
         record = self._sent.get(key)
         if record is not None:
             elapsed_minutes = (at - record.at).total_seconds() / 60
-            if elapsed_minutes < self.cooldown_minutes:
+            if elapsed_minutes < cooldown:
                 change = (
                     abs(price - record.price) / record.price
                     if record.price > 0
@@ -98,17 +110,20 @@ class SendDeduplicator:
                         f"{self.price_change_threshold * 100:.2f}%，已跳过",
                     )
 
-        self._prune(at)
+        self._prune(at, cooldown)
         self._sent[key] = _SentRecord(at=at, price=price)
         return SendDecision(True, "", "")
 
     def reset(self) -> None:
         self._sent.clear()
 
-    def _prune(self, at: datetime) -> None:
+    def _prune(self, at: datetime, cooldown_minutes: float | None = None) -> None:
         if len(self._sent) < _MAX_DEDUP_KEYS:
             return
-        cutoff = at - timedelta(minutes=max(self.cooldown_minutes * 6, 60.0))
+        cooldown = (
+            self.cooldown_minutes if cooldown_minutes is None else cooldown_minutes
+        )
+        cutoff = at - timedelta(minutes=max(cooldown * 6, 60.0))
         for key in [k for k, r in self._sent.items() if r.at < cutoff]:
             del self._sent[key]
 
@@ -142,9 +157,13 @@ class SendGate:
         key: str,
         price: float,
         urgency: str | None = None,
+        cooldown_minutes: float | None = None,
         at: datetime | None = None,
     ) -> SendDecision:
-        """终审闸门：发送前的优先级过滤与去重"""
+        """终审闸门：发送前的优先级过滤与去重。
+
+        `cooldown_minutes` 由事件声明（默认沿用去重器实例值）。
+        """
         if not decision.allowed:
             return SendDecision(False, decision.reason or "silent", decision.detail)
 
@@ -156,4 +175,4 @@ class SendGate:
                 f"{urgency or '未知'}，已跳过",
             )
 
-        return self.dedup.check(key, price, at)
+        return self.dedup.check(key, price, at, cooldown_minutes)

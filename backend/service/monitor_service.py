@@ -1,13 +1,21 @@
 import time
 
 from mapper.price_mapper import PriceMapper
-from models.advice import ACTION_URGENCY, AdviceStatus
+from models.advice import AdviceStatus
 from service.advice.advice_engine import AdviceEngine, ComputedAdvice
 from service.history_import_service import init_historical_data
 from service.notification_service import NotificationService
 from service.price_service import PriceService
 from service.send_gate import GateDecision, SendGate
 from service.system_settings_service import SystemSettingsService
+from service.triggers import (
+    KIND_REVIEW,
+    AdviceTrigger,
+    FollowupTrigger,
+    TickContext,
+    TriggerOutcome,
+    TriggerRegistry,
+)
 from utils.due_timer import DueTimer
 from utils.logger import cleanup_old_logs, get_log_size, get_logger
 from utils.market_session import SendPolicy
@@ -23,8 +31,6 @@ LOG_CLEANUP_SECONDS = 86400.0
 #: 买入后 T+n 复盘的检查间隔（秒）。触发条件按「买入日期 + N 天」判定，
 #: 所以间隔大小不影响是否会漏 —— 只影响最迟多久被发现。
 FOLLOWUP_REVIEW_SECONDS = 3600.0
-#: 单次巡检最多生成几条复盘，避免首次上线时对历史买入集中补发
-MAX_FOLLOWUPS_PER_TICK = 3
 
 
 class MonitorService:
@@ -37,6 +43,14 @@ class MonitorService:
         # 规则在 signals / strategies，LLM 只负责措辞
         self.advice_engine = AdviceEngine()
         self.send_gate = SendGate()
+        # 通知触发器：谁动了才发；评估逻辑在 triggers/，本类只做闸门与投递
+        self.advice_trigger = AdviceTrigger(self.advice_engine)
+        self.followup_trigger = FollowupTrigger(
+            self.advice_engine, self.price_mapper, FOLLOWUP_REVIEW_SECONDS
+        )
+        self.trigger_registry = TriggerRegistry(
+            [self.advice_trigger, self.followup_trigger]
+        )
         self.start_time = now()
         self.check_count = 0
         self.alert_count = 0
@@ -44,9 +58,7 @@ class MonitorService:
 
         # 定时任务统一用 DueTimer，不再各自维护 _last_xxx 时间戳
         self._settings_timer = DueTimer("设置刷新", SETTINGS_REFRESH_SECONDS)
-        self._advice_timer = DueTimer("建议评估", 0.0)
         self._review_timer = DueTimer("回访价格回填", REVIEW_REFRESH_SECONDS)
-        self._followup_timer = DueTimer("买入复盘", FOLLOWUP_REVIEW_SECONDS)
         self._cleanup_timer = DueTimer("日志清理", LOG_CLEANUP_SECONDS)
 
         self._refresh_settings()
@@ -61,7 +73,7 @@ class MonitorService:
 
         ai_config = self.settings.get_ai_config()
         self.ai_check_interval_minutes = ai_config.get("check_interval_minutes", 5)
-        self._advice_timer.set_interval(self.ai_check_interval_minutes * 60)
+        self.advice_trigger.set_interval(self.ai_check_interval_minutes * 60)
 
         self._settings_timer.mark(now())
 
@@ -145,75 +157,49 @@ class MonitorService:
 
     # ==================== 建议 ====================
 
+    def _tick_context(
+        self,
+        prices_data: dict,
+        decision: GateDecision,
+        current_price: float | None = None,
+    ) -> TickContext:
+        london = prices_data.get("hf_XAU") or {}
+        market_symbol, valuation_note = self._market_view(prices_data, decision)
+        if market_symbol:
+            # INTL_ONLY：SGE 价格冻结，口径价切到国际金折算价
+            market_price = float(london["converted_cny_price"])
+        elif current_price is not None:
+            market_price = current_price
+        else:
+            main = prices_data.get(self.main_symbol) or {}
+            market_price = float(main.get("price") or 0.0)
+        return TickContext(
+            at=now(),
+            decision=decision,
+            prices_data=prices_data,
+            main_symbol=self.main_symbol,
+            market_symbol=market_symbol,
+            market_price=market_price,
+            london_cny=london.get("converted_cny_price"),
+            london_usd=london.get("price"),
+            valuation_note=valuation_note,
+        )
+
     def _advise(
         self, prices_data: dict, current_price: float, decision: GateDecision
     ) -> None:
         """生成建议并按闸门决定是否推送。
 
-        无论有没有越线都会定期评估，产出结构化建议。
+        兼容入口：评估逻辑在 `AdviceTrigger`，这里只做闸门、落库与投递。
         """
-        # 1) 时段闸门：休市静默 —— 不生成建议、也不调用 AI
+        # 时段闸门：休市静默 —— 不生成建议、也不调用 AI
         if not decision.allowed:
             self._note_suppressed("建议", decision.reason, decision.detail)
             return
-
-        # 2) 节流：按配置的巡检间隔重新评估
-        if not self._should_advise():
-            return
-        self._advice_timer.mark(now())
-
-        london_data = prices_data.get("hf_XAU") or {}
-        market_symbol, valuation_note = self._market_view(prices_data, decision)
-        if market_symbol:
-            # INTL_ONLY：SGE 价格冻结，建议口径与估值价切到国际金折算价
-            market_price = float(london_data["converted_cny_price"])
-        else:
-            market_price = current_price
-
-        computed = self.advice_engine.compute(
-            self.main_symbol,
-            market_price,
-            london_data.get("converted_cny_price"),
-            london_data.get("price"),
-            market_symbol=market_symbol,
+        outcome = self.advice_trigger.evaluate(
+            self._tick_context(prices_data, decision, current_price)
         )
-        action = computed.draft.action.value
-        self.logger.info(
-            f"建议评估：{action}（{computed.draft.kind.value}）"
-            f"置信度 {computed.draft.confidence}"
-        )
-
-        # 3) 推送节流：动作变化，或价格偏离上次推送超过阈值
-        #    （基准随口径走：休市期比较的是国际金价格，不再是冻结的 SGE 价格）
-        should_push, reason = self._should_push(computed, market_price)
-        if not should_push:
-            self._suppress(computed, reason, "动作与上次相同，且价格未明显变动")
-            return
-
-        # 4) 终审闸门：LOW_FREQ 优先级过滤 + 冷却去重
-        urgency = ACTION_URGENCY.get(action, "low")
-        send_decision = self.send_gate.review(
-            decision,
-            key=f"{self.main_symbol}#advice#{action}",
-            price=market_price,
-            urgency=urgency,
-        )
-        if not send_decision.allowed:
-            self._suppress(computed, send_decision.reason, send_decision.detail)
-            return
-
-        # 5) 落库并投递
-        record = self.advice_engine.save(computed)
-        extra_info = self._build_extra_info(prices_data, computed.model_info)
-        if valuation_note:
-            extra_info["valuation_note"] = valuation_note
-        if self.notification_service.send_advice(
-            record, market_price, extra_info=extra_info
-        ):
-            self.alert_count += 1
-            self._clear_suppressed()
-        else:
-            self.logger.warning("建议已生成，但没有渠道投递成功")
+        self._handle_outcome(outcome, decision)
 
     @staticmethod
     def _market_view(
@@ -239,109 +225,67 @@ class MonitorService:
         )
         self._note_suppressed("推送", reason, detail)
 
-    def _should_advise(self) -> bool:
-        return self._advice_timer.is_due(now())
-
     # ==================== 买入后 T+n 复盘 ====================
 
     def _run_followups(self, prices_data: dict, decision: GateDecision) -> None:
-        """为到点的买入生成复盘建议（T+1 / T+7 / T+30）。
+        """为到点的买入生成复盘建议（T+1 / T+7 / T+30）。兼容入口。"""
+        outcome = self.followup_trigger.evaluate(
+            self._tick_context(prices_data, decision)
+        )
+        self._handle_outcome(outcome, decision)
 
-        这是产品原始需求里「购买**后**」那一半：买完不是结束，而是要在关键时点
-        主动告诉用户这笔买得怎么样、现在该怎么办。
-        """
-        at = now()
-        if not self._followup_timer.is_due(at):
-            return
-        self._followup_timer.mark(at)
+    # ==================== 事件执行（终审闸门 + 落库 + 投递） ====================
 
-        # 休市静默期不生成：复盘的内容依赖当前价格，闭市时价格是冻结的，
-        # 生成出来也只能说「观望」。留到开市后再做。
-        if not decision.allowed:
-            self._note_suppressed("买入复盘", decision.reason, decision.detail)
-            return
-
-        try:
-            pending = self.advice_engine.pending_reviews(at)
-        except Exception as exc:
-            self.logger.error(f"查询待复盘买入失败：{exc}", exc_info=exc)
-            return
-
-        if not pending:
-            return
-
-        self.logger.info(f"发现 {len(pending)} 条待复盘买入，本次处理前 {MAX_FOLLOWUPS_PER_TICK} 条")
-        for lot, horizon in pending[:MAX_FOLLOWUPS_PER_TICK]:
-            self._dispatch_followup(lot, horizon, prices_data, decision)
-
-    def _dispatch_followup(
-        self,
-        lot: dict,
-        horizon: int,
-        prices_data: dict,
-        decision: GateDecision,
+    def _handle_outcome(
+        self, outcome: TriggerOutcome, decision: GateDecision
     ) -> None:
-        symbol = str(lot.get("symbol"))
-        price = self._price_for(symbol, prices_data)
-        if price is None:
-            self.logger.warning(f"品种 {symbol} 没有可用价格，跳过 T+{horizon} 复盘")
-            return
+        """触发器产出的候选事件统一过终审闸门，再落库 / 投递。"""
+        for sup in outcome.suppressed:
+            if sup.computed is not None:
+                self._suppress(sup.computed, sup.reason, sup.detail)
+            else:
+                self._note_suppressed(sup.source, sup.reason, sup.detail)
 
-        london_data = prices_data.get("hf_XAU") or {}
-        market_symbol, valuation_note = self._market_view(prices_data, decision)
-        if market_symbol:
-            # 复盘的盈亏对比同样按开市市场估值（见 _market_view）
-            market_price = float(london_data["converted_cny_price"])
-        else:
-            market_price = price
-
-        computed = self.advice_engine.compute(
-            symbol,
-            market_price,
-            london_data.get("converted_cny_price"),
-            london_data.get("price"),
-            market_symbol=market_symbol,
-            subject_lot=lot,
-            review_horizon=horizon,
-        )
-
-        # 复盘是「一次性事件」，靠 has_review 保证不重复，所以这里只需要过
-        # 时段与优先级两道闸门，不需要动作去重。
-        urgency = ACTION_URGENCY.get(computed.draft.action.value, "low")
-        send_decision = self.send_gate.review(
-            decision,
-            key=f"{symbol}#review#{lot.get('id')}#{horizon}",
-            price=market_price,
-            urgency=urgency,
-        )
-        if not send_decision.allowed:
-            # 刻意不落库：落库会让 has_review 变真，这条复盘就永远丢了。
-            # 不落库则下一次巡检（仍在追补窗口内）会重试。
-            self.logger.info(
-                f"T+{horizon} 复盘暂不推送（{send_decision.reason}）：{send_decision.detail}"
+        for ev in outcome.events:
+            send_decision = self.send_gate.review(
+                decision,
+                key=ev.dedup_key,
+                price=ev.price_basis,
+                urgency=ev.urgency,
+                cooldown_minutes=ev.cooldown_minutes,
             )
-            return
+            if not send_decision.allowed:
+                if ev.computed is not None and ev.save_suppressed:
+                    self._suppress(
+                        ev.computed, send_decision.reason, send_decision.detail
+                    )
+                else:
+                    self.logger.info(
+                        f"[{ev.kind}] 暂不推送（{send_decision.reason}）："
+                        f"{send_decision.detail}"
+                    )
+                continue
 
-        record = self.advice_engine.save(computed)
-        extra_info = self._build_extra_info(prices_data, computed.model_info)
-        if valuation_note:
-            extra_info["valuation_note"] = valuation_note
-        if self.notification_service.send_advice(record, market_price, extra_info=extra_info):
-            self.alert_count += 1
-            self._clear_suppressed()
-            self.logger.info(
-                f"已推送 T+{horizon} 复盘：{computed.draft.action.value}"
-                f"（建议 {record.id}）"
-            )
-        else:
-            self.logger.warning("复盘已生成，但没有渠道投递成功")
-
-    def _price_for(self, symbol: str, prices_data: dict) -> float | None:
-        """优先用本轮刚抓到的价格，其次回落到库中最新价"""
-        data = prices_data.get(symbol) or {}
-        if data.get("price"):
-            return float(data["price"])
-        return self.price_mapper.get_latest_price(symbol)
+            if ev.computed is not None:
+                record = self.advice_engine.save(ev.computed)
+                if self.notification_service.send_advice(
+                    record, ev.current_price, extra_info=ev.extra_info or None
+                ):
+                    self.alert_count += 1
+                    self._clear_suppressed()
+                    if ev.kind == KIND_REVIEW:
+                        self.logger.info(
+                            f"已推送复盘：{ev.computed.draft.action.value}"
+                            f"（建议 {record.id}）"
+                        )
+                else:
+                    self.logger.warning("建议已生成，但没有渠道投递成功")
+            elif ev.notification is not None:
+                if self.notification_service.send(ev.notification):
+                    self.alert_count += 1
+                    self._clear_suppressed()
+                else:
+                    self.logger.warning("通知已生成，但没有渠道投递成功")
 
     def _refresh_reviews_if_due(self) -> None:
         """定期回填 T+1/T+7/T+30 的回访价格。

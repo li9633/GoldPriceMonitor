@@ -226,7 +226,7 @@ def test_intl_only_dedup_uses_intl_price() -> None:
     with frozen_monitor(HOLIDAY):
         decision = monitor.send_gate.policy_decision()
         monitor._advise(prices_data, SGE_PRICE, decision)
-        monitor._advice_timer.reset()  # 绕过评估节流，直接验证去重
+        monitor.advice_trigger._timer.reset()  # 绕过评估节流，直接验证去重
         monitor._advise(prices_data, SGE_PRICE, decision)
 
     assert engine.saved, "第二次评估应被去重抑制"
