@@ -17,7 +17,12 @@ instance.interceptors.response.use(
     return Promise.reject(new Error(message))
   },
   (error) => {
-    ElMessage.error(error.message || '网络错误')
+    // 后端 HTTPException 会把中文原因放在 body.detail（如「供应商 [X] 已存在」），
+    // 优先展示它，否则退回 axios 的英文错误
+    const detail = error?.response?.data?.detail
+    const message =
+      (typeof detail === 'string' && detail) || error.message || '网络错误'
+    ElMessage.error(message)
     return Promise.reject(error)
   },
 )

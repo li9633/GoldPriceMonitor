@@ -37,6 +37,10 @@ export interface AdviceRecord {
   status: AdviceStatus
   suppressed_reason: string
   acted_lot_id: number | null
+  /** 复盘针对的那笔买入（非复盘为 null） */
+  subject_lot_id: number | null
+  /** 复盘档位 T+1/T+7/T+30（非复盘为 null） */
+  review_horizon: number | null
   price_at_advice: number | null
   price_t1: number | null
   price_t7: number | null
@@ -72,6 +76,17 @@ export interface AdviceConfig {
   risk_level: string
   enable_llm: boolean
   price_move_trigger_pct: number
+  /** 价格波动提醒开关与阈值（≥trigger_pct 提醒、≥critical_pct 强提醒） */
+  volatility_enabled: boolean
+  volatility_trigger_pct: number
+  volatility_critical_pct: number
+  volatility_cooldown_minutes: number
+  /** 每日摘要开关与时间（HH:MM） */
+  digest_enabled: boolean
+  digest_time: string
+  /** 节后缺口预告开关与时间（HH:MM） */
+  reopen_gap_enabled: boolean
+  reopen_gap_time: string
 }
 
 export const adviceApi = {
@@ -111,7 +126,9 @@ export const adviceApi = {
   },
 
   refreshReviews() {
-    return request.post<{ checked: number; filled: number }>('/advice/reviews/refresh')
+    return request.post<{ checked: number; filled: number; skipped: number }>(
+      '/advice/reviews/refresh'
+    )
   },
 
   getReviewStats() {

@@ -30,6 +30,7 @@ from service.monitor_service import (
     SETTINGS_REFRESH_SECONDS,
     MonitorService,
 )
+from service.runtime_status_service import get_runtime_status
 from service.triggers.base import TickContext, Trigger, TriggerOutcome, TriggerRegistry
 from service.triggers.notify_common import TRIGGER_CONFIG_DEFAULTS
 from utils.due_timer import DueTimer
@@ -116,8 +117,9 @@ def make_wired_monitor(triggers: list[Trigger]) -> MonitorService:
     monitor.ai_check_interval_minutes = 5
     monitor.check_count = 0
     monitor.alert_count = 0
-    monitor.start_time = now()
     monitor._last_suppressed = None
+    # 运行状态采集（真实单例，测试可断言 tick 记录）
+    monitor.runtime = get_runtime_status()
     at = now()
     # 全部定时器预标记：本 tick 不触发设置刷新/回访/日志清理
     monitor._settings_timer = DueTimer("设置刷新", SETTINGS_REFRESH_SECONDS)
@@ -139,6 +141,30 @@ def test_tick_evaluates_all_registered_triggers() -> None:
         "每个注册触发器都应被评估一次"
     )
     assert monitor.check_count == 1
+    # 运行状态采集：本轮巡检应被记录（含价格与耗时）
+    snapshot = monitor.runtime.snapshot()
+    assert snapshot["status"] == "stopped" or snapshot["status"] == "running"
+    assert snapshot["last_tick"] is not None
+    assert snapshot["last_tick"]["ok"] is True
+    assert snapshot["last_tick"]["price"] == pytest.approx(900.0)
+
+
+def test_tick_missing_price_records_failure() -> None:
+    """主品种价格缺失时 tick 记录为失败（main_price_missing）"""
+
+    class EmptyPriceService(FakePriceService):
+        def fetch_all_gold_prices(self, symbols):
+            return {}
+
+    monitor = make_wired_monitor([SpyTrigger("t")])
+    monitor.price_service = EmptyPriceService()
+
+    monitor._tick()
+
+    snapshot = monitor.runtime.snapshot()
+    assert snapshot["last_tick"] is not None
+    assert snapshot["last_tick"]["ok"] is False
+    assert snapshot["last_tick"]["detail"] == "main_price_missing"
 
 
 def test_tick_evaluates_registry_even_when_gate_closed() -> None:

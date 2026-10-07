@@ -52,11 +52,6 @@ export interface MessageConfig {
   include_stop_loss: boolean
 }
 
-export interface ExchangeRate {
-  rate: number | null
-  updated_at: string | null
-}
-
 export interface SymbolMapping {
   symbol: string
   display_name: string
@@ -132,13 +127,6 @@ export const settingsApi = {
   },
   updateMessage(data: MessageConfig) {
     return request.put<MessageConfig>('/settings/message', data)
-  },
-
-  getExchangeRate() {
-    return request.get<ExchangeRate>('/settings/exchange-rate')
-  },
-  updateExchangeRate(rate: number) {
-    return request.put<string>(`/settings/exchange-rate/${rate}`)
   },
 
   getSymbols() {

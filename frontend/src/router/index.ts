@@ -63,6 +63,14 @@ const routes = [
         },
       },
       {
+        path: 'runtime-status',
+        name: 'runtime-status',
+        component: () => import('@/views/RuntimeStatus.vue'),
+        meta: {
+          title: '运行状态',
+        },
+      },
+      {
         path: 'ai-stats',
         name: 'ai-stats',
         component: () => import('@/views/AiStats.vue'),
