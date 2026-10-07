@@ -1,22 +1,21 @@
-import time
+"""价格查询服务 —— 数据源已下沉到 `providers/price/`，本类只做展示层组装。
 
-import requests
+- 报价获取：委托给 `PriceProviderManager`（huilvbiao 主源，新浪备源）；
+- 品种中文名：来自系统设置的 symbol_name_map；
+- 伦敦金人民币折算：依赖汇率链，仍在本层做（它是「展示口径」而非源数据）。
+"""
 
-from config import GOLD_PRICE_API_URL
+from providers.price import PriceProviderManager, get_price_manager
 from service.system_settings_service import SystemSettingsService
 from utils.currency_utils import convert_london_gold_to_cny
-from utils.http_utils import safe_get
 from utils.logger import get_logger
-from utils.time_utils import now
 
 logger = get_logger("PriceService")
 
-FIELD_INDEX_MAP = {"default": {"price": 0, "time": 6, "date": 12}}
-
 
 class PriceService:
-    def __init__(self):
-        self.api_url = GOLD_PRICE_API_URL
+    def __init__(self, provider_manager: PriceProviderManager | None = None):
+        self.provider_manager = provider_manager or get_price_manager()
         self._symbol_name_map: dict[str, str] | None = None
 
     @property
@@ -29,53 +28,16 @@ class PriceService:
         self._symbol_name_map = None
 
     def fetch_current_price(self, symbol: str) -> dict | None:
-        try:
-            timestamp = int(time.time() * 1000)
-            url = f"{self.api_url}?t={timestamp}"
-            response = safe_get(url, timeout=10)
-            if response is None:
-                return None
-
-            data_lines = response.text.strip().split("\n")
-            for line in data_lines:
-                if f"var hq_str_{symbol}=" in line:
-                    parts = line.split('"')
-                    if len(parts) < 2:
-                        logger.warning(f"[{now()}] 解析{symbol}数据格式错误")
-                        continue
-
-                    data_str = parts[1]
-                    fields = data_str.split(",")
-                    indices = FIELD_INDEX_MAP["default"]
-
-                    max_index_needed = max(indices.values())
-                    if len(fields) <= max_index_needed:
-                        logger.warning(
-                            f"[{now()}] 解析{symbol}数据字段不足 ({len(fields)})"
-                        )
-                        continue
-
-                    try:
-                        price = float(fields[indices["price"]])
-                        trade_time = fields[indices["time"]]
-                        trade_date = fields[indices["date"]]
-                        name = self.symbol_name_map.get(symbol, symbol)
-
-                        return {
-                            "symbol": symbol,
-                            "price": price,
-                            "time": trade_time,
-                            "date": trade_date,
-                            "name": name,
-                        }
-                    except (ValueError, IndexError) as e:
-                        logger.error(f"[{now()}] 转换{symbol}数据字段失败: {e}")
-                        continue
-
-        except requests.RequestException as e:
-            logger.error(f"[{now()}] 获取{symbol}价格网络请求失败: {e}")
-
-        return None
+        quote = self.provider_manager.fetch(symbol)
+        if quote is None:
+            return None
+        return {
+            "symbol": quote.symbol,
+            "price": quote.price,
+            "time": quote.trade_time,
+            "date": quote.trade_date,
+            "name": self.symbol_name_map.get(symbol, symbol),
+        }
 
     def fetch_all_gold_prices(self, symbols: list[str]) -> dict[str, dict | None]:
         results = {}
