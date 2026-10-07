@@ -10,6 +10,7 @@ from service.send_gate import GateDecision, SendGate
 from service.system_settings_service import SystemSettingsService
 from utils.due_timer import DueTimer
 from utils.logger import cleanup_old_logs, get_log_size, get_logger
+from utils.market_session import SendPolicy
 from utils.time_utils import now
 
 #: 配置热更新间隔（秒）
@@ -162,11 +163,19 @@ class MonitorService:
         self._advice_timer.mark(now())
 
         london_data = prices_data.get("hf_XAU") or {}
+        market_symbol, valuation_note = self._market_view(prices_data, decision)
+        if market_symbol:
+            # INTL_ONLY：SGE 价格冻结，建议口径与估值价切到国际金折算价
+            market_price = float(london_data["converted_cny_price"])
+        else:
+            market_price = current_price
+
         computed = self.advice_engine.compute(
             self.main_symbol,
-            current_price,
+            market_price,
             london_data.get("converted_cny_price"),
             london_data.get("price"),
+            market_symbol=market_symbol,
         )
         action = computed.draft.action.value
         self.logger.info(
@@ -175,7 +184,8 @@ class MonitorService:
         )
 
         # 3) 推送节流：动作变化，或价格偏离上次推送超过阈值
-        should_push, reason = self._should_push(computed, current_price)
+        #    （基准随口径走：休市期比较的是国际金价格，不再是冻结的 SGE 价格）
+        should_push, reason = self._should_push(computed, market_price)
         if not should_push:
             self._suppress(computed, reason, "动作与上次相同，且价格未明显变动")
             return
@@ -185,7 +195,7 @@ class MonitorService:
         send_decision = self.send_gate.review(
             decision,
             key=f"{self.main_symbol}#advice#{action}",
-            price=current_price,
+            price=market_price,
             urgency=urgency,
         )
         if not send_decision.allowed:
@@ -195,13 +205,32 @@ class MonitorService:
         # 5) 落库并投递
         record = self.advice_engine.save(computed)
         extra_info = self._build_extra_info(prices_data, computed.model_info)
+        if valuation_note:
+            extra_info["valuation_note"] = valuation_note
         if self.notification_service.send_advice(
-            record, current_price, extra_info=extra_info
+            record, market_price, extra_info=extra_info
         ):
             self.alert_count += 1
             self._clear_suppressed()
         else:
             self.logger.warning("建议已生成，但没有渠道投递成功")
+
+    @staticmethod
+    def _market_view(
+        prices_data: dict, decision: GateDecision
+    ) -> tuple[str | None, str]:
+        """决定本轮建议的行情口径。
+
+        INTL_ONLY（SGE 休市、国际金开市）且有国际金折算价时，建议的指标与
+        估值价来自国际金（主体仍是 SGE 品种），消息中注明可能有计算误差。
+        返回 `(口径品种, 估值说明)`；正常时段返回 `(None, "")`。
+        """
+        if decision.policy is not SendPolicy.INTL_ONLY:
+            return None, ""
+        london = prices_data.get("hf_XAU") or {}
+        if not london.get("converted_cny_price"):
+            return None, ""
+        return "hf_XAU", "休市期间以国际金折算价估算，可能与国内开盘价存在偏差"
 
     def _suppress(self, computed: ComputedAdvice, reason: str, detail: str) -> None:
         """被抑制的建议也落库（标记 suppressed），这样「当时为什么没发」以后查得到"""
@@ -259,11 +288,19 @@ class MonitorService:
             return
 
         london_data = prices_data.get("hf_XAU") or {}
+        market_symbol, valuation_note = self._market_view(prices_data, decision)
+        if market_symbol:
+            # 复盘的盈亏对比同样按开市市场估值（见 _market_view）
+            market_price = float(london_data["converted_cny_price"])
+        else:
+            market_price = price
+
         computed = self.advice_engine.compute(
             symbol,
-            price,
+            market_price,
             london_data.get("converted_cny_price"),
             london_data.get("price"),
+            market_symbol=market_symbol,
             subject_lot=lot,
             review_horizon=horizon,
         )
@@ -274,7 +311,7 @@ class MonitorService:
         send_decision = self.send_gate.review(
             decision,
             key=f"{symbol}#review#{lot.get('id')}#{horizon}",
-            price=price,
+            price=market_price,
             urgency=urgency,
         )
         if not send_decision.allowed:
@@ -287,7 +324,9 @@ class MonitorService:
 
         record = self.advice_engine.save(computed)
         extra_info = self._build_extra_info(prices_data, computed.model_info)
-        if self.notification_service.send_advice(record, price, extra_info=extra_info):
+        if valuation_note:
+            extra_info["valuation_note"] = valuation_note
+        if self.notification_service.send_advice(record, market_price, extra_info=extra_info):
             self.alert_count += 1
             self._clear_suppressed()
             self.logger.info(

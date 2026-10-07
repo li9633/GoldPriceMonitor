@@ -179,7 +179,12 @@ class PlanState:
 
 @dataclass
 class AdviceContext:
-    """一次建议所需的全部输入"""
+    """一次建议所需的全部输入
+
+    `symbol` 是建议的**主体**（持仓 / 计划挂在上面的品种，通常是 gds_AUTD）；
+    `market_symbol` 是行情**口径**：休市期间（INTL_ONLY）指标与估值价来自国际金，
+    主体不变。两者不同时，`to_evidence()` 会记录 `market_view` 供追溯。
+    """
 
     symbol: str
     symbol_name: str
@@ -190,6 +195,8 @@ class AdviceContext:
     at: datetime | None = None
     #: 建仓方式回测结论 —— 「一次性还是分批」的证据来源
     entry_strategy: EntryStrategyResult | None = None
+    #: 行情口径品种：None = 与主体相同；INTL_ONLY 时为 hf_XAU
+    market_symbol: str | None = None
     #: 复盘上下文：针对哪一笔买入、T+几
     subject_lot: dict | None = None
     review_horizon: int | None = None
@@ -247,8 +254,9 @@ class AdviceContext:
 
     def to_evidence(self) -> dict:
         """冻结进 `advice_records.evidence` 的快照"""
-        return {
+        data = {
             "market": self.indicators.to_dict(),
+            "market_view": self.market_symbol or self.symbol,
             "position": {
                 "total_grams": self.position.total_grams,
                 "total_cost": self.position.total_cost,
@@ -323,6 +331,7 @@ class AdviceContext:
             ),
             "advised_at": (self.at or now()).isoformat(timespec="seconds"),
         }
+        return data
 
 
 def build_plan_states(

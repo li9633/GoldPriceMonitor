@@ -48,6 +48,7 @@ class MessageTemplate:
 **建议数量**：{target_grams}
 **建议价位**：{price_band}
 **持仓状态**：{position_info}
+{valuation_note}
 **生成时间**：{time}
 
 ### <font color="comment">判断依据</font>
@@ -220,6 +221,15 @@ class MessageTemplate:
                     f'\n**伦敦金参考**：¥{cny}/g（${usd}）'
                 )
 
+        # 估值口径说明（INTL_ONLY：按国际金折算价估算持仓）
+        valuation_note = ""
+        if extra_info.get("valuation_note"):
+            note_text = cls._escape_html(str(extra_info["valuation_note"]))
+            if template_type == "email":
+                valuation_note = f'<div class="meta">＊{note_text}</div>'
+            else:
+                valuation_note = f'\n> <font color="comment">＊{note_text}</font>'
+
         debug_notice = ""
         if DEBUG:
             debug_notice = (
@@ -256,6 +266,7 @@ class MessageTemplate:
                 .replace("{{target_grams}}", cls._escape_html(target_text))
                 .replace("{{price_band}}", cls._escape_html(band_text))
                 .replace("{{position_info}}", cls._escape_html(position_text))
+                .replace("{{valuation_note}}", valuation_note)
                 .replace("{{time}}", display_time)
                 .replace("{{year}}", str(now().year))
                 .replace("{{signals}}", signals_html)
@@ -283,6 +294,7 @@ class MessageTemplate:
             time=display_time,
             signals=signals_md,
             rationale=cls._escape_markdown(advice.rationale or "（无）"),
+            valuation_note=valuation_note,
             debug_notice=debug_notice,
             model_info=model_info,
         )
