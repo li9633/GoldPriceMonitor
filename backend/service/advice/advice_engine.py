@@ -121,6 +121,7 @@ class AdviceEngine:
         london_usd: float | None = None,
         *,
         use_llm: bool | None = None,
+        market_symbol: str | None = None,
         subject_lot: dict | None = None,
         review_horizon: int | None = None,
     ) -> ComputedAdvice:
@@ -131,12 +132,17 @@ class AdviceEngine:
 
         传入 `subject_lot` + `review_horizon` 时产出的是**复盘**建议
         （针对某笔买入的 T+n 回访）。
+
+        `market_symbol` 指定行情口径：INTL_ONLY（SGE 休市、国际金开市）时传
+        `hf_XAU`，指标与估值价都来自国际金，主体（持仓/计划）不变；
+        None 表示与 `symbol` 相同。
         """
         ctx = self.build_context(
             symbol,
             current_price,
             london_cny,
             london_usd,
+            market_symbol=market_symbol,
             subject_lot=subject_lot,
             review_horizon=review_horizon,
         )
@@ -292,10 +298,13 @@ class AdviceEngine:
         london_usd: float | None = None,
         *,
         with_entry_strategy: bool = True,
+        market_symbol: str | None = None,
         subject_lot: dict | None = None,
         review_horizon: int | None = None,
     ) -> AdviceContext:
-        snapshot = self.price_mapper.get_check_snapshot(symbol)
+        # 行情口径：默认与主体相同；INTL_ONLY 时来自国际金
+        view_symbol = market_symbol or symbol
+        snapshot = self.price_mapper.get_check_snapshot(view_symbol)
         indicators = MarketIndicators.from_snapshot(
             snapshot, current_price, london_cny, london_usd
         )
@@ -304,7 +313,8 @@ class AdviceEngine:
         sales = self.portfolio_mapper.list_sales(symbol)
         plans_raw = self.portfolio_mapper.list_plans(symbol)
         # 用「本次建议用的价格」算市值，保证建议与证据里的持仓口径一致；
-        # 必须带上卖出记录，否则止盈止损卖出后系统仍按原持仓判断
+        # 必须带上卖出记录，否则止盈止损卖出后系统仍按原持仓判断。
+        # INTL_ONLY 时这个价格是国际金折算价（开市市场的价格，见方案文档 §4.1）
         position = compute_position(
             symbol, lots, latest_price=current_price, sales=sales
         )
@@ -313,7 +323,7 @@ class AdviceEngine:
 
         entry_strategy = None
         if with_entry_strategy:
-            entry_strategy = self.entry_evaluator.evaluate(symbol, current_price)
+            entry_strategy = self.entry_evaluator.evaluate(view_symbol, current_price)
 
         return AdviceContext(
             symbol=symbol,
@@ -323,6 +333,7 @@ class AdviceEngine:
             plans=plan_states,
             prefs=self.get_prefs(),
             entry_strategy=entry_strategy,
+            market_symbol=market_symbol,
             subject_lot=subject_lot,
             review_horizon=review_horizon,
         )

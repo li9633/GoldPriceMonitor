@@ -79,11 +79,27 @@ class FakeAdviceEngine:
         self._last = last
         self.threshold = threshold
         self.compute_calls = 0
+        self.last_compute: dict = {}
         self.saved: list[tuple[str, str]] = []
         self._next_id = 0
 
-    def compute(self, symbol, price, london_cny=None, london_usd=None, use_llm=None):
+    def compute(
+        self,
+        symbol,
+        price,
+        london_cny=None,
+        london_usd=None,
+        use_llm=None,
+        market_symbol=None,
+    ):
         self.compute_calls += 1
+        self.last_compute = {
+            "symbol": symbol,
+            "price": price,
+            "london_cny": london_cny,
+            "london_usd": london_usd,
+            "market_symbol": market_symbol,
+        }
         return ComputedAdvice(
             draft=self.draft, rationale="规则生成的理由", model_info="", price=price
         )
