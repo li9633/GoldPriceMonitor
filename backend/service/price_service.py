@@ -52,7 +52,10 @@ class PriceService:
                     logger.warning(f"伦敦金人民币折算失败：{e}")
             results[symbol] = data
             if data:
-                logger.info(f"成功获取 {data['name']} ({symbol}): {data['price']}")
+                logger.debug(
+                    f"抓价成功 symbol={symbol} price={data['price']} "
+                    f"trade_date={data['date']}"
+                )
             else:
-                logger.warning(f"未能获取 {symbol} 的价格数据")
+                logger.warning(f"抓价失败 symbol={symbol}")
         return results

@@ -102,7 +102,7 @@ class AdviceEngine:
         try:
             live = self.price_service.fetch_current_price(symbol)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("获取 %s 实时价失败：%s", symbol, exc)
+            logger.warning(f"实时价获取失败 symbol={symbol} error={exc}")
             live = None
         if live and live.get("price"):
             return float(live["price"]), "live"
@@ -251,7 +251,9 @@ class AdviceEngine:
             try:
                 trade_date = date.fromisoformat(str(lot.get("trade_date")))
             except (ValueError, TypeError):
-                logger.warning("买入记录 %s 的日期无法解析，跳过复盘", lot.get("id"))
+                logger.warning(
+                    f"买入记录日期无法解析，跳过复盘 lot_id={lot.get('id')}"
+                )
                 continue
             age = (today - trade_date).days
             for horizon in FOLLOWUP_HORIZONS:
@@ -347,7 +349,7 @@ class AdviceEngine:
         if price is None:
             raise ValueError(f"品种 {target} 没有可用价格，无法生成建议")
         if source == "stored":
-            logger.info("%s 使用库中最新价（实时获取失败）", target)
+            logger.info(f"使用库中最新价（实时获取失败） symbol={target}")
 
         london_cny, london_usd = self._resolve_london()
         record = self.generate(
@@ -478,6 +480,6 @@ def _review_target_timestamp(created_at: str, horizon_days: int) -> int | None:
             tzinfo=CHINA_TZ
         )
     except (ValueError, TypeError):
-        logger.warning("建议的 created_at 无法解析：%r", created_at)
+        logger.warning(f"建议 created_at 无法解析 value={created_at!r}")
         return None
     return int((base + timedelta(days=horizon_days)).timestamp())

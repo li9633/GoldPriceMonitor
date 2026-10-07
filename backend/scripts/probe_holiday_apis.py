@@ -19,7 +19,6 @@
 
 import json
 import sys
-from datetime import date
 
 import requests
 

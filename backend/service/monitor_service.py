@@ -9,7 +9,6 @@ from service.price_service import PriceService
 from service.send_gate import GateDecision, SendGate
 from service.system_settings_service import SystemSettingsService
 from service.triggers import (
-    KIND_REVIEW,
     AdviceTrigger,
     DailyDigestTrigger,
     FollowupTrigger,
@@ -123,17 +122,19 @@ class MonitorService:
         init_historical_data()
 
     def _init_modules(self) -> None:
-        self.logger.info(f"监控品种：{self.main_symbol}")
-        self.logger.info(f"监控品种列表：{self.monitor_symbols}")
-        self.logger.info(f"检查间隔：{self.check_interval} 秒")
-        self.logger.info(f"AI 分析：每 {self.ai_check_interval_minutes} 分钟调用一次")
+        self.logger.info(
+            f"监控配置 main_symbol={self.main_symbol} "
+            f"symbols={','.join(self.monitor_symbols)} "
+            f"check_interval={self.check_interval}s "
+            f"ai_interval={self.ai_check_interval_minutes}min"
+        )
 
     def _show_db_status(self) -> None:
         try:
             db_count = self.price_mapper.get_record_count(self.main_symbol)
-            self.logger.info(f"当前历史记录数：{db_count} 条")
+            self.logger.info(f"历史记录数 symbol={self.main_symbol} count={db_count}")
         except Exception as e:
-            self.logger.error(f"查询数据库失败：{e}", exc_info=e)
+            self.logger.error(f"启动时查询历史记录数失败 symbol={self.main_symbol}: {e}", exc_info=e)
 
     def _tick(self) -> None:
         self._refresh_settings_if_needed()
@@ -143,14 +144,15 @@ class MonitorService:
         main_symbol_data = prices_data.get(self.main_symbol)
         if not main_symbol_data:
             self.logger.warning(
-                f"[{now()}] 获取主品种 {self.main_symbol} 价格失败，等待下次检查"
+                f"主品种价格缺失，跳过本轮 symbol={self.main_symbol}"
             )
             self.check_count += 1
             return
 
         current_price = main_symbol_data["price"]
         self.logger.debug(
-            f"[{now().strftime('%H:%M:%S')}] {main_symbol_data['name']} 价格：{current_price}"
+            f"tick 价格 symbol={self.main_symbol} price={current_price} "
+            f"intl={prices_data.get('hf_XAU', {}).get('price')}"
         )
 
         self._save_prices(prices_data, current_price)
@@ -276,9 +278,9 @@ class MonitorService:
                         ev.computed, send_decision.reason, send_decision.detail
                     )
                 else:
-                    self.logger.info(
-                        f"[{ev.kind}] 暂不推送（{send_decision.reason}）："
-                        f"{send_decision.detail}"
+                    self.logger.debug(
+                        f"事件被闸门拦下 kind={ev.kind} reason={send_decision.reason} "
+                        f"detail={send_decision.detail}"
                     )
                 continue
 
@@ -289,19 +291,24 @@ class MonitorService:
                 ):
                     self.alert_count += 1
                     self._clear_suppressed()
-                    if ev.kind == KIND_REVIEW:
-                        self.logger.info(
-                            f"已推送复盘：{ev.computed.draft.action.value}"
-                            f"（建议 {record.id}）"
-                        )
+                    self.logger.info(
+                        f"建议已投递 kind={ev.kind} advice_id={record.id} "
+                        f"action={record.action.value} price={ev.current_price}"
+                    )
                 else:
-                    self.logger.warning("建议已生成，但没有渠道投递成功")
+                    self.logger.warning(
+                        f"建议投递失败（无渠道成功） advice_id={record.id} "
+                        f"action={record.action.value}"
+                    )
             elif ev.notification is not None:
                 if self.notification_service.send(ev.notification):
                     self.alert_count += 1
                     self._clear_suppressed()
                 else:
-                    self.logger.warning("通知已生成，但没有渠道投递成功")
+                    self.logger.warning(
+                        f"通知投递失败（无渠道成功） kind={ev.kind} "
+                        f"dedup_key={ev.dedup_key}"
+                    )
 
     def _refresh_reviews_if_due(self) -> None:
         """定期回填 T+1/T+7/T+30 的回访价格。
@@ -327,26 +334,6 @@ class MonitorService:
                 f"成功 {result['filled']} 条，缺价跳过 {result['skipped']} 条"
             )
 
-    def _should_push(
-        self, computed: ComputedAdvice, current_price: float
-    ) -> tuple[bool, str]:
-        """只在「动作变了」或「价格明显变了」时才推送，避免刷屏。
-
-        用数据库里的上一条已推送建议做比较（而不是内存），这样重启后不会立刻重复推。
-        """
-        last = self.advice_engine.last_pushed(self.main_symbol)
-        if last is None:
-            return True, ""
-        if last.action.value != computed.draft.action.value:
-            return True, ""
-
-        threshold = self.advice_engine.price_move_trigger_pct()
-        if threshold > 0 and last.price_at_advice:
-            move = abs(current_price - last.price_at_advice) / last.price_at_advice * 100
-            if move >= threshold:
-                return True, ""
-        return False, "duplicate"
-
     def _refresh_settings_if_needed(self) -> None:
         at = now()
         if not self._settings_timer.is_due(at):
@@ -362,34 +349,24 @@ class MonitorService:
         """
         signature = f"{source}:{reason}"
         if self._last_suppressed == signature:
-            self.logger.debug(f"[{source}] 仍然抑制（{reason}）：{detail}")
+            self.logger.debug(
+                f"持续抑制 source={source} reason={reason} detail={detail}"
+            )
             return
         self._last_suppressed = signature
-        self.logger.info(f"[{source}] 已抑制（{reason}）：{detail}")
+        self.logger.info(f"通知已抑制 source={source} reason={reason} detail={detail}")
 
     def _clear_suppressed(self) -> None:
         self._last_suppressed = None
-
-    def _build_extra_info(self, prices_data: dict, model_info: str = "") -> dict:
-        extra_info: dict = {}
-        london_data = prices_data.get("hf_XAU")
-        if london_data:
-            extra_info["london_gold_usd"] = london_data["price"]
-            extra_info["london_gold_cny"] = london_data.get("converted_cny_price", 0)
-        if model_info:
-            extra_info["ai_model_info"] = model_info
-        return extra_info
 
     def _log_statistics(self) -> None:
         if self.check_count % 100 != 0:
             return
         run_time = (now() - self.start_time).total_seconds() / 60
-        self.logger.info("=== 运行统计 ===")
-        self.logger.info(f"运行时长：{run_time:.2f} 分钟")
-        self.logger.info(f"检查次数：{self.check_count}")
-        self.logger.info(f"报警次数：{self.alert_count}")
-        self.logger.info(f"日志大小：{get_log_size() / 1024:.2f} KB")
-        self.logger.info("================")
+        self.logger.info(
+            f"运行统计 runtime_min={run_time:.1f} checks={self.check_count} "
+            f"alerts={self.alert_count} log_kb={get_log_size() / 1024:.0f}"
+        )
 
     def _cleanup_logs(self) -> None:
         at = now()

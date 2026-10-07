@@ -58,7 +58,7 @@ class WechatWorkChannel(BaseNotificationChannel):
         if response.status_code == 200:
             resp_json = response.json()
             if resp_json.get("errcode") == 0:
-                logger.info("企业微信 markdown 消息发送成功")
+                logger.debug("企业微信消息发送成功")
                 return ChannelResult(
                     success=True,
                     channel_type=self.channel_type,
