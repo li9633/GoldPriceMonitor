@@ -30,7 +30,7 @@ class HistoryImportService:
             response.raise_for_status()
             return response.json()
         except (requests.RequestException, ValueError) as e:
-            logger.error(f"获取历史数据失败：{e}")
+            logger.warning(f"历史数据抓取失败 period={period} error={e}")
             return []
 
     def import_data(self, data_list: list[dict]) -> int:
@@ -42,33 +42,25 @@ class HistoryImportService:
                 price = float(item["price"])
                 records.append((self.symbol, price, date_time))
             except (ValueError, KeyError, TypeError) as e:
-                logger.error(f"转换数据失败：{e}")
+                logger.warning(f"历史数据记录格式异常，跳过 item={item} error={e}")
                 continue
         return self.price_mapper.batch_insert_prices(records)
 
     def import_all_historical_data(self) -> dict[str, int]:
         results = {}
-        logger.info("正在导入 60 天历史数据...")
-        data_60d = self.fetch_historical_data(period="60d")
-        if data_60d:
-            count_60d = self.import_data(data_60d)
-            results["60d"] = count_60d
-            logger.info(f"60 天数据导入完成，新增 {count_60d} 条记录")
-        else:
-            results["60d"] = 0
-            logger.error("60 天数据获取失败")
-
-        logger.info("正在导入 1 年历史数据...")
-        data_1y = self.fetch_historical_data(period="1y")
-        if data_1y:
-            count_1y = self.import_data(data_1y)
-            results["1y"] = count_1y
-            logger.info(f"1 年数据导入完成，新增 {count_1y} 条记录")
-        else:
-            results["1y"] = 0
-            logger.error("1 年数据获取失败")
-
+        results.update(self._import_period("60d"))
+        results.update(self._import_period("1y"))
+        logger.info(f"历史数据导入完成 results={results}")
         return results
+
+    def _import_period(self, period: str) -> dict[str, int]:
+        data = self.fetch_historical_data(period=period)
+        if not data:
+            logger.warning(f"历史数据抓取失败（下次启动重试） period={period}")
+            return {period: 0}
+        count = self.import_data(data)
+        logger.info(f"历史数据导入完成 period={period} inserted={count}")
+        return {period: count}
 
 
 def init_historical_data() -> bool:
@@ -78,22 +70,20 @@ def init_historical_data() -> bool:
     min_threshold = monitor_config.get("min_records_threshold", 100)
 
     if not importer.price_mapper.table_exists():
-        logger.info("数据库表不存在，开始创建并导入历史数据...")
-        logger.info("=" * 50)
+        logger.info(f"历史数据库不存在，开始初始化 symbol={importer.symbol}")
         try:
             results = importer.import_all_historical_data()
             total = sum(results.values())
-            logger.info("=" * 50)
-            logger.info(f"历史数据初始化完成，共新增 {total} 条记录")
+            logger.info(f"历史数据初始化完成 inserted={total}")
             return total > 0
         except (requests.RequestException, sqlite3.Error, ValueError) as e:
-            logger.error(f"历史数据导入失败：{e}")
+            logger.error(f"历史数据初始化失败 error={e}", exc_info=e)
             return False
 
     existing_count = importer.price_mapper.get_record_count(importer.symbol)
     if existing_count >= min_threshold:
         logger.info(
-            f"数据库已有 {existing_count} 条历史记录，跳过导入（阈值：{min_threshold}）"
+            f"历史数据充足，跳过导入 count={existing_count} threshold={min_threshold}"
         )
         return True
 

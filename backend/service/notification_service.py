@@ -109,11 +109,6 @@ class NotificationService:
         current_price = data.current_price
         alert_level = data.alert_level
 
-        logger.info("========== 开始发送建议 ==========")
-        logger.info(f"品种：{symbol_name}, 价格：{current_price}, 级别：{alert_level}")
-        if data.extra_info:
-            logger.info(f"额外信息：{data.extra_info}")
-
         if stop_on_first_success is None:
             strategy = self.settings.get_notification_strategy()
             stop_on_first_success = strategy.get("stop_on_first_success", True)
@@ -158,8 +153,9 @@ class NotificationService:
                 )
                 continue
 
-            logger.info(
-                f"[通知策略] [{i + 1}/{chain_total}] 尝试渠道：{channel.channel_name}"
+            logger.debug(
+                f"渠道尝试 chain={chain_id} channel={channel.channel_name} "
+                f"position={i + 1}/{chain_total}"
             )
             result = channel.send(data, cfg)
 
@@ -182,21 +178,22 @@ class NotificationService:
 
             if result.success:
                 any_success = True
-                logger.info(f"[通知结果] {channel.channel_name} 发送成功")
+                logger.info(
+                    f"渠道投递成功 chain={chain_id} "
+                    f"channel={channel.channel_name} latency_ms={result.latency_ms:.0f}"
+                )
                 if stop_on_first_success:
-                    logger.info(
-                        "========== 通知发送完成 (stop_on_first_success) =========="
-                    )
                     return True
             else:
                 logger.warning(
-                    f"[通知结果] {channel.channel_name} 发送失败：{result.error_detail}"
+                    f"渠道投递失败 chain={chain_id} channel={channel.channel_name} "
+                    f"error_type={result.error_type} detail={result.error_detail}"
                 )
 
         if any_success:
-            logger.info("========== 通知发送完成 (部分成功) ==========")
+            logger.info(f"通知投递完成（部分成功） chain={chain_id} kind={data.kind}")
         else:
-            logger.error("========== 通知发送完成 (全部失败) ==========")
+            logger.error(f"通知投递完成（全部失败） chain={chain_id} kind={data.kind}")
         return any_success
 
     def _get_channel_configs(self) -> list[dict]:
@@ -246,4 +243,4 @@ class NotificationService:
                 error_reason=error_reason,
             )
         except (OSError, ValueError, TypeError) as e:
-            logger.error(f"写入通知记录失败：{e}")
+            logger.error(f"通知记录写入失败 error={e}", exc_info=e)

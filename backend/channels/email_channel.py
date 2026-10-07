@@ -91,7 +91,7 @@ class EmailChannel(BaseNotificationChannel):
                 server.send_message(msg)
 
             latency_ms = (time.monotonic() - start) * 1000
-            logger.info("邮件发送成功")
+            logger.debug("邮件发送成功")
             return ChannelResult(
                 success=True,
                 channel_type=self.channel_type,

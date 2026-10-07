@@ -78,9 +78,10 @@ class ExchangeRateProviderManager:
         self._cache = result
         self._cache_time = time.time()
         self._check_data_freshness(result)
-        logger.info(
-            f"汇率获取成功: {result.rate} (来源: {result.provider}, "
-            f"数据源: {result.source}, 市场: {result.market_session})"
+        # 热路径（汇率缓存约 5 分钟一次）→ DEBUG
+        logger.debug(
+            f"汇率获取成功 rate={result.rate} provider={result.provider} "
+            f"source={result.source} market={result.market_session}"
         )
 
     def _on_failure(self, provider: BaseExchangeRateProvider) -> None:
@@ -106,10 +107,12 @@ class ExchangeRateProviderManager:
         ).total_seconds()
         if delay_seconds > 600:
             logger.warning(
-                f"汇率数据延迟过大: {delay_seconds:.0f} 秒 ({result.provider})"
+                f"汇率数据延迟过大 delay_seconds={delay_seconds:.0f} provider={result.provider}"
             )
         elif delay_seconds > 120:
-            logger.info(f"汇率数据略有延迟: {delay_seconds:.0f} 秒 ({result.provider})")
+            logger.debug(
+                f"汇率数据略有延迟 delay_seconds={delay_seconds:.0f} provider={result.provider}"
+            )
 
 
 _manager: ExchangeRateProviderManager | None = None

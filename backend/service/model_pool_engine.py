@@ -141,7 +141,7 @@ class ModelPool:
         for provider_cfg in self.providers:
             provider_name = provider_cfg["name"]
             if not provider_cfg.get("api_key"):
-                logger.debug(f"跳过供应商 [{provider_name}]：未配置 API Key")
+                logger.debug(f"跳过供应商 provider={provider_name} reason=no_api_key")
                 continue
 
             provider_cd = self._provider_cooldowns.get(provider_name)
@@ -160,14 +160,14 @@ class ModelPool:
                     )
                     continue
 
-                logger.info(f"尝试 [{provider_name}]/{model} ...")
+                logger.info(f"模型调用开始 provider={provider_name} model={model}")
                 # L1: 智能重试
                 model_start = time.monotonic()
                 result = self._retry_with_backoff(
                     provider_cfg, model, system_prompt, user_prompt
                 )
                 if result.success:
-                    logger.info(f"[{provider_name}]/{model} 调用成功")
+                    logger.info(f"模型调用成功 provider={provider_name} model={model}")
                     self._on_provider_success(provider_name)
                     self._update_cache(cache_key, result)
                     self._log_call(result, model_start)
@@ -176,9 +176,12 @@ class ModelPool:
                 # 失败：记录本次失败（延迟只计本模型耗时），按错误类别施加冷却
                 self._log_call(result, model_start)
                 self._apply_penalty(provider_name, model, result)
-                logger.warning(f"[{provider_name}]/{model} 失败 → 尝试下一个候选")
+                logger.warning(
+                    f"模型调用失败，尝试下一候选 provider={provider_name} "
+                    f"model={model} error_class={result.error_class.value if result.error_class else None}"
+                )
 
-            logger.warning(f"供应商 [{provider_name}] 全部失败 → 尝试下一个供应商")
+            logger.warning(f"供应商全部模型失败 provider={provider_name}")
 
         # L4: 优雅降级
         result = self._graceful_degradation(cache_key)
@@ -201,9 +204,9 @@ class ModelPool:
             )
             cooldown = self._model_cooldowns[key]
             logger.warning(
-                f"[{provider_name}]/{model} 限速冷却 "
-                f"{(cooldown.until - now()).total_seconds():.0f}s"
-                f"（第 {cooldown.strikes} 级）"
+                f"模型限速冷却 provider={provider_name} model={model} "
+                f"seconds={(cooldown.until - now()).total_seconds():.0f} "
+                f"strikes={cooldown.strikes}"
             )
 
             throttles = self._provider_throttles.get(provider_name, 0) + 1
@@ -215,9 +218,10 @@ class ModelPool:
                 pcd = self._provider_cooldowns[provider_name]
                 self._provider_throttles[provider_name] = 0
                 logger.warning(
-                    f"供应商 [{provider_name}] 累计 {throttles} 个模型限速，"
-                    f"整级冷却 {(pcd.until - now()).total_seconds():.0f}s"
-                    f"（第 {pcd.strikes} 级）"
+                    f"供应商整级冷却 provider={provider_name} "
+                    f"throttled_models={throttles} "
+                    f"seconds={(pcd.until - now()).total_seconds():.0f} "
+                    f"strikes={pcd.strikes}"
                 )
             else:
                 self._provider_throttles[provider_name] = throttles
@@ -228,7 +232,8 @@ class ModelPool:
                 until=now() + timedelta(seconds=_OVERLOAD_COOLDOWN), strikes=1
             )
             logger.info(
-                f"[{provider_name}]/{model} 过载/网络失败，短冷却 {_OVERLOAD_COOLDOWN:.0f}s"
+                f"模型过载/网络失败短冷却 provider={provider_name} model={model} "
+                f"seconds={_OVERLOAD_COOLDOWN:.0f} error_class={klass.value}"
             )
 
         # FATAL：确定性失败，不冷却（下一轮调用仍会尝试，由结果本身决定）
@@ -255,8 +260,8 @@ class ModelPool:
             if attempt > 0:
                 delay = self.retry_base_delay * (2 ** (attempt - 1))
                 logger.warning(
-                    f"[{provider['name']}]/{model} 第 {attempt}/{self.max_retries} 次重试，"
-                    f"等待 {delay:.1f}s"
+                    f"模型重试 provider={provider['name']} model={model} "
+                    f"attempt={attempt}/{self.max_retries} delay={delay:.1f}s"
                 )
                 time.sleep(delay)
 
@@ -265,15 +270,15 @@ class ModelPool:
                 if result.success:
                     if attempt > 0:
                         logger.info(
-                            f"[{provider['name']}]/{model} 第 {attempt} 次重试成功"
+                            f"模型重试成功 provider={provider['name']} model={model} "
+                            f"attempt={attempt}"
                         )
                     return result
                 klass = result.error_class
                 if klass in (ErrorClass.RATE_LIMITED, ErrorClass.FATAL):
                     logger.warning(
-                        f"[{provider['name']}]/{model} "
-                        f"{'限速' if klass is ErrorClass.RATE_LIMITED else '确定性错误'}，"
-                        "跳过原地重试"
+                        f"跳过原地重试 provider={provider['name']} model={model} "
+                        f"error_class={klass.value}"
                     )
                     return result
                 last_error = result.error
@@ -283,14 +288,15 @@ class ModelPool:
             except Exception as e:  # noqa: BLE001
                 last_error = str(e)
                 logger.warning(
-                    f"[{provider['name']}]/{model} 未捕获异常 | "
-                    f"类型={type(e).__name__} | 详情={e}"
+                    f"模型调用未捕获异常 provider={provider['name']} model={model} "
+                    f"type={type(e).__name__} error={e}"
                 )
                 if attempt >= 1:
                     break
 
         logger.error(
-            f"[{provider['name']}]/{model} 原地重试耗尽 | 最后错误={last_error}"
+            f"模型原地重试耗尽 provider={provider['name']} model={model} "
+            f"last_error={last_error}"
         )
         return ModelResult(
             success=False,
@@ -352,8 +358,8 @@ class ModelPool:
                         else ""
                     )
                     logger.warning(
-                        f"{label} [API] 返回业务错误"
-                        f" | code={err_code} | message={err_msg}"
+                        f"API 业务错误 provider={provider['name']} model={model} "
+                        f"code={err_code} message={err_msg}"
                     )
                     return ModelResult(
                         success=False,
@@ -367,7 +373,8 @@ class ModelPool:
                 finish_reason = choice.get("finish_reason", "")
                 if finish_reason == "length":
                     logger.warning(
-                        f"{label} AI 响应因长度限制被截断，考虑增大 max_tokens"
+                        f"AI 响应被截断 provider={provider['name']} model={model} "
+                        "finish_reason=length（考虑增大 max_tokens）"
                     )
                 return ModelResult(
                     success=True,
@@ -381,8 +388,8 @@ class ModelPool:
             status_desc = _describe_http_status(resp.status_code)
             body_preview = resp.text[:200].replace("\n", " ")
             logger.warning(
-                f"{label} [HTTP {resp.status_code}] {status_desc}"
-                f" | 响应体={body_preview}"
+                f"HTTP 错误 provider={provider['name']} model={model} "
+                f"status={resp.status_code} desc={status_desc} body={body_preview}"
             )
 
             retry_after: float | None = None
@@ -397,8 +404,8 @@ class ModelPool:
                 wait = min(retry_after, _RETRY_AFTER_SLEEP_CAP)
                 capped = "" if wait >= retry_after else "（封顶）"
                 logger.info(
-                    f"{label} 服务端要求等待 {retry_after:.0f}s，"
-                    f"同步等待 {wait:.0f}s{capped}"
+                    f"Retry-After 等待 provider={provider['name']} model={model} "
+                    f"hint={retry_after:.0f}s sleep={wait:.0f}s{capped}"
                 )
                 time.sleep(wait)
 
@@ -416,9 +423,8 @@ class ModelPool:
 
         except requests.Timeout:
             logger.warning(
-                f"{label} [TIMEOUT] 请求超时"
-                f" | URL={provider['api_url']}"
-                f" | 超时设置={provider.get('timeout', 30)}s"
+                f"请求超时 provider={provider['name']} model={model} "
+                f"timeout={provider.get('timeout', 30)}s url={provider['api_url']}"
             )
             return ModelResult(
                 success=False,
@@ -430,7 +436,8 @@ class ModelPool:
 
         except requests.ConnectionError as e:
             logger.error(
-                f"{label} [NETWORK] 网络连接失败 | URL={provider['api_url']} | 原因={e}"
+                f"网络连接失败 provider={provider['name']} model={model} "
+                f"url={provider['api_url']} error={e}"
             )
             return ModelResult(
                 success=False,
@@ -442,7 +449,8 @@ class ModelPool:
 
         except requests.RequestException as e:
             logger.error(
-                f"{label} [REQUEST] 请求异常 | 类型={type(e).__name__} | 详情={e}"
+                f"请求异常 provider={provider['name']} model={model} "
+                f"type={type(e).__name__} error={e}"
             )
             return ModelResult(
                 success=False,
@@ -501,7 +509,7 @@ class ModelPool:
                 total_tokens=total_tokens,
             )
         except sqlite3.Error:
-            logger.warning("AI 调用统计写入失败！")
+            logger.warning("AI 调用统计写入失败（不影响调用结果）")
 
     @staticmethod
     def _extract_tokens(raw_response: str | None) -> tuple[int, int, int]:
