@@ -36,6 +36,10 @@ class SinaPriceProvider(PriceProvider):
     def provider_name(self) -> str:
         return "sina"
 
+    @property
+    def api_url(self) -> str:
+        return _API_URL
+
     def fetch(self, symbol: str) -> PriceQuote | None:
         try:
             response = requests.get(

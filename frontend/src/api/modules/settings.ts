@@ -72,8 +72,27 @@ export interface LogConfig {
   log_level: string
 }
 
+export interface DataSourceStatus {
+  name: string
+  api_url: string
+  /** 主源 / 备源 */
+  role: string
+  /** 当前是否生效（主备切换后的实际状态） */
+  active: boolean
+}
+
+export interface CalendarStatus {
+  active_source: string
+  primary_source: string
+  online_source: string
+  degraded: boolean
+  cached_days: number
+}
+
 export interface InfrastructureConfig {
   gold_price_api_url: string
+  gold_price_sources: DataSourceStatus[]
+  exchange_rate_sources: DataSourceStatus[]
   timezone: string
   debug_mode: boolean
   log_dir: string
@@ -141,5 +160,9 @@ export const settingsApi = {
 
   getInfrastructure() {
     return request.get<InfrastructureConfig>('/settings/infrastructure')
+  },
+
+  getCalendarStatus() {
+    return request.get<CalendarStatus>('/settings/calendar/status')
   },
 }

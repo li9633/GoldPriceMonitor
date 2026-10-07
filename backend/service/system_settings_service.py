@@ -4,6 +4,8 @@ from typing import Self
 
 from config import DEBUG, GOLD_PRICE_API_URL, LOG_DIR
 from mapper.system_settings_mapper import SystemSettingsMapper
+from providers import get_rate_manager
+from providers.price import get_price_manager
 from utils.logger import get_logger
 
 logger = get_logger("SystemSettings")
@@ -145,6 +147,9 @@ class SystemSettingsService:
         db_files, db_file_count, db_dir_size = SystemSettingsService._scan_dir("data")
         return {
             "gold_price_api_url": GOLD_PRICE_API_URL,
+            # provider 化后的数据源链：主备角色 + 当前生效源
+            "gold_price_sources": get_price_manager().sources_status(),
+            "exchange_rate_sources": get_rate_manager().sources_status(),
             "timezone": "UTC+8",
             "debug_mode": DEBUG,
             "log_dir": LOG_DIR,

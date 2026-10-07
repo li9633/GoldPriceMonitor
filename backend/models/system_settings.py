@@ -103,10 +103,23 @@ class NotificationStrategyModel(BaseModel):
     stop_on_first_success: bool = True
 
 
+class DataSourceStatusModel(BaseModel):
+    """数据源链中单个源的状态（设置页只读展示）"""
+
+    name: str
+    api_url: str = ""
+    #: 主源 / 备源
+    role: str = "备源"
+    #: 当前是否生效（主备切换后的实际状态）
+    active: bool = False
+
+
 class InfrastructureConfigModel(BaseModel):
     """基础设施配置 — 前端只读展示"""
 
     gold_price_api_url: str = ""
+    gold_price_sources: list[DataSourceStatusModel] = []
+    exchange_rate_sources: list[DataSourceStatusModel] = []
     timezone: str = "UTC+8"
     debug_mode: bool = False
     log_dir: str = "logs"

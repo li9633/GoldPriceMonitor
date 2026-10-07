@@ -32,6 +32,12 @@ class PriceProvider(ABC):
     @abstractmethod
     def provider_name(self) -> str: ...
 
+    @property
+    @abstractmethod
+    def api_url(self) -> str:
+        """数据端点（供设置页展示；含 {symbol} 占位符的为按品种请求）"""
+        ...
+
     @abstractmethod
     def fetch(self, symbol: str) -> PriceQuote | None:
         """获取单品种报价；失败返回 None（不抛异常）"""
