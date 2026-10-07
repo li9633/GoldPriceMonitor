@@ -1,7 +1,22 @@
-"""通知渠道的基础设施。所有外发消息都是「建议」，载荷为 `AdviceData`。"""
+"""通知渠道的基础设施。
+
+所有外发消息统一为 `NotificationData`，按 `kind` 区分语义：
+建议 / 复盘走 `advice` 载荷，其余类型（波动提醒、每日摘要、节后缺口…）
+走 `fields` 通用字段，模板按 kind 注册渲染器 —— 新增消息类型无需改渠道。
+"""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+
+# ---- 消息类型 ----
+KIND_ADVICE = "advice"  # 买入建议
+KIND_REVIEW = "review"  # 买入后 T+n 复盘（渲染同建议）
+KIND_VOLATILITY = "volatility"  # 价格波动事件
+KIND_DIGEST = "digest"  # 每日行情摘要
+KIND_REOPEN_GAP = "reopen_gap"  # 节后开盘缺口预告
+
+#: 建议类消息（渲染走建议模板，需要 advice 载荷）
+ADVICE_KINDS = (KIND_ADVICE, KIND_REVIEW)
 
 
 @dataclass
@@ -37,18 +52,29 @@ class AdvicePayload:
 
 
 @dataclass
-class AdviceData:
-    """通知载荷 —— 建议类消息的统一载体。
+class NotificationData:
+    """通知载荷 —— 所有外发消息的统一载体。
 
     `alert_level` 对应通知日志列 `notification_send_logs.alert_level`，前端统计页按它上色。
+    非 advice 类消息用 `fields` 携带已格式化的字段（键为中文标签，值为展示文本），
+    `summary` 用于投递日志的一行摘要。
     """
 
-    symbol: str
-    symbol_name: str
-    current_price: float
-    advice: AdvicePayload
+    kind: str = KIND_ADVICE
+    symbol: str = ""
+    symbol_name: str = ""
+    current_price: float = 0.0
+    advice: AdvicePayload | None = None
+    fields: dict[str, str] = field(default_factory=dict)
     extra_info: dict | None = None
+    #: 保持旧 AdviceData 的默认值（建议类语义）；非建议类消息在
+    #: `NotificationService.send()` 分发时降级为 info，除非显式指定
     alert_level: str = "warning"
+    summary: str = ""
+
+
+#: 兼容别名：阶段 A 之前所有消息都是建议，旧代码与测试按此名引用
+AdviceData = NotificationData
 
 
 class BaseNotificationChannel(ABC):
@@ -61,7 +87,7 @@ class BaseNotificationChannel(ABC):
     def channel_name(self) -> str: ...
 
     @abstractmethod
-    def send(self, data: AdviceData, config: dict) -> ChannelResult: ...
+    def send(self, data: NotificationData, config: dict) -> ChannelResult: ...
 
     def validate_config(self, config: dict) -> bool:
         return True

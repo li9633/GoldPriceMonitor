@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 
+from channels.base import ADVICE_KINDS, NotificationData
 from config import DEBUG
 from utils.time_utils import now, now_str
 
@@ -59,6 +60,105 @@ class MessageTemplate:
 ---
 *建议由规则计算生成，仅供参考，不构成投资建议*"""
 
+    #: 非 advice 类消息的标题（volatility / digest / reopen_gap …）。
+    #: 新 kind 只要在这里登记标题，渠道与通用渲染器零改动即可投递。
+    KIND_TITLES = {
+        "volatility": "黄金价格波动提醒",
+        "digest": "黄金每日行情摘要",
+        "reopen_gap": "节后开盘提示",
+    }
+
+    # 企业微信 Markdown 通用模板（fields 逐行展开）
+    WECHAT_GENERIC_TEMPLATE = """## <font color="info">[{title}]</font>
+
+**品种**：{symbol_name}
+**当前价格**：{price}
+{field_lines}
+**生成时间**：{time}
+{debug_notice}
+---
+*消息由系统自动生成，仅供参考，不构成投资建议*"""
+
+    @classmethod
+    def format(cls, kind: str, data, template_type: str = "markdown") -> str:
+        """按消息类型分发渲染。
+
+        advice/review 走建议模板；其余 kind 走通用模板（`fields` 逐行展开）。
+        """
+        if kind in ADVICE_KINDS:
+            return cls.format_advice(data, template_type=template_type)
+        return cls.format_generic(data, template_type=template_type)
+
+    @classmethod
+    def kind_title(cls, kind: str) -> str:
+        return cls.KIND_TITLES.get(kind, kind)
+
+    @classmethod
+    def format_generic(cls, data, template_type: str = "markdown") -> str:
+        """渲染非建议类消息：fields 里的键值对逐行展开"""
+        title = cls.kind_title(data.kind)
+        display_price = cls._format_price(data.current_price)
+        debug_notice = (
+            '<div class="debug-notice">[开发环境] 此消息为测试数据</div>'
+            if template_type == "email"
+            else '> <font color="comment">[开发环境] 此消息为测试数据</font>'
+        ) if DEBUG else ""
+        display_time = now_str("%Y-%m-%d %H:%M:%S")
+
+        if template_type == "email":
+            fields_html = "\n".join(
+                f'<div class="meta">{cls._escape_html(label)}：'
+                f"{cls._escape_html(value)}</div>"
+                for label, value in data.fields.items()
+            )
+            symbol_html = (
+                f'<div class="meta">品种：{cls._escape_html(data.symbol_name)}</div>'
+                if data.symbol_name
+                else ""
+            )
+            price_html = (
+                f'<div class="meta">当前价格：{display_price}</div>'
+                if display_price
+                else ""
+            )
+            return (
+                "<html><body style='font-family: sans-serif; max-width: 640px'>"
+                f"<h2>{cls._escape_html(title)}</h2>"
+                f"{symbol_html}{price_html}{fields_html}"
+                f"<div class='meta'>生成时间：{display_time}</div>"
+                f"{debug_notice}"
+                "<hr/><small>消息由系统自动生成，仅供参考，不构成投资建议</small>"
+                "</body></html>"
+            )
+
+        field_lines = "\n".join(
+            f"**{cls._escape_markdown(label)}**：{cls._escape_markdown(value)}"
+            for label, value in data.fields.items()
+        )
+        symbol_line = (
+            f"**品种**：{cls._escape_markdown(data.symbol_name)}\n"
+            if data.symbol_name
+            else ""
+        )
+        price_line = f"**当前价格**：{display_price}\n" if display_price else ""
+        return cls.WECHAT_GENERIC_TEMPLATE.format(
+            title=cls._escape_markdown(title),
+            symbol_name=symbol_line,
+            price=price_line,
+            field_lines=field_lines,
+            time=display_time,
+            debug_notice=debug_notice,
+        )
+
+    @classmethod
+    def _format_price(cls, price) -> str:
+        """价格展示：非正值（未提供）返回空串"""
+        if isinstance(price, (int, float)) and price > 0:
+            return f"{price:.2f}"
+        if isinstance(price, str) and price:
+            return price
+        return ""
+
     @classmethod
     def _load_email_advice_template(cls) -> str:
         if cls._email_advice_template is not None:
@@ -69,14 +169,14 @@ class MessageTemplate:
         return cls._email_advice_template
 
     @classmethod
-    def format_advice(cls, data, template_type: str = "markdown") -> str:
+    def format_advice(cls, data: NotificationData, template_type: str = "markdown") -> str:
         """渲染建议消息。
 
         动作、数量、价位区间与持仓上下文。
         """
-        advice = getattr(data, "advice", None)
+        advice = data.advice
         if advice is None:
-            raise ValueError("format_advice 需要 AdviceData.advice 载荷")
+            raise ValueError("format_advice 需要 NotificationData.advice 载荷")
 
         symbol_name = _get_symbol_name_map().get(data.symbol, data.symbol)
         price = data.current_price

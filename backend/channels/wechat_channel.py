@@ -1,9 +1,9 @@
 import time
 
 from channels.base import (
-    AdviceData,
     BaseNotificationChannel,
     ChannelResult,
+    NotificationData,
     classify_error,
 )
 from utils.http_utils import safe_post_json
@@ -27,7 +27,7 @@ class WechatWorkChannel(BaseNotificationChannel):
             return False
         return bool(config.get("webhook_url", "").strip())
 
-    def send(self, data: AdviceData, config: dict) -> ChannelResult:
+    def send(self, data: NotificationData, config: dict) -> ChannelResult:
         start = time.monotonic()
         if not self.validate_config(config):
             return ChannelResult(
@@ -39,7 +39,7 @@ class WechatWorkChannel(BaseNotificationChannel):
                 error_detail="webhook_url 未配置",
             )
 
-        message = MessageTemplate.format_advice(data, template_type="markdown")
+        message = MessageTemplate.format(data.kind, data, template_type="markdown")
 
         payload = {"msgtype": "markdown", "markdown": {"content": message}}
         response = safe_post_json(config["webhook_url"], payload, timeout=10)
