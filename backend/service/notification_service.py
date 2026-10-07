@@ -4,6 +4,7 @@ from channels import (
     ADVICE_KINDS,
     KIND_REVIEW,
     AdvicePayload,
+    ChannelResult,
     NotificationData,
     get_channel,
 )
@@ -84,8 +85,9 @@ class NotificationService:
         渠道按 kind 自动选择渲染模板。
         """
         assert data.kind not in ADVICE_KINDS, "建议类消息请走 send_advice()"
-        # 非 advice 类消息默认 info 级（除非调用方显式给了别的级别）
-        if data.alert_level == "warning":
+        # 未指定级别的消息按 info 投递；显式指定的（如波动提醒的
+        # warning/critical）原样透传，保证前端统计页的级别语义不失真
+        if data.alert_level is None:
             data.alert_level = "info"
         summary = data.summary or MessageTemplate.kind_title(data.kind)
         return self._dispatch(
@@ -107,7 +109,7 @@ class NotificationService:
         symbol = data.symbol
         symbol_name = data.symbol_name
         current_price = data.current_price
-        alert_level = data.alert_level
+        alert_level = data.alert_level or "info"
 
         if stop_on_first_success is None:
             strategy = self.settings.get_notification_strategy()
@@ -157,7 +159,23 @@ class NotificationService:
                 f"渠道尝试 chain={chain_id} channel={channel.channel_name} "
                 f"position={i + 1}/{chain_total}"
             )
-            result = channel.send(data, cfg)
+            try:
+                result = channel.send(data, cfg)
+            except Exception as exc:  # noqa: BLE001
+                # 单渠道异常不允许炸掉整条投递链（排在其后的渠道不再尝试）
+                # 与整个 tick —— 转成失败结果继续走
+                logger.error(
+                    f"渠道投递异常 chain={chain_id} "
+                    f"channel={channel.channel_name}: {exc}",
+                    exc_info=exc,
+                )
+                result = ChannelResult(
+                    success=False,
+                    channel_type=channel_type,
+                    message=f"渠道异常：{exc}",
+                    error_type="channel_exception",
+                    error_detail=str(exc)[:200],
+                )
 
             self._record_log(
                 alert_level,
@@ -242,5 +260,7 @@ class NotificationService:
                 error_type=error_type,
                 error_reason=error_reason,
             )
-        except (OSError, ValueError, TypeError) as e:
+        except Exception as e:  # noqa: BLE001
+            # 写统计失败绝不允许中断投递链（sqlite3.Error 等
+            # 不在窄过滤里，曾是漏网之鱼）
             logger.error(f"通知记录写入失败 error={e}", exc_info=e)

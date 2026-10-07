@@ -319,10 +319,11 @@ def test_opening_column_in_schema_and_migration() -> None:
         conn.close()
 
         mapper = PortfolioMapper(db_file=db)  # init_tables 应完成迁移
-        columns = {
-            row[1]
-            for row in sqlite3.connect(db).execute("PRAGMA table_info(purchase_lots)")
-        }
+        with contextlib.closing(sqlite3.connect(db)) as conn:
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(purchase_lots)")
+            }
         assert "is_opening" in columns
 
         lot_id = mapper.insert_lot(

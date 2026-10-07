@@ -161,20 +161,27 @@ class AdviceMapper:
             return int(c.lastrowid or 0)
 
     def update_status(
-        self, advice_id: int, status: str, acted_lot_id: int | None = None
+        self,
+        advice_id: int,
+        status: str,
+        acted_lot_id: int | None = None,
+        suppressed_reason: str | None = None,
     ) -> bool:
         with self._connect() as conn:
             c = conn.cursor()
-            if acted_lot_id is None:
-                c.execute(
-                    "UPDATE advice_records SET status = ? WHERE id = ?",
-                    (status, advice_id),
-                )
-            else:
-                c.execute(
-                    "UPDATE advice_records SET status = ?, acted_lot_id = ? WHERE id = ?",
-                    (status, acted_lot_id, advice_id),
-                )
+            sets = ["status = ?"]
+            params: list[object] = [status]
+            if acted_lot_id is not None:
+                sets.append("acted_lot_id = ?")
+                params.append(acted_lot_id)
+            if suppressed_reason is not None:
+                sets.append("suppressed_reason = ?")
+                params.append(suppressed_reason)
+            params.append(advice_id)
+            c.execute(
+                f"UPDATE advice_records SET {', '.join(sets)} WHERE id = ?",
+                params,
+            )
             return c.rowcount > 0
 
     def update_review_prices(

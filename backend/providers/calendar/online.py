@@ -40,11 +40,18 @@ class OnlineCalendarProvider(TradingCalendarProvider):
             logger.warning("haoshenqi 查询 %s 失败：%s", day, exc)
             return CalendarVerdict.UNKNOWN
 
-        # 响应形态不统一：多数日期返回对象，个别日期返回列表
+        # 响应形态不统一：多数日期返回对象，个别日期返回列表。
+        # 列表中必须精确匹配目标日期 —— 兜底取 data[0] 会把别的日期的判定
+        # 张冠李戴，还可能被门面落库永久生效；匹配不到一律 UNKNOWN 回退。
         if isinstance(data, list):
             data = next(
-                (item for item in data if item.get("date") == day.isoformat()),
-                data[0] if data else None,
+                (
+                    item
+                    for item in data
+                    if isinstance(item, dict)
+                    and item.get("date") == day.isoformat()
+                ),
+                None,
             )
         if not isinstance(data, dict) or "status" not in data:
             logger.warning("haoshenqi 返回结构异常：%s", str(data)[:120])

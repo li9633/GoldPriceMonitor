@@ -159,8 +159,14 @@ class MonitorService:
 
         # 时段闸门：每个巡检周期只判断一次
         decision = self.send_gate.policy_decision()
-        self._advise(prices_data, current_price, decision)
-        self._run_followups(prices_data, decision)
+        if not decision.allowed:
+            self._note_suppressed("建议", decision.reason, decision.detail)
+        # 全部触发器统一走 registry 评估（异常隔离在 registry 内，单触发器
+        # 失败不影响其余触发器与本 tick 的后续步骤）
+        outcome = self.trigger_registry.evaluate_all(
+            self._tick_context(prices_data, decision, current_price)
+        )
+        self._handle_outcome(outcome, decision)
         self._refresh_reviews_if_due()
         self._log_statistics()
         self._cleanup_logs()
@@ -208,7 +214,8 @@ class MonitorService:
     ) -> None:
         """生成建议并按闸门决定是否推送。
 
-        兼容入口：评估逻辑在 `AdviceTrigger`，这里只做闸门、落库与投递。
+        兼容入口（测试用）：生产路径已统一走 `trigger_registry.evaluate_all`
+        （见 `_tick`）。评估逻辑在 `AdviceTrigger`，这里只做闸门与分发。
         """
         # 时段闸门：休市静默 —— 不生成建议、也不调用 AI
         if not decision.allowed:
@@ -246,7 +253,10 @@ class MonitorService:
     # ==================== 买入后 T+n 复盘 ====================
 
     def _run_followups(self, prices_data: dict, decision: GateDecision) -> None:
-        """为到点的买入生成复盘建议（T+1 / T+7 / T+30）。兼容入口。"""
+        """为到点的买入生成复盘建议（T+1 / T+7 / T+30）。
+
+        兼容入口（测试用）：生产路径已统一走 `trigger_registry.evaluate_all`。
+        """
         outcome = self.followup_trigger.evaluate(
             self._tick_context(prices_data, decision)
         )
@@ -296,10 +306,23 @@ class MonitorService:
                         f"action={record.action.value} price={ev.current_price}"
                     )
                 else:
-                    self.logger.warning(
-                        f"建议投递失败（无渠道成功） advice_id={record.id} "
-                        f"action={record.action.value}"
-                    )
+                    # 投递失败：把刚才落库的记录改为 suppressed ——
+                    # has_review 与 last_pushed 都跳过 suppressed 记录，
+                    # 复盘会在下个追补窗口自动重试，建议节流基准自动回退。
+                    if self.advice_engine.advice_mapper.update_status(
+                        record.id,
+                        AdviceStatus.SUPPRESSED.value,
+                        suppressed_reason="send_failed",
+                    ):
+                        self.logger.warning(
+                            f"建议投递失败（无渠道成功），已回滚为待重试 "
+                            f"advice_id={record.id} action={record.action.value}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"建议投递失败（无渠道成功），回滚失败 "
+                            f"advice_id={record.id} action={record.action.value}"
+                        )
             elif ev.notification is not None:
                 if self.notification_service.send(ev.notification):
                     self.alert_count += 1

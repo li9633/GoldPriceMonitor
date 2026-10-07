@@ -84,7 +84,9 @@ class EmailChannel(BaseNotificationChannel):
             msg["To"] = config["receiver_email"]
 
             with smtplib.SMTP(
-                config["smtp_server"], config.get("smtp_port", 587)
+                config["smtp_server"],
+                config.get("smtp_port", 587),
+                timeout=10,
             ) as server:
                 server.starttls()
                 server.login(config["sender_email"], config["sender_password"])

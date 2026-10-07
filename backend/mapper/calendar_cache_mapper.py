@@ -59,14 +59,35 @@ class CalendarCacheMapper:
             )"""
             )
 
+    #: 缓存里允许出现的判定值；脏值（手工编辑/旧版本写入）一律自愈清除
+    _VALID_VERDICTS = ("holiday", "workday")
+
     def get(self, day: date) -> str | None:
-        """返回缓存的判定（'holiday' / 'workday'），无记录返回 None"""
+        """返回缓存的判定（'holiday' / 'workday'），无记录返回 None。
+
+        脏值直接删除并返回 None（回退在线源重新判定），避免
+        `CalendarVerdict(脏值)` 在查询链路上每轮抛异常打崩主循环。
+        """
         with self._session() as conn:
             row = conn.execute(
                 "SELECT verdict FROM holiday_cache WHERE day = ?",
                 (day.isoformat(),),
             ).fetchone()
-        return row["verdict"] if row else None
+        verdict = row["verdict"] if row else None
+        if verdict is not None and verdict not in self._VALID_VERDICTS:
+            logger.error(
+                f"holiday_cache 存在脏值，已清除 day={day.isoformat()} "
+                f"verdict={verdict!r}"
+            )
+            self.delete(day)
+            return None
+        return verdict
+
+    def delete(self, day: date) -> None:
+        with self._session() as conn:
+            conn.execute(
+                "DELETE FROM holiday_cache WHERE day = ?", (day.isoformat(),)
+            )
 
     def put(self, day: date, verdict: str, source: str) -> None:
         with self._session() as conn:

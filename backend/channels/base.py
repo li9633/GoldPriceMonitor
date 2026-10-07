@@ -67,9 +67,9 @@ class NotificationData:
     advice: AdvicePayload | None = None
     fields: dict[str, str] = field(default_factory=dict)
     extra_info: dict | None = None
-    #: 保持旧 AdviceData 的默认值（建议类语义）；非建议类消息在
-    #: `NotificationService.send()` 分发时降级为 info，除非显式指定
-    alert_level: str = "warning"
+    #: None = 未指定 —— 非建议类消息在 `NotificationService.send()` 分发时
+    #: 降为 info；显式指定（如波动提醒 warning/critical）则原样透传
+    alert_level: str | None = None
     summary: str = ""
 
 

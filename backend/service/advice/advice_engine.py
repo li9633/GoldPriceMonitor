@@ -307,6 +307,17 @@ class AdviceEngine:
         # 行情口径：默认与主体相同；INTL_ONLY 时来自国际金
         view_symbol = market_symbol or symbol
         snapshot = self.price_mapper.get_check_snapshot(view_symbol)
+        if (
+            market_symbol
+            and market_symbol != symbol
+            and snapshot is not None
+            and london_usd
+            and float(london_usd) > 0
+        ):
+            # INTL_ONLY：hf_XAU 序列是美元/盎司，而现价是折算 ¥/g ——
+            # 快照必须先换算成同一口径，否则 pct_from_* / ma20 对比等
+            # 指标会相差一个数量级，产生「远低于 3 个月低位」之类的假信号。
+            snapshot = snapshot.scaled(current_price / float(london_usd))
         indicators = MarketIndicators.from_snapshot(
             snapshot, current_price, london_cny, london_usd
         )
@@ -325,7 +336,13 @@ class AdviceEngine:
 
         entry_strategy = None
         if with_entry_strategy:
-            entry_strategy = self.entry_evaluator.evaluate(view_symbol, current_price)
+            # 序列口径是视图品种的：INTL_ONLY 时参考点也要用美元口径
+            entry_price = (
+                float(london_usd)
+                if market_symbol and market_symbol != symbol and london_usd
+                else current_price
+            )
+            entry_strategy = self.entry_evaluator.evaluate(view_symbol, entry_price)
 
         return AdviceContext(
             symbol=symbol,

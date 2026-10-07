@@ -462,10 +462,11 @@ def test_migration_adds_columns_to_existing_db() -> None:
         conn.close()
 
         mapper = AdviceMapper(db_file=db)  # init_tables 应完成迁移
-        columns = {
-            row[1]
-            for row in sqlite3.connect(db).execute("PRAGMA table_info(advice_records)")
-        }
+        with contextlib.closing(sqlite3.connect(db)) as conn:
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(advice_records)")
+            }
         assert {"subject_lot_id", "review_horizon"} <= columns
 
         advice_id = mapper.insert_advice(

@@ -57,8 +57,8 @@ class VolatilityTrigger(Trigger):
         )
         move = pct_change(price, base)
 
-        trigger_pct = float(config["volatility_trigger_pct"])
-        critical_pct = float(config["volatility_critical_pct"])
+        trigger_pct = max(float(config["volatility_trigger_pct"]), 0.1)
+        critical_pct = max(float(config["volatility_critical_pct"]), trigger_pct)
         level = 2 if abs(move or 0) >= critical_pct else (
             1 if abs(move or 0) >= trigger_pct else 0
         )
@@ -74,7 +74,13 @@ class VolatilityTrigger(Trigger):
         ):
             return TriggerOutcome()
 
-        direction = "上涨" if (move or 0) > 0 else "下跌"
+        move_val = move or 0.0
+        if move_val > 0:
+            direction = "上涨"
+        elif move_val < 0:
+            direction = "下跌"
+        else:
+            direction = "持平"
         symbol_name = self.settings.get_symbol_name_map().get(key, key)
         fields = {
             label: fmt_pct(move),
