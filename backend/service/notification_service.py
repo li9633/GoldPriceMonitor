@@ -1,6 +1,12 @@
 import uuid
 
-from channels import AdviceData, AdvicePayload, get_channel
+from channels import (
+    ADVICE_KINDS,
+    KIND_REVIEW,
+    AdvicePayload,
+    NotificationData,
+    get_channel,
+)
 from models.advice import ACTION_ALERT_LEVEL
 from service.notification_stats_service import NotificationStatsService
 from service.system_settings_service import SystemSettingsService
@@ -23,7 +29,7 @@ class NotificationService:
         channel_filter: list[str] | None = None,
         stop_on_first_success: bool | None = None,
     ) -> bool:
-        """投递一条建议。
+        """投递一条建议（或复盘建议）。
 
         `advice` 是 `models.advice.AdviceRecord`；持仓上下文从它冻结的 `evidence`
         里取，保证「消息里说的持仓」与「当时生成建议用的持仓」一致。
@@ -32,8 +38,10 @@ class NotificationService:
         position = (advice.evidence or {}).get("position") or {}
         action = advice.action.value
         level = ACTION_ALERT_LEVEL.get(action, "warning")
+        kind = KIND_REVIEW if advice.review_horizon else "advice"
 
-        data = AdviceData(
+        data = NotificationData(
+            kind=kind,
             symbol=advice.symbol,
             symbol_name=symbol_name,
             current_price=current_price,
@@ -64,9 +72,32 @@ class NotificationService:
             stop_on_first_success=stop_on_first_success,
         )
 
+    def send(
+        self,
+        data: NotificationData,
+        channel_filter: list[str] | None = None,
+        stop_on_first_success: bool | None = None,
+    ) -> bool:
+        """投递一条非建议类消息（波动提醒 / 每日摘要 / 节后缺口…）。
+
+        消息语义由 `data.kind` 决定，字段放在 `data.fields`；
+        渠道按 kind 自动选择渲染模板。
+        """
+        assert data.kind not in ADVICE_KINDS, "建议类消息请走 send_advice()"
+        # 非 advice 类消息默认 info 级（除非调用方显式给了别的级别）
+        if data.alert_level == "warning":
+            data.alert_level = "info"
+        summary = data.summary or MessageTemplate.kind_title(data.kind)
+        return self._dispatch(
+            data,
+            summary=summary[:100],
+            channel_filter=channel_filter,
+            stop_on_first_success=stop_on_first_success,
+        )
+
     def _dispatch(
         self,
-        data: AdviceData,
+        data: NotificationData,
         *,
         summary: str,
         channel_filter: list[str] | None = None,
