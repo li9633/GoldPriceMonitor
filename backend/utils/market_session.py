@@ -129,33 +129,18 @@ def invalidate_cache() -> None:
 
 # ==================== 交易日与节假日 ====================
 
-_calendar_warned = False
-
 
 def _holiday_flag(day: date) -> bool | None:
-    """`True` 法定节假日 / `False` 非节假日 / `None` 日历库缺少该年份数据。
+    """`True` 法定节假日 / `False` 非节假日 / `None` 全链无法判定。
 
-    `chinese_calendar` 只覆盖有限年份（1.11.0 为 2004-2026），超出范围会抛
-    `NotImplementedError`。这里降级为「仅按星期判断」，避免日历过期后整条发送链路
-    直接崩掉。
+    判定委托给 `providers.calendar` 的回退链
+    （chinese-calendar → 在线源 → 星期规则），本模块不再直接依赖具体日历库。
+    历史背景：`chinese_calendar.is_workday()` 对调休上班的周末返回 `True`，
+    但交易所周末从不开市 —— 该边界已由链路的 lib 源用 `is_holiday()` 处理。
     """
-    global _calendar_warned
-    try:
-        from chinese_calendar import is_holiday
+    from providers.calendar import get_calendar
 
-        return bool(is_holiday(day))
-    except NotImplementedError:
-        if not _calendar_warned:
-            _calendar_warned = True
-            logger.warning(
-                "chinese_calendar 缺少 %d 年数据，节假日判断降级为仅按星期判断；"
-                "请升级 chinese-calendar 依赖",
-                day.year,
-            )
-        return None
-    except Exception as exc:  # noqa: BLE001
-        logger.error("节假日判断失败：%s", exc)
-        return None
+    return get_calendar().holiday_flag(day)
 
 
 def is_trading_day(day: date) -> bool:
