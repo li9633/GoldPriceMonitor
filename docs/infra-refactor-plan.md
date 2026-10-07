@@ -1,8 +1,7 @@
 # 基础设施重构方案（草案）—— 日历 · 模型池 · 价格源
 
-> 状态：**§1 日历链、§2 模型池惩罚已实现**（2026-10-07，分支 refactor/calendar-provider、refactor/model-pool-penalty）；
-> §3 价格 provider 化待做；§4 清理项随本批完成
-> 记录日期：2026-10-07
+> 状态：**§1 日历链、§2 模型池惩罚、§3 价格 provider 化已实现**（2026-10-07）；§4 清理项随本批完成。
+> 本方案的所有事项均已落地。
 > 配套文档：[价格获取与通知策略重构方案](./notification-refactor-plan.md)（其阶段 E 的展开）
 > 原则：**接口 → 实现类**，调用方不关心实现与回退；流程保持不变，行为变化逐条列出（§5）
 
@@ -150,6 +149,16 @@ providers/price/
 - `PriceService` 变薄壳：`fetch_all_gold_prices` 委托给注入的 provider。
 - **不引入多源切换**：单用户场景收益低；接口化只为换源时不动调用方。
 - 行为完全不变（解析逻辑原样搬迁）。
+
+### 3.1 实施记录（已完成，2026-10-07，含新浪备源）
+
+- `providers/price/{base,huilvbiao,sina,manager}.py`：`PriceProvider` 接口 + `PriceQuote`；
+  huilvbiao 解析逻辑原样迁入；**新浪 `hq.sinajs.cn` 作为真实备源实现**（需 Referer 头、GBK 编码）。
+- 2026-10-07 实测：新浪与 huilvbiao 字段布局完全一致（price=0/time=6/date=12），
+  同品种返回价格一致（gds_AUTD 906.8 / hf_XAU 4131.71）——交叉验证通过。
+- 管理器：优先级链 + 连续 2 次全失败切换 + 主源恢复回切（对齐汇率 manager 模式）。
+- `PriceService` 变薄壳（fetch_current_price/fetch_all_gold_prices 签名与返回结构不变）。
+- 测试 `test_price_provider` 12 项。
 
 ---
 
