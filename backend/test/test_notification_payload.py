@@ -107,6 +107,31 @@ def test_unknown_kind_falls_back_to_generic() -> None:
     assert "**a**：b" in md
 
 
+def test_generic_markdown_no_duplicate_prefix() -> None:
+    """品种 / 当前价格 标签不得重复渲染（曾出现「品种：品种：伦敦金」）"""
+    data = NotificationData(
+        kind=KIND_VOLATILITY,
+        symbol_name="伦敦金",
+        current_price=882.6,
+        fields={"较节前收盘": "-2.67%"},
+    )
+    md = MessageTemplate.format(KIND_VOLATILITY, data, template_type="markdown")
+    assert md.count("品种") == 1
+    assert md.count("当前价格") == 1
+    assert "**品种**：伦敦金" in md
+    assert "**当前价格**：¥882.60/g" in md
+    assert "**较节前收盘**：-2.67%" in md
+
+
+def test_generic_markdown_omits_symbol_and_price_when_absent() -> None:
+    """无品种名 / 无价格时不输出空标签行"""
+    data = NotificationData(kind=KIND_DIGEST, fields={"持仓": "50g"})
+    md = MessageTemplate.format(KIND_DIGEST, data, template_type="markdown")
+    assert "品种" not in md
+    assert "当前价格" not in md
+    assert "**持仓**：50g" in md
+
+
 def test_email_subject_by_kind() -> None:
     """邮件主题：建议带动作标签，通用带 kind 标题"""
     advice_subject = _advice_subject(_advice_data())

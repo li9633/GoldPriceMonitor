@@ -106,9 +106,9 @@ class VolatilityTrigger(Trigger):
         else:
             direction = "持平"
         symbol_name = self.settings.get_symbol_name_map().get(key, key)
+        # 「当前价格」由通用模板的固定行展示，不放进 fields（避免重复渲染）
         fields = {
             label: fmt_pct(move),
-            "当前价格": f"¥{price:.2f}/g",
         }
         if tick.london_usd and tick.london_usd > 0:
             fields["国际金"] = f"${tick.london_usd:.2f}"

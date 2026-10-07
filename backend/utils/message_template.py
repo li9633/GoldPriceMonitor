@@ -69,12 +69,12 @@ class MessageTemplate:
         "reopen_gap": "节后开盘提示",
     }
 
-    # 企业微信 Markdown 通用模板（fields 逐行展开）
+    # 企业微信 Markdown 通用模板（fields 逐行展开）。
+    # 注意：品种 / 价格行由 `format_generic` 按「是否存在」拼接成完整行传入，
+    # 这里不要再写 **品种**/**当前价格** 前缀 —— 否则会渲染出「品种：品种：…」
     WECHAT_GENERIC_TEMPLATE = """## <font color="info">[{title}]</font>
 
-**品种**：{symbol_name}
-**当前价格**：{price}
-{field_lines}
+{symbol_line}{price_line}{field_lines}
 **生成时间**：{time}
 {debug_notice}
 ---
@@ -118,7 +118,7 @@ class MessageTemplate:
                 else ""
             )
             price_html = (
-                f'<div class="meta">当前价格：{display_price}</div>'
+                f'<div class="meta">当前价格：¥{display_price}/g</div>'
                 if display_price
                 else ""
             )
@@ -141,11 +141,11 @@ class MessageTemplate:
             if data.symbol_name
             else ""
         )
-        price_line = f"**当前价格**：{display_price}\n" if display_price else ""
+        price_line = f"**当前价格**：¥{display_price}/g\n" if display_price else ""
         return cls.WECHAT_GENERIC_TEMPLATE.format(
             title=cls._escape_markdown(title),
-            symbol_name=symbol_line,
-            price=price_line,
+            symbol_line=symbol_line,
+            price_line=price_line,
             field_lines=field_lines,
             time=display_time,
             debug_notice=debug_notice,

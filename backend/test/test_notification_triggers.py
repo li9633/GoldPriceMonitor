@@ -249,7 +249,7 @@ def test_digest_emits_once_per_day_with_position() -> None:
     ev = outcome.events[0]
     assert ev.kind == KIND_DIGEST or ev.notification.kind == KIND_DIGEST
     fields = ev.notification.fields
-    assert fields["当前价格"] == "¥902.00/g"
+    assert "当前价格" not in fields, "当前价格由模板固定行展示，不进 fields"
     assert "24 小时涨跌" in fields
     assert "较节前收盘" in fields, "INTL_ONLY 附假期累计"
     assert fields["持仓"] == "50g", "有持仓时报持仓与浮盈"
