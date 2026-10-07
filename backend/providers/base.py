@@ -23,6 +23,12 @@ class BaseExchangeRateProvider(ABC):
     @abstractmethod
     def provider_name(self) -> str: ...
 
+    @property
+    @abstractmethod
+    def api_url(self) -> str:
+        """数据端点（供设置页展示）"""
+        ...
+
     @abstractmethod
     def fetch(
         self, base: str = "USD", symbol: str = "CNY"

@@ -35,6 +35,18 @@ class ExchangeRateProviderManager:
         # 监控线程与 FastAPI 请求线程共享单例，缓存与切换状态需要互斥
         self._lock = threading.Lock()
 
+    def sources_status(self) -> list[dict]:
+        """数据源链状态（供设置页展示）：名称、端点、角色、当前是否生效"""
+        return [
+            {
+                "name": p.provider_name,
+                "api_url": p.api_url,
+                "role": "主源" if i == 0 else "备源",
+                "active": i == self._current_index,
+            }
+            for i, p in enumerate(self._providers)
+        ]
+
     def get_rate(
         self, base: str = "USD", symbol: str = "CNY"
     ) -> ExchangeRateResult | None:

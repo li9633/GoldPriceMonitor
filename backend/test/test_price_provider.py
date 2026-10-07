@@ -129,6 +129,10 @@ class StubProvider:
     def provider_name(self) -> str:
         return self._name
 
+    @property
+    def api_url(self) -> str:
+        return f"https://example.com/{self._name}"
+
     def fetch(self, symbol):
         self.calls += 1
         if self._trace is not None:
@@ -175,6 +179,28 @@ def test_manager_restores_primary_when_recovered() -> None:
     quote = manager.fetch("gds_AUTD")
     assert quote is not None
     assert manager.current_provider == "huilvbiao", "主源恢复后应回切"
+
+
+def test_manager_sources_status_reflects_active_provider() -> None:
+    """sources_status 应反映主备角色与当前生效源（设置页展示用）"""
+    primary = StubProvider("huilvbiao", _quote())
+    backup = StubProvider("sina")
+    manager = PriceProviderManager([primary, backup])
+
+    status = {s["name"]: s for s in manager.sources_status()}
+    assert status["huilvbiao"]["role"] == "主源"
+    assert status["huilvbiao"]["active"] is True
+    assert status["sina"]["role"] == "备源"
+    assert status["sina"]["active"] is False
+    assert status["sina"]["api_url"] == "https://example.com/sina"
+
+    # 主源失败、备源生效后，active 应随之切换
+    primary._quote = None
+    backup._quote = _quote()
+    manager.fetch("gds_AUTD")
+    status = {s["name"]: s for s in manager.sources_status()}
+    assert status["huilvbiao"]["active"] is False
+    assert status["sina"]["active"] is True
 
 
 # ==================== PriceService 薄壳 ====================

@@ -20,6 +20,10 @@ class HuilvbiaoPriceProvider(PriceProvider):
     def provider_name(self) -> str:
         return "huilvbiao"
 
+    @property
+    def api_url(self) -> str:
+        return GOLD_PRICE_API_URL
+
     def fetch(self, symbol: str) -> PriceQuote | None:
         try:
             timestamp = int(time.time() * 1000)
