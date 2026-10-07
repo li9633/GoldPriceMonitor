@@ -3,7 +3,8 @@
 按已拍板的默认参数验证：
 
 - 波动：1% 两档阈值（≥1% 提醒 / ≥2.5% 强提醒）、双基准取偏离大者、
-  冷却 60 分钟（强提醒不受限）、SILENT 不发；
+  冷却 60 分钟（强提醒不受冷却限制，但偏离未加深/未反转不重发）、
+  SILENT 不发；
 - 摘要：20:00 触发、每天一条、SILENT 不发、INTL_ONLY 附假期累计与持仓；
 - 缺口：仅「法定节假日 + 明日交易日 + INTL_ONLY」的到点时刻发，每天一条。
 
@@ -153,6 +154,45 @@ def test_volatility_critical_bypasses_cooldown() -> None:
     assert ev.notification.alert_level == "critical"
     assert ev.urgency == "high"
     assert ev.cooldown_minutes == 0.0
+
+
+def test_volatility_critical_no_refire_while_loitering() -> None:
+    """价格在阈值附近徘徊时强提醒不重发（曾每 10 秒刷一条企业微信）"""
+    trigger = VolatilityTrigger(FakeSettings())
+    # 节前收盘 900：876.0 → -2.67%，首次强提醒
+    first = trigger.evaluate(normal_tick(market_price=876.0))
+    assert len(first.events) == 1
+
+    # 徘徊：-2.72% / -2.61%，偏离未加深 → 不再重发
+    assert trigger.evaluate(normal_tick(market_price=875.5)).events == []
+    assert trigger.evaluate(normal_tick(market_price=876.5)).events == []
+
+
+def test_volatility_critical_refires_when_deepened() -> None:
+    """偏离较上次强提醒加深 ≥ 0.5pp → 重发"""
+    trigger = VolatilityTrigger(FakeSettings())
+    trigger.evaluate(normal_tick(market_price=876.0))  # -2.67% 首发
+    outcome = trigger.evaluate(normal_tick(market_price=866.0))  # -3.78%，加深 1.1pp
+    assert len(outcome.events) == 1
+    assert outcome.events[0].notification.alert_level == "critical"
+
+
+def test_volatility_critical_refires_when_flipped() -> None:
+    """方向反转（跌转涨越过阈值）→ 立即重发"""
+    trigger = VolatilityTrigger(FakeSettings())
+    trigger.evaluate(normal_tick(market_price=876.0))  # -2.67% 首发下跌
+    outcome = trigger.evaluate(normal_tick(market_price=930.0))  # +3.33% 反转上涨
+    assert len(outcome.events) == 1
+    assert "上涨" in outcome.events[0].notification.summary
+
+
+def test_volatility_critical_refires_after_first_level1() -> None:
+    """level 1 之后的首次 level 2 必然发出（level 1 不参与去噪记账）"""
+    trigger = VolatilityTrigger(FakeSettings())
+    trigger.evaluate(normal_tick(market_price=900.0))  # 建基线
+    trigger.evaluate(normal_tick(market_price=910.0))  # +1.11% level 1
+    outcome = trigger.evaluate(normal_tick(market_price=935.0))  # +2.75% level 2
+    assert len(outcome.events) == 1
 
 
 def test_volatility_double_basis_prefers_larger_deviation() -> None:
