@@ -1,37 +1,18 @@
 import os
-import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
 
 from config import MODEL_POOL_DB_FILE
+from mapper.base import SQLiteMapper
 from utils.logger import get_logger
 
 logger = get_logger("ModelPoolMapper")
 
 
-class ModelPoolMapper:
+class ModelPoolMapper(SQLiteMapper):
     """模型池配置持久化 — 与价格数据分离，存入 model_pool.db"""
 
     def __init__(self, db_file: str = MODEL_POOL_DB_FILE):
-        self.db_file = db_file
-
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
-
-    @contextmanager
-    def _session(self) -> Iterator[sqlite3.Connection]:
-        """事务上下文：退出时 commit/rollback 且必定 close（防连接泄漏）"""
-        conn = self._get_connection()
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+        # 连接不设 row_factory —— 存量代码按元组索引取值
+        super().__init__(db_file, wal=True, row_factory=False)
 
     def init_tables(self) -> None:
         with self._session() as conn:

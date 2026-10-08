@@ -1,45 +1,20 @@
 import sqlite3
-from collections.abc import Generator
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from config import SYSTEM_SETTINGS_DB_FILE
+from mapper.base import SQLiteMapper
 from utils.logger import get_logger
 from utils.time_utils import from_timestamp, now, parse_date, today, today_end
 
 logger = get_logger("ExchangeRateMapper")
 
 
-class ExchangeRateMapper:
+class ExchangeRateMapper(SQLiteMapper):
     """汇率历史数据持久化 — 存入 system_settings.db 的 exchange_rate_history 表"""
 
     def __init__(self, db_file: str = SYSTEM_SETTINGS_DB_FILE):
-        self.db_file = db_file
+        super().__init__(db_file, wal=True, row_factory=True)
         self.init_table()
-
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    @contextmanager
-    def _connect(self) -> Generator[sqlite3.Connection]:
-        """打开连接，退出时提交并**关闭**。
-
-        `with sqlite3.connect(...) as conn` 只是事务上下文，不会关闭连接；
-        漏掉的 close() 会让连接一直留到循环 GC 碰巧回收为止，每次请求都会
-        多占一份内存和文件句柄。所有查询都应改用本上下文管理器。
-        """
-        conn = self._get_connection()
-        try:
-            yield conn
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def init_table(self) -> None:
         with self._connect() as conn:

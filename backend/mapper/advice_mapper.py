@@ -12,11 +12,10 @@
 
 import json
 import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from config import PORTFOLIO_DB_FILE
+from mapper.base import SQLiteMapper
 from models.advice import AdviceStatus
 from utils.logger import get_logger
 from utils.time_utils import now, now_str
@@ -52,30 +51,12 @@ _JSON_COLUMNS = ("signals", "evidence")
 REVIEW_HORIZONS = (1, 7, 30)
 
 
-class AdviceMapper:
+class AdviceMapper(SQLiteMapper):
     """建议记录的读写"""
 
     def __init__(self, db_file: str = PORTFOLIO_DB_FILE):
-        self.db_file = db_file
+        super().__init__(db_file, wal=True, row_factory=True)
         self.init_tables()
-
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
-        conn = self._get_connection()
-        try:
-            yield conn
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def init_tables(self) -> None:
         with self._connect() as conn:

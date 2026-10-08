@@ -4,11 +4,9 @@
 不落库（本地、零成本）。缓存不设过期：节假日安排一经公布不会回改。
 """
 
-import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import date
 
+from mapper.base import SQLiteMapper
 from utils.logger import get_logger
 from utils.time_utils import now_str
 
@@ -17,9 +15,10 @@ logger = get_logger("CalendarCache")
 _CALENDAR_DB_FILE = "data/calendar.db"
 
 
-class CalendarCacheMapper:
+class CalendarCacheMapper(SQLiteMapper):
     def __init__(self, db_file: str = _CALENDAR_DB_FILE):
-        self.db_file = db_file
+        # 单写者低频场景，无需 WAL
+        super().__init__(db_file, wal=False, row_factory=True)
         self._ensure_dir()
         self.init_tables()
 
@@ -29,24 +28,6 @@ class CalendarCacheMapper:
         parent = os.path.dirname(self.db_file)
         if parent:
             os.makedirs(parent, exist_ok=True)
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    @contextmanager
-    def _session(self) -> Iterator[sqlite3.Connection]:
-        """事务上下文：退出时 commit/rollback 且必定 close（防连接泄漏）"""
-        conn = self._connect()
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def init_tables(self) -> None:
         with self._session() as conn:

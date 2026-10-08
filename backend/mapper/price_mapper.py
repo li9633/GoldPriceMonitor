@@ -1,9 +1,8 @@
 import sqlite3
-from collections.abc import Generator
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from config import PRICE_HISTORY_DB_FILE
+from mapper.base import SQLiteMapper
 from utils.logger import get_logger
 from utils.time_utils import from_timestamp, now, parse_date, today, today_end
 
@@ -104,36 +103,16 @@ class PriceSnapshot:
         )
 
 
-class PriceMapper:
+class PriceMapper(SQLiteMapper):
     def __init__(self, db_file: str = PRICE_HISTORY_DB_FILE):
-        self.db_file = db_file
+        # 价格热路径：8MiB 页缓存 + 内存临时表，降低磁盘 IO
+        super().__init__(
+            db_file,
+            wal=True,
+            row_factory=False,
+            extra_pragmas=("PRAGMA cache_size = -8000", "PRAGMA temp_store = MEMORY"),
+        )
         self.init_table()
-
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA cache_size = -8000")
-        conn.execute("PRAGMA temp_store = MEMORY")
-        return conn
-
-    @contextmanager
-    def _connect(self) -> Generator[sqlite3.Connection]:
-        """打开连接，退出时提交并**关闭**。
-
-        注意：`with sqlite3.connect(...) as conn` 只是事务上下文，成功时 commit、
-        异常时 rollback，并不会关闭连接。漏掉的 close() 会让连接连同其页缓存
-        （这里 cache_size = -8000，即 8 MiB）一直留到循环 GC 碰巧回收为止，
-        因此每请求都会额外占用内存与文件句柄。所有查询都应改用本上下文管理器。
-        """
-        conn = self._get_connection()
-        try:
-            yield conn
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def _ensure_indexes(self, conn: sqlite3.Connection) -> None:
         c = conn.cursor()

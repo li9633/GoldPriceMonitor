@@ -2,6 +2,7 @@ import json
 import sqlite3
 
 from config import SYSTEM_SETTINGS_DB_FILE
+from mapper.base import SQLiteMapper
 from utils.logger import get_logger
 from utils.time_utils import now_str
 
@@ -19,17 +20,16 @@ def _apply_log_level_if_changed(kwargs: dict) -> None:
 logger = get_logger("SystemSettingsMapper")
 
 
-class SystemSettingsMapper:
-    """系统设置持久化 — 存入 system_settings.db"""
+class SystemSettingsMapper(SQLiteMapper):
+    """系统设置持久化 — 存入 system_settings.db
+
+    连接与 PRAGMA 统一来自 `SQLiteMapper`；本类历史方法体为
+    「手工获取 + 显式 close」模式（部分方法支持传入外部连接、按所有权
+    条件关闭），保持现状 —— 待逐方法迁移到 `with self._session()`。
+    """
 
     def __init__(self, db_file: str = SYSTEM_SETTINGS_DB_FILE):
-        self.db_file = db_file
-
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.row_factory = sqlite3.Row
-        return conn
+        super().__init__(db_file, wal=True, row_factory=True)
 
     def init_tables(self) -> None:
         conn = self._get_connection()
