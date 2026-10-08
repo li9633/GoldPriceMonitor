@@ -424,3 +424,60 @@ def test_trigger_config_defaults_cover_keys() -> None:
         "reopen_gap_enabled",
         "reopen_gap_time",
     }
+
+
+# ==================== 7. 供应商更新脱敏值防御 ====================
+
+
+def test_update_provider_placeholder_api_key_is_ignored() -> None:
+    """编辑回传脱敏值（****/未设置/空串）视为未修改，不得覆盖真实环境变量名。
+
+    旧行为：编辑对话框回填掩码 → 不改任何设置点确定 → DB 里的
+    SILICONFLOW_API_KEY 被覆盖成 "****" → 此后永远显示「未配置 Key」。
+    """
+    import os
+
+    from models.model_pool import ModelProviderCreate, ModelProviderUpdate
+    from service.model_pool_service import ModelPoolService
+
+    with tempfile.TemporaryDirectory() as tmp:
+        service = ModelPoolService(db_file=os.path.join(tmp, "pool.db"))
+        service.create_provider(
+            ModelProviderCreate(
+                name="硅基流动",
+                api_url="https://api.siliconflow.cn/v1/chat/completions",
+                api_key="SILICONFLOW_API_KEY",
+                timeout=30,
+                sort_order=2,
+            )
+        )
+
+        # 旧行为的三种污染输入：掩码 / 提示语 / 空串 —— 全部视为未修改
+        # （仅占位值、无其它字段时返回 False = 无实际修改）
+        import sqlite3
+
+        def raw_api_key() -> str:
+            conn = sqlite3.connect(os.path.join(tmp, "pool.db"))
+            try:
+                row = conn.execute(
+                    "SELECT api_key FROM model_providers WHERE name=?",
+                    ("硅基流动",),
+                ).fetchone()
+                return row[0]
+            finally:
+                conn.close()
+
+        for placeholder in ("****", "未设置", "  "):
+            result = service.update_provider(
+                "硅基流动", ModelProviderUpdate(api_key=placeholder)
+            )
+            assert raw_api_key() == "SILICONFLOW_API_KEY", (
+                f"占位值 {placeholder!r} 不应覆盖真实环境变量名"
+            )
+            assert result is False, "仅占位值时无实际修改"
+
+        # 真实新值正常写入
+        assert service.update_provider(
+            "硅基流动", ModelProviderUpdate(api_key="NEW_ENV_VAR")
+        )
+        assert raw_api_key() == "NEW_ENV_VAR"

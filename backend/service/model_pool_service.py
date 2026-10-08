@@ -16,8 +16,12 @@ logger = get_logger("ModelPoolService")
 class ModelPoolService:
     """模型池配置管理服务 — 业务逻辑 + mapper → Pydantic 转换"""
 
-    def __init__(self) -> None:
-        self.mapper = ModelPoolMapper()
+    #: 列表接口回显的脱敏占位值 —— 编辑时原样传回属「未修改」，不得落库
+    #: （原样写回会把 DB 里真实的环境变量名覆盖成掩码，此后永远解析不到 Key）
+    _API_KEY_PLACEHOLDERS = {"", "****", "未设置"}
+
+    def __init__(self, db_file: str | None = None) -> None:
+        self.mapper = ModelPoolMapper(db_file) if db_file else ModelPoolMapper()
         self.mapper.init_tables()
 
     # ==================== 供应商 ====================
@@ -64,6 +68,9 @@ class ModelPoolService:
         updates = {
             k: v for k, v in data.model_dump(exclude_none=True).items() if v is not None
         }
+        api_key = updates.get("api_key")
+        if isinstance(api_key, str) and api_key.strip() in self._API_KEY_PLACEHOLDERS:
+            updates.pop("api_key")
         if not updates:
             return False
         result = self.mapper.update_provider(name, **updates)
