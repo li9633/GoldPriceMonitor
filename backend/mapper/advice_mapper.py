@@ -7,7 +7,7 @@
 3. **有效性追踪**：`price_at_advice` + `price_t1/t7/t30`。这组数据是唯一能回答
    「我的建议准不准」的东西，所以从第一天就要存 —— 后补代价极大。
 
-所有查询走 `_connect()`，退出时提交并**必定关闭**连接。
+所有查询走 `_session()`，退出时提交并**必定关闭**连接。
 """
 
 import json
@@ -59,7 +59,7 @@ class AdviceMapper(SQLiteMapper):
         self.init_tables()
 
     def init_tables(self) -> None:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute("""CREATE TABLE IF NOT EXISTS advice_records (
                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,7 +133,7 @@ class AdviceMapper(SQLiteMapper):
                 payload[key] = value
         columns = ", ".join(payload)
         placeholders = ", ".join(["?"] * len(payload))
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"INSERT INTO advice_records ({columns}) VALUES ({placeholders})",
@@ -148,7 +148,7 @@ class AdviceMapper(SQLiteMapper):
         acted_lot_id: int | None = None,
         suppressed_reason: str | None = None,
     ) -> bool:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             sets = ["status = ?"]
             params: list[object] = [status]
@@ -170,7 +170,7 @@ class AdviceMapper(SQLiteMapper):
     ) -> bool:
         if column not in {f"price_t{h}" for h in REVIEW_HORIZONS}:
             raise ValueError(f"不支持的回访档位：{column}")
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"UPDATE advice_records SET {column} = ?, reviewed_at = ? "
@@ -183,7 +183,7 @@ class AdviceMapper(SQLiteMapper):
     # ==================== 读 ====================
 
     def get_advice(self, advice_id: int) -> dict | None:
-        with self._connect() as conn:
+        with self._session() as conn:
             row = conn.execute(
                 "SELECT * FROM advice_records WHERE id = ?", (advice_id,)
             ).fetchone()
@@ -199,7 +199,7 @@ class AdviceMapper(SQLiteMapper):
     ) -> list[dict]:
         where, params = self._where_sql(symbol, kind, status)
         params.extend([limit, offset])
-        with self._connect() as conn:
+        with self._session() as conn:
             rows = conn.execute(
                 f"SELECT * FROM advice_records{where} ORDER BY id DESC LIMIT ? OFFSET ?",
                 params,
@@ -213,7 +213,7 @@ class AdviceMapper(SQLiteMapper):
         status: str | None = None,
     ) -> int:
         where, params = self._where_sql(symbol, kind, status)
-        with self._connect() as conn:
+        with self._session() as conn:
             row = conn.execute(
                 f"SELECT COUNT(*) FROM advice_records{where}", params
             ).fetchone()
@@ -243,7 +243,7 @@ class AdviceMapper(SQLiteMapper):
         监控循环用它判断「这次还值不值得再推一条」—— 用数据库而不是内存，
         这样重启之后不会立刻重复推送。
         """
-        with self._connect() as conn:
+        with self._session() as conn:
             row = conn.execute(
                 "SELECT * FROM advice_records WHERE symbol = ? AND status != ? "
                 "ORDER BY id DESC LIMIT 1",
@@ -257,7 +257,7 @@ class AdviceMapper(SQLiteMapper):
         只认**非 suppressed** 的记录：被闸门拦下的复盘意味着用户没收到，
         应当在下一次巡检（仍在追补窗口内）重试，而不是永远丢失。
         """
-        with self._connect() as conn:
+        with self._session() as conn:
             row = conn.execute(
                 "SELECT 1 FROM advice_records WHERE subject_lot_id = ? "
                 "AND review_horizon = ? AND status != ? LIMIT 1",
@@ -266,7 +266,7 @@ class AdviceMapper(SQLiteMapper):
         return row is not None
 
     def list_reviews_for_lot(self, lot_id: int) -> list[dict]:
-        with self._connect() as conn:
+        with self._session() as conn:
             rows = conn.execute(
                 "SELECT * FROM advice_records WHERE subject_lot_id = ? "
                 "ORDER BY review_horizon ASC",
@@ -294,14 +294,14 @@ class AdviceMapper(SQLiteMapper):
             "AND price_at_advice IS NOT NULL AND created_at <= ? "
             "ORDER BY id ASC LIMIT 500"
         )
-        with self._connect() as conn:
+        with self._session() as conn:
             rows = conn.execute(sql, (cutoff,)).fetchall()
         return [self._row(row) for row in rows]
 
     def review_stats(self) -> dict:
         """建议有效性汇总：各档位的样本量与平均价格变动（%）"""
         stats: dict = {}
-        with self._connect() as conn:
+        with self._session() as conn:
             total = conn.execute("SELECT COUNT(*) FROM advice_records").fetchone()[0]
             for horizon in REVIEW_HORIZONS:
                 column = f"price_t{horizon}"

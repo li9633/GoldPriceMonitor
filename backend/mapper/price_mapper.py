@@ -127,7 +127,7 @@ class PriceMapper(SQLiteMapper):
         conn.commit()
 
     def init_table(self):
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute("""CREATE TABLE IF NOT EXISTS prices
                          (id INTEGER PRIMARY KEY,
@@ -139,7 +139,7 @@ class PriceMapper(SQLiteMapper):
 
     def table_exists(self) -> bool:
         try:
-            with self._connect() as conn:
+            with self._session() as conn:
                 c = conn.cursor()
                 c.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='prices'"
@@ -151,7 +151,7 @@ class PriceMapper(SQLiteMapper):
 
     def save_price(self, symbol: str, price: float):
         ts = int(now().timestamp())
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
@@ -161,7 +161,7 @@ class PriceMapper(SQLiteMapper):
 
     def get_prices_in_window(self, symbol: str, hours: float) -> list[float]:
         cutoff = int((now() - timedelta(hours=hours)).timestamp())
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
@@ -172,7 +172,7 @@ class PriceMapper(SQLiteMapper):
     def get_check_snapshot(self, symbol: str) -> PriceSnapshot | None:
         """一次查询获取所有检查所需数据"""
         now_dt = now()
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             cutoff_24h = int((now_dt - timedelta(hours=24)).timestamp())
             c.execute(
@@ -213,7 +213,7 @@ class PriceMapper(SQLiteMapper):
         where_clause, where_params = self._price_time_filter(
             int(hours) if hours else None, start_date, end_date
         )
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT MIN(price), MAX(price), AVG(price), COUNT(*), SUM(price * price) "
@@ -235,7 +235,7 @@ class PriceMapper(SQLiteMapper):
             }
 
     def get_moving_average(self, symbol: str, periods: int) -> float | None:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT price FROM prices WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
@@ -248,7 +248,7 @@ class PriceMapper(SQLiteMapper):
 
     def get_latest_price(self, symbol: str) -> float | None:
         """最新价（元/克）—— 持仓市值计算用，走 idx_prices_symbol_ts 索引"""
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT price FROM prices WHERE symbol = ? "
@@ -267,7 +267,7 @@ class PriceMapper(SQLiteMapper):
         一天后」的价格。如果停机几天后再回填，用最新价会把 T+1 写成 T+5 的价格，
         有效性数据就废了 —— 而且这种错误不会报错，只会静默污染统计。
         """
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT price FROM prices WHERE symbol = ? AND timestamp <= ? "
@@ -295,7 +295,7 @@ class PriceMapper(SQLiteMapper):
         where_clause, where_params = self._price_time_filter(
             int(hours) if hours else None, start_date, end_date
         )
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT price FROM prices WHERE symbol = ? AND {where_clause} ORDER BY timestamp",
@@ -333,7 +333,7 @@ class PriceMapper(SQLiteMapper):
     ) -> list[tuple[datetime, float]]:
         """获取原始价格序列，用于最近记录等需要精确数据的场景"""
         cutoff = int((now() - timedelta(hours=hours)).timestamp())
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT timestamp, price FROM prices WHERE symbol = ? AND timestamp > ? ORDER BY timestamp",
@@ -353,7 +353,7 @@ class PriceMapper(SQLiteMapper):
             int(hours) if hours else None, start_date, end_date
         )
         bucket_sql = _resolve_bucket(hours or 24)
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT {bucket_sql} AS bucket, AVG(price) AS price "
@@ -365,7 +365,7 @@ class PriceMapper(SQLiteMapper):
 
     def get_record_count(self, symbol: str) -> int:
         try:
-            with self._connect() as conn:
+            with self._session() as conn:
                 c = conn.cursor()
                 c.execute("SELECT COUNT(*) FROM prices WHERE symbol = ?", (symbol,))
                 return c.fetchone()[0]
@@ -412,7 +412,7 @@ class PriceMapper(SQLiteMapper):
         hours: int | None = None,
     ) -> dict:
         """仪表盘数据：总记录数 + 范围内新增 + 各品种统计"""
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT symbol, COUNT(*) as cnt FROM prices GROUP BY symbol ORDER BY cnt DESC"
@@ -467,7 +467,7 @@ class PriceMapper(SQLiteMapper):
             }
 
     def batch_insert_prices(self, records: list[tuple]) -> int:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_prices_unique ON prices(symbol, timestamp)"
@@ -491,7 +491,7 @@ class PriceMapper(SQLiteMapper):
 
     def checkpoint(self) -> None:
         """将 WAL 中所有已提交数据合并回主库，并删除 WAL/SHM 文件"""
-        with self._connect() as conn:
+        with self._session() as conn:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             logger.info("WAL checkpoint 完成，数据库已完整保存")
 

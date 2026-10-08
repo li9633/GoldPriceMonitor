@@ -17,7 +17,7 @@ class ExchangeRateMapper(SQLiteMapper):
         self.init_table()
 
     def init_table(self) -> None:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute("""CREATE TABLE IF NOT EXISTS exchange_rate_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +60,7 @@ class ExchangeRateMapper(SQLiteMapper):
         data_updated_at: int = 0,
     ) -> None:
         ts = int(now().timestamp())
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "INSERT INTO exchange_rate_history (rate, timestamp, source, provider, data_updated_at) "
@@ -72,7 +72,7 @@ class ExchangeRateMapper(SQLiteMapper):
     def get_latest_rate(self) -> float | None:
         """获取数据库中最新的汇率记录，作为所有接口都失败时的兜底"""
         try:
-            with self._connect() as conn:
+            with self._session() as conn:
                 c = conn.cursor()
                 c.execute(
                     "SELECT rate FROM exchange_rate_history ORDER BY timestamp DESC LIMIT 1"
@@ -85,7 +85,7 @@ class ExchangeRateMapper(SQLiteMapper):
 
     def get_record_count(self) -> int:
         try:
-            with self._connect() as conn:
+            with self._session() as conn:
                 c = conn.cursor()
                 c.execute("SELECT COUNT(*) FROM exchange_rate_history")
                 return c.fetchone()[0]
@@ -100,7 +100,7 @@ class ExchangeRateMapper(SQLiteMapper):
         end_date: str | None = None,
     ) -> dict:
         where_clause, where_params = self._time_filter(hours, start_date, end_date)
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT MIN(rate), MAX(rate), AVG(rate), COUNT(*), SUM(rate * rate) "
@@ -128,7 +128,7 @@ class ExchangeRateMapper(SQLiteMapper):
         end_date: str | None = None,
     ) -> dict:
         where_clause, where_params = self._time_filter(hours, start_date, end_date)
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT rate FROM exchange_rate_history WHERE {where_clause} ORDER BY timestamp",
@@ -159,7 +159,7 @@ class ExchangeRateMapper(SQLiteMapper):
     ) -> list[tuple[datetime, float]]:
         where_clause, where_params = self._time_filter(hours, start_date, end_date)
         bucket_sql = _resolve_bucket(hours or 24)
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"SELECT {bucket_sql} AS bucket, AVG(rate) AS rate "
@@ -173,7 +173,7 @@ class ExchangeRateMapper(SQLiteMapper):
         self, hours: float = 24, limit: int = 20
     ) -> list[tuple[datetime, float]]:
         cutoff = int((now() - timedelta(hours=hours)).timestamp())
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT timestamp, rate FROM exchange_rate_history "
@@ -189,7 +189,7 @@ class ExchangeRateMapper(SQLiteMapper):
         end_date: str | None = None,
         hours: int | None = None,
     ) -> dict:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM exchange_rate_history")
             total = c.fetchone()[0]
