@@ -124,7 +124,7 @@ class SystemSettingsMapper(SQLiteMapper):
             compress_backup INTEGER DEFAULT 1,
             console_output INTEGER DEFAULT 1,
             keep_days INTEGER DEFAULT 30,
-            log_level TEXT DEFAULT 'DEBUG',
+            log_level TEXT DEFAULT 'WARNING',
             updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )""")
         c.execute("""CREATE TABLE IF NOT EXISTS advice_config (
@@ -308,7 +308,7 @@ class SystemSettingsMapper(SQLiteMapper):
             conn.close()
 
     def _migrate_log_config(self, conn: sqlite3.Connection | None = None) -> None:
-        new_columns = {"log_level": "TEXT DEFAULT 'DEBUG'"}
+        new_columns = {"log_level": "TEXT DEFAULT 'WARNING'"}
         own = conn is None
         if conn is None:
             conn = self._get_connection()
