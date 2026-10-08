@@ -102,9 +102,7 @@
         <StatisticCard
           v-model:abbreviated="isAbbreviated"
           label="预估费用"
-          prefix="¥"
-          :value="tokenOverview?.estimated_cost ?? 0"
-          :precision="2"
+          :value="formatCost(tokenOverview?.estimated_cost ?? 0)"
         />
       </el-col>
     </el-row>
@@ -386,7 +384,9 @@ async function fetchTokenStats() {
 
 function formatCost(cost: number): string {
   if (cost <= 0) return '¥0.00'
-  if (cost < 0.01) return `¥${cost.toFixed(4)}`
+  // 费用常在分以下量级：0.1 元以内统一 4 位小数，保证「行显示之和 ≈ 总显示」可对账
+  // （两位小数会把 0.0150 舍成 0.02，多行各自舍入后与总和 0.0350 对不上）
+  if (cost < 0.1) return `¥${cost.toFixed(4)}`
   return `¥${cost.toFixed(2)}`
 }
 
