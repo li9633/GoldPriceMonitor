@@ -1,8 +1,6 @@
-import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
 
 from config import SYSTEM_SETTINGS_DB_FILE
+from mapper.base import SQLiteMapper
 from utils.date_filter import build_date_filter
 from utils.logger import get_logger
 from utils.time_utils import now_str
@@ -10,28 +8,9 @@ from utils.time_utils import now_str
 logger = get_logger("NotificationStatsMapper")
 
 
-class NotificationStatsMapper:
+class NotificationStatsMapper(SQLiteMapper):
     def __init__(self, db_file: str = SYSTEM_SETTINGS_DB_FILE):
-        self.db_file = db_file
-
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    @contextmanager
-    def _session(self) -> Iterator[sqlite3.Connection]:
-        """事务上下文：退出时 commit/rollback 且必定 close（防连接泄漏）"""
-        conn = self._get_connection()
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+        super().__init__(db_file, wal=True, row_factory=True)
 
     def init_tables(self) -> None:
         with self._session() as conn:
