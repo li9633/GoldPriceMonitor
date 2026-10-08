@@ -6,10 +6,7 @@
 
 事务语义：`with self._session() as conn:` 正常退出 commit、异常 rollback
 且**必定 close**。注意 `with sqlite3.connect(...) as conn` 只是事务上下文，
-不会关闭连接，严禁直接使用。
-
-调用点约定：统一使用 `self._session()`；`self._connect()` 是历史别名，
-既有代码可继续工作，新代码请用 `_session`。
+不会关闭连接，严禁直接使用。所有查询统一走 `_session()`。
 """
 
 import sqlite3
@@ -55,7 +52,3 @@ class SQLiteMapper:
             raise
         finally:
             conn.close()
-
-    #: 历史别名 —— advice / portfolio / price / exchange_rate 等早期
-    #: mapper 的调用点用 `_connect`，保留以免逐个改写
-    _connect = _session

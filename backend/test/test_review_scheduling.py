@@ -107,7 +107,7 @@ def test_due_timer_reset_and_set_interval() -> None:
 
 
 def seed_prices(mapper: PriceMapper, points: list[tuple[int, float]], symbol="gds_AUTD"):
-    with mapper._connect() as conn:
+    with mapper._session() as conn:
         conn.execute("DELETE FROM prices WHERE symbol = ?", (symbol,))
         for ts, price in points:
             conn.execute(

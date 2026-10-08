@@ -10,7 +10,7 @@ rollback，**不会关闭连接**。price_mapper.py 与 exchange_rate_mapper.py 
 上涨（实测 200 次请求：38 MB → 最高 590 MB、句柄 143 → 515），所以看起来
 “有概率”泄漏。
 
-修复方式：两个 mapper 增加 `_connect()` 上下文管理器，退出时 commit/rollback
+修复方式：两个 mapper 增加 `_session()` 上下文管理器，退出时 commit/rollback
 并**必定 close()**，所有查询改用它。
 
 运行
@@ -114,7 +114,7 @@ def test_failure_path_rolls_back_and_closes() -> None:
         mapper = PriceMapper(db_file=db)
 
         try:
-            with mapper._connect() as conn:
+            with mapper._session() as conn:
                 conn.execute(
                     "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
                     ("ROLLBACK_CHECK", 1.0, 1),
