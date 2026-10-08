@@ -13,7 +13,7 @@
 """
 
 import sqlite3
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 
 
@@ -44,7 +44,7 @@ class SQLiteMapper:
         return conn
 
     @contextmanager
-    def _session(self) -> Iterator[sqlite3.Connection]:
+    def _session(self) -> Generator[sqlite3.Connection]:
         """打开连接，正常退出提交、异常回滚，且必定关闭。"""
         conn = self._get_connection()
         try:
