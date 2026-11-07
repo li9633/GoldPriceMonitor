@@ -11,11 +11,14 @@ dependencies = [
     "lxml>=5.0.0",
     "chinese-calendar>=1.11.0", # 仅覆盖 2004–2026，超出范围时降级为按星期判断
     "python-dotenv>=1.0",
+    "cryptography>=50.0.2",
 ]
 
 [dependency-groups]
 dev = [
     "mypy>=1.11",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.8",
 ]
 
@@ -57,3 +60,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "test/*" = ["DTZ001", "DTZ005", "DTZ007"] # 测试里用裸 datetime 冻结时钟
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = "-q"
+pythonpath = ["."]
+filterwarnings = [
+    # anyio 依赖自身的弃用告警，与项目代码无关（仅按消息匹配，不绑定具体类别）
+    "ignore:_pytest.python.CallSpec2 has been renamed",
+]
