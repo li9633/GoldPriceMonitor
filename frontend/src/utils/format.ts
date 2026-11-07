@@ -25,6 +25,11 @@ export function formatDate(iso: string): string {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+/** ISO 时间戳原样转可读（仅替换 T 为空格，不做时区转换） */
+export function formatIsoTime(iso: string): string {
+  return iso.replace('T', ' ')
+}
+
 const pad = (n: number) => String(n).padStart(2, '0')
 
 export function toDateString(d: Date): string {

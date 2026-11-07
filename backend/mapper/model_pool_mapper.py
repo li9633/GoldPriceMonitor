@@ -1,10 +1,14 @@
-import os
-
 from config import MODEL_POOL_DB_FILE
 from mapper.base import SQLiteMapper
+from utils.crypto import decrypt_value, encrypt_value, is_encrypted
 from utils.logger import get_logger
 
 logger = get_logger("ModelPoolMapper")
+
+
+def _decrypt_api_key(stored: str) -> str:
+    """解密 API Key；历史明文存的是环境变量名（非真实 Key），改造后已失效，视为未配置。"""
+    return decrypt_value(stored) if is_encrypted(stored) else ""
 
 
 class ModelPoolMapper(SQLiteMapper):
@@ -35,16 +39,6 @@ class ModelPoolMapper(SQLiteMapper):
 
     # ==================== 供应商 CRUD ====================
 
-    @staticmethod
-    def _resolve_api_key(provider_name: str, env_var: str) -> str:
-        """从环境变量中获取 API Key，未设置时返回空字符串并记录警告"""
-        api_key = os.getenv(env_var, "")
-        if not api_key:
-            logger.warning(
-                f"供应商 [{provider_name}] 的环境变量 {env_var} 未设置或为空，将跳过该供应商"
-            )
-        return api_key
-
     def get_providers(self) -> list[dict]:
         with self._session() as conn:
             c = conn.cursor()
@@ -64,7 +58,7 @@ class ModelPoolMapper(SQLiteMapper):
                         "id": row[0],
                         "name": row[1],
                         "api_url": row[2],
-                        "api_key": self._resolve_api_key(row[1], row[3]),
+                        "api_key": _decrypt_api_key(row[3]),
                         "timeout": row[4],
                         "sort_order": row[5],
                         "models": models,
@@ -92,7 +86,7 @@ class ModelPoolMapper(SQLiteMapper):
                 "id": row[0],
                 "name": row[1],
                 "api_url": row[2],
-                "api_key": self._resolve_api_key(row[1], row[3]),
+                "api_key": _decrypt_api_key(row[3]),
                 "timeout": row[4],
                 "sort_order": row[5],
                 "models": models,
@@ -105,21 +99,21 @@ class ModelPoolMapper(SQLiteMapper):
             c = conn.cursor()
             c.execute(
                 "INSERT INTO model_providers (name, api_url, api_key, timeout, sort_order) VALUES (?, ?, ?, ?, ?)",
-                (name, api_url, api_key, timeout, sort_order),
+                (name, api_url, encrypt_value(api_key), timeout, sort_order),
             )
-            conn.commit()
             assert c.lastrowid is not None
             return c.lastrowid
 
     def update_provider(self, name: str, **kwargs) -> bool:
         if not kwargs:
             return False
+        if kwargs.get("api_key"):
+            kwargs["api_key"] = encrypt_value(kwargs["api_key"])
         fields = ", ".join(f"{k}=?" for k in kwargs)
         values = list(kwargs.values()) + [name]
         with self._session() as conn:
             c = conn.cursor()
             c.execute(f"UPDATE model_providers SET {fields} WHERE name=?", values)
-            conn.commit()
             return c.rowcount > 0
 
     def delete_provider(self, name: str) -> bool:
@@ -127,7 +121,6 @@ class ModelPoolMapper(SQLiteMapper):
             c = conn.cursor()
             c.execute("DELETE FROM provider_models WHERE provider_name=?", (name,))
             c.execute("DELETE FROM model_providers WHERE name=?", (name,))
-            conn.commit()
             return c.rowcount > 0
 
     # ==================== 模型 CRUD ====================
@@ -168,7 +161,6 @@ class ModelPoolMapper(SQLiteMapper):
                 "INSERT INTO provider_models (provider_name, model_name, sort_order) VALUES (?, ?, ?)",
                 (provider_name, model_name, sort_order),
             )
-            conn.commit()
             assert c.lastrowid is not None
             return c.lastrowid
 
@@ -180,14 +172,12 @@ class ModelPoolMapper(SQLiteMapper):
         with self._session() as conn:
             c = conn.cursor()
             c.execute(f"UPDATE provider_models SET {fields} WHERE id=?", values)
-            conn.commit()
             return c.rowcount > 0
 
     def delete_model(self, model_id: int) -> bool:
         with self._session() as conn:
             c = conn.cursor()
             c.execute("DELETE FROM provider_models WHERE id=?", (model_id,))
-            conn.commit()
             return c.rowcount > 0
 
     def close(self) -> None:

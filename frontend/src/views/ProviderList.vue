@@ -31,7 +31,7 @@
         <el-form-item label="API 地址">
           <el-input v-model="form.api_url" />
         </el-form-item>
-        <el-form-item label="环境变量名">
+        <el-form-item label="API Key">
           <el-input v-model="form.api_key" :placeholder="keyPlaceholder" />
         </el-form-item>
         <el-form-item label="超时(秒)">
@@ -78,10 +78,10 @@ const editingName = ref('')
 const editingKeyState = ref<'configured' | 'unset'>('unset')
 
 const keyPlaceholder = computed(() => {
-  if (!isEdit.value) return '如：GLM_API_KEY'
+  if (!isEdit.value) return '如：sk-xxxxxxxxxxxx'
   return editingKeyState.value === 'configured'
-    ? '已配置，留空保持不变；输入新环境变量名可更换'
-    : '未配置，输入 Key 的环境变量名，如：GLM_API_KEY'
+    ? '已配置，留空保持不变；输入新 Key 可更换'
+    : '未配置，输入 API Key，如：sk-xxxxxxxxxxxx'
 })
 
 const form = ref<ProviderCreate>({

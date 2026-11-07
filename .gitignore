@@ -47,3 +47,9 @@ Thumbs.db
 
 # ---- Jupyter ----
 .ipynb_checkpoints
+
+# ---- WorkBuddy 项目数据（本地记忆，不提交）----
+.workbuddy/
+
+# ---- 后端历史遗留文档（过时方案，不提交）----
+backend/docs/

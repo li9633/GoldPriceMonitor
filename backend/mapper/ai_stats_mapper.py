@@ -45,7 +45,6 @@ class AiStatsMapper(SQLiteMapper):
                 "CREATE INDEX IF NOT EXISTS idx_ai_logs_provider "
                 "ON ai_call_logs(provider_name)"
             )
-            conn.commit()
             self._migrate_ai_call_logs(conn)
 
     def _migrate_ai_call_logs(self, conn: sqlite3.Connection) -> None:
@@ -105,7 +104,6 @@ class AiStatsMapper(SQLiteMapper):
                     total_tokens,
                 ),
             )
-            conn.commit()
 
     # ==================== 统计查询 ====================
 

@@ -456,6 +456,8 @@ def test_update_provider_placeholder_api_key_is_ignored() -> None:
         # （仅占位值、无其它字段时返回 False = 无实际修改）
         import sqlite3
 
+        from utils.crypto import decrypt_value
+
         def raw_api_key() -> str:
             conn = sqlite3.connect(os.path.join(tmp, "pool.db"))
             try:
@@ -467,17 +469,21 @@ def test_update_provider_placeholder_api_key_is_ignored() -> None:
             finally:
                 conn.close()
 
+        # 加密改造后 DB 存密文，先记录原始密文（解密还原为原始 Key）
+        original_cipher = raw_api_key()
+        assert decrypt_value(original_cipher) == "SILICONFLOW_API_KEY"
+
         for placeholder in ("****", "未设置", "  "):
             result = service.update_provider(
                 "硅基流动", ModelProviderUpdate(api_key=placeholder)
             )
-            assert raw_api_key() == "SILICONFLOW_API_KEY", (
-                f"占位值 {placeholder!r} 不应覆盖真实环境变量名"
+            assert raw_api_key() == original_cipher, (
+                f"占位值 {placeholder!r} 不应覆盖真实 Key"
             )
             assert result is False, "仅占位值时无实际修改"
 
-        # 真实新值正常写入
+        # 真实新值正常写入（密文更新，解密还原为新值）
         assert service.update_provider(
             "硅基流动", ModelProviderUpdate(api_key="NEW_ENV_VAR")
         )
-        assert raw_api_key() == "NEW_ENV_VAR"
+        assert decrypt_value(raw_api_key()) == "NEW_ENV_VAR"

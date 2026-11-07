@@ -9,6 +9,7 @@ import uvicorn
 from app import app
 from mapper.price_mapper import PriceMapper
 from service.monitor_service import MonitorService
+from utils.crypto import is_key_configured
 from utils.logger import get_logger
 
 logger = get_logger("Main")
@@ -48,6 +49,12 @@ if __name__ == "__main__":
         help=f"服务端口（默认: {DEFAULT_PORT}）",
     )
     args = parser.parse_args()
+
+    if not is_key_configured():
+        logger.warning(
+            "未配置加密密钥环境变量 GOLD_MONITOR_SECRET_KEY，"
+            "LLM API Key / 邮箱密码将无法加密存储（历史明文数据读取不受影响）"
+        )
 
     monitor_thread = threading.Thread(
         target=_start_monitor, daemon=True, name="MonitorThread"

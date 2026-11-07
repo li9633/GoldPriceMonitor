@@ -62,7 +62,7 @@ class PriceSnapshot:
         if not prices:
             return None
         prices.sort()
-        return prices[int(len(prices) * pct / 100)]
+        return _percentile_value(prices, pct)
 
     def statistics(self, hours: float) -> dict:
         prices = self.prices_in_hours(hours)
@@ -134,7 +134,6 @@ class PriceMapper(SQLiteMapper):
                           timestamp INTEGER NOT NULL,
                           symbol TEXT,
                           price REAL)""")
-            conn.commit()
             self._ensure_indexes(conn)
 
     def table_exists(self) -> bool:
@@ -157,7 +156,6 @@ class PriceMapper(SQLiteMapper):
                 "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
                 (symbol, price, ts),
             )
-            conn.commit()
 
     def get_prices_in_window(self, symbol: str, hours: float) -> list[float]:
         cutoff = int((now() - timedelta(hours=hours)).timestamp())
@@ -325,8 +323,7 @@ class PriceMapper(SQLiteMapper):
         if not prices:
             return None
         prices.sort()
-        index = int(len(prices) * percentile / 100)
-        return prices[index]
+        return _percentile_value(prices, percentile)
 
     def get_price_series(
         self, symbol: str, hours: float
@@ -472,7 +469,6 @@ class PriceMapper(SQLiteMapper):
             c.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_prices_unique ON prices(symbol, timestamp)"
             )
-            conn.commit()
             count = 0
             for symbol, price, dt in records:
                 try:
@@ -486,7 +482,6 @@ class PriceMapper(SQLiteMapper):
                 except sqlite3.Error as e:
                     logger.error(f"导入单条数据失败：{e}")
                     continue
-            conn.commit()
             return count
 
     def checkpoint(self) -> None:
@@ -494,6 +489,20 @@ class PriceMapper(SQLiteMapper):
         with self._session() as conn:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             logger.info("WAL checkpoint 完成，数据库已完整保存")
+
+
+def _percentile_value(sorted_prices: list[float], pct: float) -> float:
+    """线性插值分位数（输入需已升序排序），避免下标越界并提升精度。"""
+    if not sorted_prices:
+        raise ValueError("空序列无法计算分位数")
+    n = len(sorted_prices)
+    if n == 1:
+        return sorted_prices[0]
+    rank = (n - 1) * max(0.0, min(100.0, pct)) / 100.0
+    low = int(rank)
+    high = min(low + 1, n - 1)
+    frac = rank - low
+    return sorted_prices[low] * (1 - frac) + sorted_prices[high] * frac
 
 
 def _resolve_bucket(hours: float) -> str:
