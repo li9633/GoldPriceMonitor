@@ -18,3 +18,7 @@ PRICE_HISTORY_DB_FILE = "data/prices.db"  # 价格历史数据
 MODEL_POOL_DB_FILE = "data/model_pool.db"  # AI 模型池配置
 SYSTEM_SETTINGS_DB_FILE = "data/system_settings.db"  # 系统设置（报警 / AI / 通知 / 汇率缓存 / 监控 / 品种 / 日志）
 PORTFOLIO_DB_FILE = "data/portfolio.db"  # 持仓与购买计划（业务流水，非配置）
+
+# 敏感字段（LLM API Key / 邮箱密码）加密密钥的环境变量名
+# 加密密钥通过环境变量提供，不进代码库、不入数据库
+SECRET_KEY_ENV = "GOLD_MONITOR_SECRET_KEY"
