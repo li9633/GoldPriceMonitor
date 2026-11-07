@@ -4,7 +4,7 @@
       <h1 class="page-title"><font-awesome-icon icon="gauge-high" /> 运行状态</h1>
       <div class="header-actions">
         <span v-if="status?.last_tick" class="file-info">
-          最近巡检 {{ formatTime(status.last_tick.at) }}
+          最近巡检 {{ formatIsoTime(status.last_tick.at) }}
         </span>
         <el-switch
           v-model="autoRefresh"
@@ -34,7 +34,7 @@
       class="status-alert"
     >
       <template #title>
-        最近主循环错误（{{ formatTime(status.last_error.at) }}）：{{ status.last_error.message }}
+        最近主循环错误（{{ formatIsoTime(status.last_error.at) }}）：{{ status.last_error.message }}
       </template>
     </el-alert>
 
@@ -104,7 +104,7 @@
           </template>
           <el-table :data="status?.recent_ticks ?? []" size="small" max-height="420">
             <el-table-column label="时间" width="170">
-              <template #default="{ row }">{{ formatTime(row.at) }}</template>
+              <template #default="{ row }">{{ formatIsoTime(row.at) }}</template>
             </el-table-column>
             <el-table-column label="结果" width="100">
               <template #default="{ row }">
@@ -146,6 +146,7 @@ import StatisticCard from '@/components/StatisticCard.vue'
 import { runtimeStatusApi } from '@/api/modules/runtime-status'
 import type { RuntimeStatus } from '@/api/modules/runtime-status'
 import { axisColor, splitColor } from '@/utils/aiStatsHelpers'
+import { formatIsoTime } from '@/utils/format'
 
 library.add(faGaugeHigh, faRotate)
 
@@ -177,10 +178,6 @@ function formatUptime(seconds: number | null | undefined): string {
   if (hours > 0) return `${hours} 小时 ${minutes} 分`
   if (minutes > 0) return `${minutes} 分`
   return `${Math.floor(seconds)} 秒`
-}
-
-function formatTime(iso: string): string {
-  return iso.replace('T', ' ')
 }
 
 async function fetchStatus() {

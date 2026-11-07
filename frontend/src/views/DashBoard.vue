@@ -209,7 +209,7 @@
               <span>
                 最新：{{
                   dashboard?.exchange_rate?.latest_time
-                    ? formatTime(dashboard.exchange_rate.latest_time)
+                    ? formatDateTime(dashboard.exchange_rate.latest_time)
                     : '暂无'
                 }}
               </span>
@@ -261,7 +261,7 @@
             <div class="symbol-meta">
               <span>记录数：{{ item.count.toLocaleString() }}</span>
               <span class="divider">|</span>
-              <span> 最新：{{ item.latest_time ? formatTime(item.latest_time) : '暂无' }} </span>
+              <span> 最新：{{ item.latest_time ? formatDateTime(item.latest_time) : '暂无' }} </span>
               <span class="divider">|</span>
               <span>
                 {{
@@ -353,7 +353,7 @@ import { portfolioApi } from '@/api/modules/portfolio'
 import type { PortfolioSummary } from '@/api/modules/portfolio'
 import { adviceApi } from '@/api/modules/advice'
 import type { AdviceRecord } from '@/api/modules/advice'
-import { formatPrice } from '@/utils/format'
+import { formatDateTime, formatPrice } from '@/utils/format'
 import StatisticCard from '@/components/StatisticCard.vue'
 import TrendBadge from '@/components/TrendBadge.vue'
 import TimeRangeFilter from '@/components/TimeRangeFilter.vue'
@@ -495,16 +495,6 @@ function getTrendDirection(item: {
   if (item.latest_price > mid) return 'up'
   if (item.latest_price < mid) return 'down'
   return 'stable'
-}
-
-function formatTime(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 </script>
 
