@@ -1,8 +1,10 @@
 import json
+import re
 import sqlite3
 
 from config import SYSTEM_SETTINGS_DB_FILE
 from mapper.base import SQLiteMapper
+from utils.crypto import decrypt_value, encrypt_value
 from utils.logger import get_logger
 from utils.time_utils import now_str
 
@@ -19,20 +21,59 @@ def _apply_log_level_if_changed(kwargs: dict) -> None:
 
 logger = get_logger("SystemSettingsMapper")
 
+# 允许通过 _upsert / _get_row 拼接访问的表白名单，防止 SQL 注入
+_ALLOWED_TABLES = {
+    "alert_config",
+    "ai_config",
+    "monitor_config",
+    "message_config",
+    "log_config",
+    "advice_config",
+    "exchange_rate_cache",
+    "notification_strategy",
+}
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_table(table: str) -> None:
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(f"非法表名：{table}")
+
+
+def _validate_columns(columns: list[str]) -> None:
+    for col in columns:
+        if not _IDENTIFIER_RE.match(col):
+            raise ValueError(f"非法列名：{col}")
+
 
 class SystemSettingsMapper(SQLiteMapper):
     """系统设置持久化 — 存入 system_settings.db
 
-    连接与 PRAGMA 统一来自 `SQLiteMapper`；本类历史方法体为
-    「手工获取 + 显式 close」模式（部分方法支持传入外部连接、按所有权
-    条件关闭），保持现状 —— 待逐方法迁移到 `with self._session()`。
+    连接与 PRAGMA 统一来自 `SQLiteMapper`；对外方法一律走
+    `with self._session()`（自动 commit/rollback/close）。
+    仅 `_ensure_default_rows` / `_migrate_*` / `_seed_*` / `_init_*` 等
+    内部辅助方法保留「可选外部连接、按所有权关闭」模式，供 init_tables
+    复用同一连接批量执行。
     """
 
     def __init__(self, db_file: str = SYSTEM_SETTINGS_DB_FILE):
         super().__init__(db_file, wal=True, row_factory=True)
 
     def init_tables(self) -> None:
-        conn = self._get_connection()
+        with self._session() as conn:
+            self._create_tables(conn)
+            self._ensure_default_rows(conn)
+            self._migrate_monitor_config(conn)
+            self._migrate_log_config(conn)
+            self._migrate_ai_config(conn)
+            self._migrate_advice_config(conn)
+            self._seed_symbol_config(conn)
+            self._init_notification_stats(conn)
+            self._init_notification_channels(conn)
+            self._init_notification_strategy(conn)
+
+    def _create_tables(self, conn: sqlite3.Connection) -> None:
         c = conn.cursor()
         c.execute("""CREATE TABLE IF NOT EXISTS alert_config (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -146,17 +187,6 @@ class SystemSettingsMapper(SQLiteMapper):
             reopen_gap_time TEXT DEFAULT '20:00',
             updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )""")
-        conn.commit()
-        self._ensure_default_rows(conn)
-        self._migrate_monitor_config(conn)
-        self._migrate_log_config(conn)
-        self._migrate_ai_config(conn)
-        self._migrate_advice_config(conn)
-        self._seed_symbol_config(conn)
-        self._init_notification_stats(conn)
-        self._init_notification_channels(conn)
-        self._init_notification_strategy(conn)
-        conn.close()
 
     def _init_notification_channels(self, conn: sqlite3.Connection) -> None:
         c = conn.cursor()
@@ -371,27 +401,27 @@ class SystemSettingsMapper(SQLiteMapper):
     # ==================== 通用 Upsert/Query ====================
 
     def _upsert(self, table: str, columns: list[str], values: list) -> None:
-        conn = self._get_connection()
-        c = conn.cursor()
-        now = now_str()
-        placeholders = ", ".join([f"{col}=?" for col in columns])
-        params = list(values) + [now] + list(values)
-        c.execute(
-            f"INSERT INTO {table} (id, {', '.join(columns)}, updated_at) "
-            f"VALUES (1, {', '.join(['?'] * len(columns))}, ?) "
-            f"ON CONFLICT(id) DO UPDATE SET {placeholders}, updated_at=excluded.updated_at",
-            params,
-        )
-        conn.commit()
-        conn.close()
+        _validate_table(table)
+        _validate_columns(columns)
+        with self._session() as conn:
+            c = conn.cursor()
+            now = now_str()
+            placeholders = ", ".join([f"{col}=?" for col in columns])
+            params = [*values, now, *values]
+            c.execute(
+                f"INSERT INTO {table} (id, {', '.join(columns)}, updated_at) "
+                f"VALUES (1, {', '.join(['?'] * len(columns))}, ?) "
+                f"ON CONFLICT(id) DO UPDATE SET {placeholders}, updated_at=excluded.updated_at",
+                params,
+            )
 
     def _get_row(self, table: str) -> dict | None:
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(f"SELECT * FROM {table} WHERE id=1")
-        row = c.fetchone()
-        conn.close()
-        return dict(row) if row else None
+        _validate_table(table)
+        with self._session() as conn:
+            c = conn.cursor()
+            c.execute(f"SELECT * FROM {table} WHERE id=1")
+            row = c.fetchone()
+            return dict(row) if row else None
 
     # ==================== 各表便捷方法 ====================
 
@@ -422,14 +452,13 @@ class SystemSettingsMapper(SQLiteMapper):
     # ==================== 品种名称映射 ====================
 
     def get_symbol_config(self) -> list[dict]:
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "SELECT symbol, display_name, sort_order FROM symbol_config ORDER BY sort_order"
-        )
-        rows = c.fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
+        with self._session() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT symbol, display_name, sort_order FROM symbol_config ORDER BY sort_order"
+            )
+            rows = c.fetchall()
+            return [dict(r) for r in rows]
 
     def get_symbol_name_map(self) -> dict[str, str]:
         rows = self.get_symbol_config()
@@ -438,25 +467,20 @@ class SystemSettingsMapper(SQLiteMapper):
     def upsert_symbol(
         self, symbol: str, display_name: str, sort_order: int = 0
     ) -> None:
-        conn = self._get_connection()
-        c = conn.cursor()
-        now = now_str()
-        c.execute(
-            "INSERT INTO symbol_config (symbol, display_name, sort_order, updated_at) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(symbol) DO UPDATE SET display_name=excluded.display_name, sort_order=excluded.sort_order, updated_at=excluded.updated_at",
-            (symbol, display_name, sort_order, now),
-        )
-        conn.commit()
-        conn.close()
+        with self._session() as conn:
+            c = conn.cursor()
+            now = now_str()
+            c.execute(
+                "INSERT INTO symbol_config (symbol, display_name, sort_order, updated_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(symbol) DO UPDATE SET display_name=excluded.display_name, sort_order=excluded.sort_order, updated_at=excluded.updated_at",
+                (symbol, display_name, sort_order, now),
+            )
 
     def delete_symbol(self, symbol: str) -> bool:
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute("DELETE FROM symbol_config WHERE symbol=?", (symbol,))
-        conn.commit()
-        affected = c.rowcount
-        conn.close()
-        return affected > 0
+        with self._session() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM symbol_config WHERE symbol=?", (symbol,))
+            return c.rowcount > 0
 
     # ==================== 日志配置 ====================
 
@@ -483,24 +507,30 @@ class SystemSettingsMapper(SQLiteMapper):
     # ==================== 通知渠道 ====================
 
     def get_notification_channels(self) -> list[dict]:
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "SELECT channel_type, display_name, enabled, priority, config "
-            "FROM notification_channels ORDER BY priority"
-        )
-        rows = c.fetchall()
-        conn.close()
-        result = []
-        for r in rows:
-            item = dict(r)
-            try:
-                item["config"] = json.loads(item["config"])
-            except json.JSONDecodeError:
-                item["config"] = {}
-            item["enabled"] = bool(item["enabled"])
-            result.append(item)
-        return result
+        with self._session() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT channel_type, display_name, enabled, priority, config "
+                "FROM notification_channels ORDER BY priority"
+            )
+            rows = c.fetchall()
+            result = []
+            for r in rows:
+                item = dict(r)
+                try:
+                    item["config"] = json.loads(item["config"])
+                except json.JSONDecodeError:
+                    item["config"] = {}
+                if (
+                    item["channel_type"] == "email"
+                    and item["config"].get("sender_password")
+                ):
+                    item["config"]["sender_password"] = decrypt_value(
+                        item["config"]["sender_password"]
+                    )
+                item["enabled"] = bool(item["enabled"])
+                result.append(item)
+            return result
 
     def upsert_notification_channel(
         self,
@@ -510,37 +540,37 @@ class SystemSettingsMapper(SQLiteMapper):
         priority: int,
         config: dict,
     ) -> None:
-        conn = self._get_connection()
-        c = conn.cursor()
-        now = now_str()
-        c.execute(
-            "INSERT INTO notification_channels (channel_type, display_name, enabled, priority, config, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(channel_type) DO UPDATE SET "
-            "display_name=excluded.display_name, enabled=excluded.enabled, "
-            "priority=excluded.priority, config=excluded.config, updated_at=excluded.updated_at",
-            (
-                channel_type,
-                display_name,
-                1 if enabled else 0,
-                priority,
-                json.dumps(config),
-                now,
-            ),
-        )
-        conn.commit()
-        conn.close()
+        with self._session() as conn:
+            c = conn.cursor()
+            now = now_str()
+            config_to_store = dict(config)
+            if channel_type == "email" and config_to_store.get("sender_password"):
+                config_to_store["sender_password"] = encrypt_value(
+                    config_to_store["sender_password"]
+                )
+            c.execute(
+                "INSERT INTO notification_channels (channel_type, display_name, enabled, priority, config, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(channel_type) DO UPDATE SET "
+                "display_name=excluded.display_name, enabled=excluded.enabled, "
+                "priority=excluded.priority, config=excluded.config, updated_at=excluded.updated_at",
+                (
+                    channel_type,
+                    display_name,
+                    1 if enabled else 0,
+                    priority,
+                    json.dumps(config_to_store),
+                    now,
+                ),
+            )
 
     def delete_notification_channel(self, channel_type: str) -> bool:
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute(
-            "DELETE FROM notification_channels WHERE channel_type=?", (channel_type,)
-        )
-        conn.commit()
-        affected = c.rowcount
-        conn.close()
-        return affected > 0
+        with self._session() as conn:
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM notification_channels WHERE channel_type=?", (channel_type,)
+            )
+            return c.rowcount > 0
 
     # ==================== 通知策略 ====================
 

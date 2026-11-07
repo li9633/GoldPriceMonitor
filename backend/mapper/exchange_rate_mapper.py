@@ -32,7 +32,6 @@ class ExchangeRateMapper(SQLiteMapper):
                 "ON exchange_rate_history(timestamp)"
             )
             self._migrate_new_columns(c)
-            conn.commit()
 
     @staticmethod
     def _migrate_new_columns(cursor) -> None:
@@ -67,7 +66,6 @@ class ExchangeRateMapper(SQLiteMapper):
                 "VALUES (?, ?, ?, ?, ?)",
                 (rate, ts, source, provider, data_updated_at),
             )
-            conn.commit()
 
     def get_latest_rate(self) -> float | None:
         """获取数据库中最新的汇率记录，作为所有接口都失败时的兜底"""

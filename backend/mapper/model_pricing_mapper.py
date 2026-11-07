@@ -21,7 +21,6 @@ class ModelPricingMapper(SQLiteMapper):
                 updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
                 UNIQUE(provider_name, model_name)
             )""")
-            conn.commit()
 
     def list_all(self) -> list[dict]:
         with self._session() as conn:
@@ -65,7 +64,6 @@ class ModelPricingMapper(SQLiteMapper):
                 "currency=excluded.currency, updated_at=excluded.updated_at",
                 (provider_name, model_name, input_price, output_price, currency, now),
             )
-            conn.commit()
             row_id = c.lastrowid
         return row_id or 0
 
@@ -78,7 +76,6 @@ class ModelPricingMapper(SQLiteMapper):
         with self._session() as conn:
             c = conn.cursor()
             c.execute(f"UPDATE model_pricing SET {fields} WHERE id=?", values)
-            conn.commit()
             affected = c.rowcount > 0
         return affected
 
@@ -86,7 +83,6 @@ class ModelPricingMapper(SQLiteMapper):
         with self._session() as conn:
             c = conn.cursor()
             c.execute("DELETE FROM model_pricing WHERE id=?", (pricing_id,))
-            conn.commit()
             affected = c.rowcount > 0
         return affected
 
