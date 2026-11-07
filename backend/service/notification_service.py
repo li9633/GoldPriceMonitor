@@ -1,6 +1,13 @@
 import uuid
 
-from channels import AdviceData, AdvicePayload, get_channel
+from channels import (
+    ADVICE_KINDS,
+    KIND_REVIEW,
+    AdvicePayload,
+    ChannelResult,
+    NotificationData,
+    get_channel,
+)
 from models.advice import ACTION_ALERT_LEVEL
 from service.notification_stats_service import NotificationStatsService
 from service.system_settings_service import SystemSettingsService
@@ -23,7 +30,7 @@ class NotificationService:
         channel_filter: list[str] | None = None,
         stop_on_first_success: bool | None = None,
     ) -> bool:
-        """投递一条建议。
+        """投递一条建议（或复盘建议）。
 
         `advice` 是 `models.advice.AdviceRecord`；持仓上下文从它冻结的 `evidence`
         里取，保证「消息里说的持仓」与「当时生成建议用的持仓」一致。
@@ -32,8 +39,10 @@ class NotificationService:
         position = (advice.evidence or {}).get("position") or {}
         action = advice.action.value
         level = ACTION_ALERT_LEVEL.get(action, "warning")
+        kind = KIND_REVIEW if advice.review_horizon else "advice"
 
-        data = AdviceData(
+        data = NotificationData(
+            kind=kind,
             symbol=advice.symbol,
             symbol_name=symbol_name,
             current_price=current_price,
@@ -64,9 +73,33 @@ class NotificationService:
             stop_on_first_success=stop_on_first_success,
         )
 
+    def send(
+        self,
+        data: NotificationData,
+        channel_filter: list[str] | None = None,
+        stop_on_first_success: bool | None = None,
+    ) -> bool:
+        """投递一条非建议类消息（波动提醒 / 每日摘要 / 节后缺口…）。
+
+        消息语义由 `data.kind` 决定，字段放在 `data.fields`；
+        渠道按 kind 自动选择渲染模板。
+        """
+        assert data.kind not in ADVICE_KINDS, "建议类消息请走 send_advice()"
+        # 未指定级别的消息按 info 投递；显式指定的（如波动提醒的
+        # warning/critical）原样透传，保证前端统计页的级别语义不失真
+        if data.alert_level is None:
+            data.alert_level = "info"
+        summary = data.summary or MessageTemplate.kind_title(data.kind)
+        return self._dispatch(
+            data,
+            summary=summary[:100],
+            channel_filter=channel_filter,
+            stop_on_first_success=stop_on_first_success,
+        )
+
     def _dispatch(
         self,
-        data: AdviceData,
+        data: NotificationData,
         *,
         summary: str,
         channel_filter: list[str] | None = None,
@@ -76,12 +109,7 @@ class NotificationService:
         symbol = data.symbol
         symbol_name = data.symbol_name
         current_price = data.current_price
-        alert_level = data.alert_level
-
-        logger.info("========== 开始发送建议 ==========")
-        logger.info(f"品种：{symbol_name}, 价格：{current_price}, 级别：{alert_level}")
-        if data.extra_info:
-            logger.info(f"额外信息：{data.extra_info}")
+        alert_level = data.alert_level or "info"
 
         if stop_on_first_success is None:
             strategy = self.settings.get_notification_strategy()
@@ -127,10 +155,27 @@ class NotificationService:
                 )
                 continue
 
-            logger.info(
-                f"[通知策略] [{i + 1}/{chain_total}] 尝试渠道：{channel.channel_name}"
+            logger.debug(
+                f"渠道尝试 chain={chain_id} channel={channel.channel_name} "
+                f"position={i + 1}/{chain_total}"
             )
-            result = channel.send(data, cfg)
+            try:
+                result = channel.send(data, cfg)
+            except Exception as exc:  # noqa: BLE001
+                # 单渠道异常不允许炸掉整条投递链（排在其后的渠道不再尝试）
+                # 与整个 tick —— 转成失败结果继续走
+                logger.error(
+                    f"渠道投递异常 chain={chain_id} "
+                    f"channel={channel.channel_name}: {exc}",
+                    exc_info=exc,
+                )
+                result = ChannelResult(
+                    success=False,
+                    channel_type=channel_type,
+                    message=f"渠道异常：{exc}",
+                    error_type="channel_exception",
+                    error_detail=str(exc)[:200],
+                )
 
             self._record_log(
                 alert_level,
@@ -151,21 +196,22 @@ class NotificationService:
 
             if result.success:
                 any_success = True
-                logger.info(f"[通知结果] {channel.channel_name} 发送成功")
+                logger.info(
+                    f"渠道投递成功 chain={chain_id} "
+                    f"channel={channel.channel_name} latency_ms={result.latency_ms:.0f}"
+                )
                 if stop_on_first_success:
-                    logger.info(
-                        "========== 通知发送完成 (stop_on_first_success) =========="
-                    )
                     return True
             else:
                 logger.warning(
-                    f"[通知结果] {channel.channel_name} 发送失败：{result.error_detail}"
+                    f"渠道投递失败 chain={chain_id} channel={channel.channel_name} "
+                    f"error_type={result.error_type} detail={result.error_detail}"
                 )
 
         if any_success:
-            logger.info("========== 通知发送完成 (部分成功) ==========")
+            logger.info(f"通知投递完成（部分成功） chain={chain_id} kind={data.kind}")
         else:
-            logger.error("========== 通知发送完成 (全部失败) ==========")
+            logger.error(f"通知投递完成（全部失败） chain={chain_id} kind={data.kind}")
         return any_success
 
     def _get_channel_configs(self) -> list[dict]:
@@ -214,5 +260,7 @@ class NotificationService:
                 error_type=error_type,
                 error_reason=error_reason,
             )
-        except (OSError, ValueError, TypeError) as e:
-            logger.error(f"写入通知记录失败：{e}")
+        except Exception as e:  # noqa: BLE001
+            # 写统计失败绝不允许中断投递链（sqlite3.Error 等
+            # 不在窄过滤里，曾是漏网之鱼）
+            logger.error(f"通知记录写入失败 error={e}", exc_info=e)

@@ -102,7 +102,7 @@ class AdviceEngine:
         try:
             live = self.price_service.fetch_current_price(symbol)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("获取 %s 实时价失败：%s", symbol, exc)
+            logger.warning(f"实时价获取失败 symbol={symbol} error={exc}")
             live = None
         if live and live.get("price"):
             return float(live["price"]), "live"
@@ -121,6 +121,7 @@ class AdviceEngine:
         london_usd: float | None = None,
         *,
         use_llm: bool | None = None,
+        market_symbol: str | None = None,
         subject_lot: dict | None = None,
         review_horizon: int | None = None,
     ) -> ComputedAdvice:
@@ -131,12 +132,17 @@ class AdviceEngine:
 
         传入 `subject_lot` + `review_horizon` 时产出的是**复盘**建议
         （针对某笔买入的 T+n 回访）。
+
+        `market_symbol` 指定行情口径：INTL_ONLY（SGE 休市、国际金开市）时传
+        `hf_XAU`，指标与估值价都来自国际金，主体（持仓/计划）不变；
+        None 表示与 `symbol` 相同。
         """
         ctx = self.build_context(
             symbol,
             current_price,
             london_cny,
             london_usd,
+            market_symbol=market_symbol,
             subject_lot=subject_lot,
             review_horizon=review_horizon,
         )
@@ -245,7 +251,9 @@ class AdviceEngine:
             try:
                 trade_date = date.fromisoformat(str(lot.get("trade_date")))
             except (ValueError, TypeError):
-                logger.warning("买入记录 %s 的日期无法解析，跳过复盘", lot.get("id"))
+                logger.warning(
+                    f"买入记录日期无法解析，跳过复盘 lot_id={lot.get('id')}"
+                )
                 continue
             age = (today - trade_date).days
             for horizon in FOLLOWUP_HORIZONS:
@@ -292,10 +300,24 @@ class AdviceEngine:
         london_usd: float | None = None,
         *,
         with_entry_strategy: bool = True,
+        market_symbol: str | None = None,
         subject_lot: dict | None = None,
         review_horizon: int | None = None,
     ) -> AdviceContext:
-        snapshot = self.price_mapper.get_check_snapshot(symbol)
+        # 行情口径：默认与主体相同；INTL_ONLY 时来自国际金
+        view_symbol = market_symbol or symbol
+        snapshot = self.price_mapper.get_check_snapshot(view_symbol)
+        if (
+            market_symbol
+            and market_symbol != symbol
+            and snapshot is not None
+            and london_usd
+            and float(london_usd) > 0
+        ):
+            # INTL_ONLY：hf_XAU 序列是美元/盎司，而现价是折算 ¥/g ——
+            # 快照必须先换算成同一口径，否则 pct_from_* / ma20 对比等
+            # 指标会相差一个数量级，产生「远低于 3 个月低位」之类的假信号。
+            snapshot = snapshot.scaled(current_price / float(london_usd))
         indicators = MarketIndicators.from_snapshot(
             snapshot, current_price, london_cny, london_usd
         )
@@ -304,7 +326,8 @@ class AdviceEngine:
         sales = self.portfolio_mapper.list_sales(symbol)
         plans_raw = self.portfolio_mapper.list_plans(symbol)
         # 用「本次建议用的价格」算市值，保证建议与证据里的持仓口径一致；
-        # 必须带上卖出记录，否则止盈止损卖出后系统仍按原持仓判断
+        # 必须带上卖出记录，否则止盈止损卖出后系统仍按原持仓判断。
+        # INTL_ONLY 时这个价格是国际金折算价（开市市场的价格，见方案文档 §4.1）
         position = compute_position(
             symbol, lots, latest_price=current_price, sales=sales
         )
@@ -313,7 +336,13 @@ class AdviceEngine:
 
         entry_strategy = None
         if with_entry_strategy:
-            entry_strategy = self.entry_evaluator.evaluate(symbol, current_price)
+            # 序列口径是视图品种的：INTL_ONLY 时参考点也要用美元口径
+            entry_price = (
+                float(london_usd)
+                if market_symbol and market_symbol != symbol and london_usd
+                else current_price
+            )
+            entry_strategy = self.entry_evaluator.evaluate(view_symbol, entry_price)
 
         return AdviceContext(
             symbol=symbol,
@@ -323,6 +352,7 @@ class AdviceEngine:
             plans=plan_states,
             prefs=self.get_prefs(),
             entry_strategy=entry_strategy,
+            market_symbol=market_symbol,
             subject_lot=subject_lot,
             review_horizon=review_horizon,
         )
@@ -336,7 +366,7 @@ class AdviceEngine:
         if price is None:
             raise ValueError(f"品种 {target} 没有可用价格，无法生成建议")
         if source == "stored":
-            logger.info("%s 使用库中最新价（实时获取失败）", target)
+            logger.info(f"使用库中最新价（实时获取失败） symbol={target}")
 
         london_cny, london_usd = self._resolve_london()
         record = self.generate(
@@ -467,6 +497,6 @@ def _review_target_timestamp(created_at: str, horizon_days: int) -> int | None:
             tzinfo=CHINA_TZ
         )
     except (ValueError, TypeError):
-        logger.warning("建议的 created_at 无法解析：%r", created_at)
+        logger.warning(f"建议 created_at 无法解析 value={created_at!r}")
         return None
     return int((base + timedelta(days=horizon_days)).timestamp())

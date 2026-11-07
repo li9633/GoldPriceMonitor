@@ -1,8 +1,15 @@
 from channels.base import (
+    ADVICE_KINDS,
+    KIND_ADVICE,
+    KIND_DIGEST,
+    KIND_REOPEN_GAP,
+    KIND_REVIEW,
+    KIND_VOLATILITY,
     AdviceData,
     AdvicePayload,
     BaseNotificationChannel,
     ChannelResult,
+    NotificationData,
     classify_error,
 )
 from channels.email_channel import EmailChannel
@@ -30,11 +37,18 @@ def get_all_channels() -> dict[str, BaseNotificationChannel]:
 
 
 __all__ = [
+    "ADVICE_KINDS",
     "AdviceData",
     "AdvicePayload",
     "BaseNotificationChannel",
     "ChannelResult",
+    "KIND_ADVICE",
+    "KIND_DIGEST",
+    "KIND_REOPEN_GAP",
+    "KIND_REVIEW",
+    "KIND_VOLATILITY",
     "EmailChannel",
+    "NotificationData",
     "WechatWorkChannel",
     "classify_error",
     "get_all_channels",

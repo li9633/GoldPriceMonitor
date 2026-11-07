@@ -462,10 +462,11 @@ def test_migration_adds_columns_to_existing_db() -> None:
         conn.close()
 
         mapper = AdviceMapper(db_file=db)  # init_tables 应完成迁移
-        columns = {
-            row[1]
-            for row in sqlite3.connect(db).execute("PRAGMA table_info(advice_records)")
-        }
+        with contextlib.closing(sqlite3.connect(db)) as conn:
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(advice_records)")
+            }
         assert {"subject_lot_id", "review_horizon"} <= columns
 
         advice_id = mapper.insert_advice(
@@ -561,6 +562,11 @@ def make_monitor(engine, notifier=None, latest=900.0) -> MonitorService:
     monitor.notification_service = notifier or FakeNotifier()
     monitor.price_mapper = FakePriceMapperForFollowup(latest)
     monitor._followup_timer = DueTimer("买入复盘", FOLLOWUP_REVIEW_SECONDS)
+    from service.triggers import FollowupTrigger
+
+    monitor.followup_trigger = FollowupTrigger(
+        engine, monitor.price_mapper, FOLLOWUP_REVIEW_SECONDS
+    )
     return monitor
 
 

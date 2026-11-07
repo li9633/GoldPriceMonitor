@@ -23,11 +23,13 @@ class BaseExchangeRateProvider(ABC):
     @abstractmethod
     def provider_name(self) -> str: ...
 
+    @property
+    @abstractmethod
+    def api_url(self) -> str:
+        """数据端点（供设置页展示）"""
+        ...
+
     @abstractmethod
     def fetch(
         self, base: str = "USD", symbol: str = "CNY"
     ) -> ExchangeRateResult | None: ...
-
-    def is_available(self) -> bool:
-        """健康检查，子类可覆盖"""
-        return True

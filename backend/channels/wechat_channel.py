@@ -1,9 +1,9 @@
 import time
 
 from channels.base import (
-    AdviceData,
     BaseNotificationChannel,
     ChannelResult,
+    NotificationData,
     classify_error,
 )
 from utils.http_utils import safe_post_json
@@ -27,7 +27,7 @@ class WechatWorkChannel(BaseNotificationChannel):
             return False
         return bool(config.get("webhook_url", "").strip())
 
-    def send(self, data: AdviceData, config: dict) -> ChannelResult:
+    def send(self, data: NotificationData, config: dict) -> ChannelResult:
         start = time.monotonic()
         if not self.validate_config(config):
             return ChannelResult(
@@ -39,7 +39,7 @@ class WechatWorkChannel(BaseNotificationChannel):
                 error_detail="webhook_url 未配置",
             )
 
-        message = MessageTemplate.format_advice(data, template_type="markdown")
+        message = MessageTemplate.format(data.kind, data, template_type="markdown")
 
         payload = {"msgtype": "markdown", "markdown": {"content": message}}
         response = safe_post_json(config["webhook_url"], payload, timeout=10)
@@ -56,9 +56,22 @@ class WechatWorkChannel(BaseNotificationChannel):
             )
 
         if response.status_code == 200:
-            resp_json = response.json()
+            try:
+                resp_json = response.json()
+            except ValueError:
+                # HTTP 200 但响应体不是 JSON（网关插页/被劫持的 webhook）
+                err_detail = f"响应不是 JSON：{response.text[:120]}"
+                logger.error(f"企业微信消息发送失败：{err_detail}")
+                return ChannelResult(
+                    success=False,
+                    channel_type=self.channel_type,
+                    message="企业微信响应解析失败",
+                    latency_ms=latency_ms,
+                    error_type="api_error",
+                    error_detail=err_detail,
+                )
             if resp_json.get("errcode") == 0:
-                logger.info("企业微信 markdown 消息发送成功")
+                logger.debug("企业微信消息发送成功")
                 return ChannelResult(
                     success=True,
                     channel_type=self.channel_type,

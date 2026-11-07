@@ -182,3 +182,11 @@ def update_notification_strategy(data: NotificationStrategyModel):
         NotificationStrategyModel(**service.get_notification_strategy()),
         message="通知策略已更新",
     )
+
+
+@router.get("/calendar/status")
+def get_calendar_status():
+    """交易日历状态 —— 让「节假日判定当前用哪个源、是否降级」可被看见"""
+    from providers.calendar import get_calendar
+
+    return ApiResponse.ok(get_calendar().status())

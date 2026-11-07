@@ -56,6 +56,10 @@
           <font-awesome-icon icon="sliders" class="menu-icon" />
           <span class="menu-text">系统管理</span>
         </template>
+        <el-menu-item index="/runtime-status">
+          <font-awesome-icon icon="gauge-high" class="menu-icon" />
+          <span class="menu-text">运行状态</span>
+        </el-menu-item>
         <el-menu-item index="/providers">
           <font-awesome-icon icon="diagram-project" class="menu-icon" />
           <span class="menu-text">模型池</span>
@@ -87,6 +91,7 @@ import {
   faDiagramProject,
   faFileLines,
   faGear,
+  faGaugeHigh,
   faLightbulb,
   faRobot,
   faBell,
@@ -104,6 +109,7 @@ library.add(
   faDiagramProject,
   faFileLines,
   faGear,
+  faGaugeHigh,
   faLightbulb,
   faRobot,
   faBell,

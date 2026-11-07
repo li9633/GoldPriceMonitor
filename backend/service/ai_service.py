@@ -23,7 +23,7 @@ class AIAnalysisService:
         # 统一拦住，让 analyze 与 complete 两个入口都遵守 ai_config.enabled
         if not self._ai_enabled():
             if self.model_pool is not None:
-                logger.warning("AI 已在设置中关闭，AI 分析停用")
+                logger.warning("AI 分析停用（设置中已关闭）")
                 self.model_pool = None
             return False
 
@@ -33,7 +33,7 @@ class AIAnalysisService:
 
         if not providers:
             if self.model_pool is not None:
-                logger.warning("AI 模型池配置已被清空，AI 分析已禁用")
+                logger.warning("AI 分析禁用（模型池配置为空）")
                 self.model_pool = None
             return False
 
@@ -47,7 +47,7 @@ class AIAnalysisService:
         self._providers_fingerprint = current
         has_api_key = any(p.get("api_key") for p in providers)
         if has_api_key:
-            logger.info(f"AI 模型池已就绪，共 {len(providers)} 个供应商")
+            logger.info(f"AI 模型池就绪 providers={len(providers)}")
         else:
             logger.warning(
                 f"AI 模型池已加载 {len(providers)} 个供应商，但均未配置 API Key，AI 分析仍不可用"
@@ -60,7 +60,7 @@ class AIAnalysisService:
         try:
             config = SystemSettingsService().get_ai_config()
         except Exception as exc:  # noqa: BLE001
-            logger.error(f"读取 AI 配置失败，按启用处理：{exc}")
+            logger.error(f"AI 配置读取失败（按启用处理） error={exc}", exc_info=exc)
             return True
         return bool(config.get("enabled", True))
 
@@ -76,10 +76,10 @@ class AIAnalysisService:
         try:
             result = self.model_pool.call(system_prompt, prompt, cache_key=cache_key)
         except Exception as exc:  # noqa: BLE001
-            logger.error(f"AI 调用失败：{exc}")
+            logger.error(f"AI 调用失败 error={exc}", exc_info=exc)
             return None
         if not result.success or not result.content:
-            logger.error(f"AI 返回不可用：{result.error}")
+            logger.error(f"AI 返回不可用 error={result.error}")
             return None
         if result.raw_response:
             self._log_token_usage(result.provider, result.model, result.raw_response)

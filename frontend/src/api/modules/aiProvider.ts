@@ -67,7 +67,7 @@ export const providerApi = {
     return request.post<ProviderModel>(`/providers/${name}/models`, data)
   },
   updateModel(name: string, modelId: number, data: ProviderModelUpdate) {
-    return request.put<ProviderModel>(`/providers/${name}/models/${modelId}`, data)
+    return request.put<null>(`/providers/${name}/models/${modelId}`, data)
   },
   removeModel(name: string, modelId: number) {
     return request.delete<null>(`/providers/${name}/models/${modelId}`)

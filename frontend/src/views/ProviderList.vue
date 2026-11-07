@@ -32,7 +32,7 @@
           <el-input v-model="form.api_url" />
         </el-form-item>
         <el-form-item label="环境变量名">
-          <el-input v-model="form.api_key" placeholder="如：GLM_API_KEY" />
+          <el-input v-model="form.api_key" :placeholder="keyPlaceholder" />
         </el-form-item>
         <el-form-item label="超时(秒)">
           <el-input-number v-model="form.timeout" :min="1" :max="120" />
@@ -50,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faServer, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { providerApi } from '@/api/modules/aiProvider'
@@ -74,6 +74,15 @@ const pricingMap = ref<Record<string, PricingItem>>({})
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingName = ref('')
+/** 编辑时的原脱敏状态：**** = 已配置 Key，未设置 = 未配置 */
+const editingKeyState = ref<'configured' | 'unset'>('unset')
+
+const keyPlaceholder = computed(() => {
+  if (!isEdit.value) return '如：GLM_API_KEY'
+  return editingKeyState.value === 'configured'
+    ? '已配置，留空保持不变；输入新环境变量名可更换'
+    : '未配置，输入 Key 的环境变量名，如：GLM_API_KEY'
+})
 
 const form = ref<ProviderCreate>({
   name: '',
@@ -114,6 +123,7 @@ const loadPricing = async () => {
 
 const openCreateDialog = () => {
   isEdit.value = false
+  editingKeyState.value = 'unset'
   form.value = { name: '', api_url: '', api_key: '', timeout: 30, sort_order: 0 }
   dialogVisible.value = true
 }
@@ -121,10 +131,12 @@ const openCreateDialog = () => {
 const openEditDialog = (provider: ModelProvider) => {
   isEdit.value = true
   editingName.value = provider.name
+  editingKeyState.value = provider.api_key === '未设置' ? 'unset' : 'configured'
+  // api_key 是脱敏值（****），不回填 —— 留空表示保持不变，避免把掩码写回数据库
   form.value = {
     name: provider.name,
     api_url: provider.api_url,
-    api_key: provider.api_key,
+    api_key: '',
     timeout: provider.timeout,
     sort_order: provider.sort_order,
   }
@@ -133,11 +145,12 @@ const openEditDialog = (provider: ModelProvider) => {
 
 const handleSubmit = async () => {
   if (isEdit.value) {
+    const key = form.value.api_key.trim()
     const updateData: ProviderUpdate = {
       api_url: form.value.api_url,
-      api_key: form.value.api_key,
       timeout: form.value.timeout,
       sort_order: form.value.sort_order,
+      ...(key ? { api_key: key } : {}),
     }
     await providerApi.update(editingName.value, updateData)
   } else {

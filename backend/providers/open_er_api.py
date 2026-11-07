@@ -16,6 +16,10 @@ class OpenERApiProvider(BaseExchangeRateProvider):
     def provider_name(self) -> str:
         return "open.er-api"
 
+    @property
+    def api_url(self) -> str:
+        return _API_URL
+
     def fetch(
         self, base: str = "USD", symbol: str = "CNY"
     ) -> ExchangeRateResult | None:

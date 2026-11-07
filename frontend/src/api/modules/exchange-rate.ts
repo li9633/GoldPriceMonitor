@@ -20,7 +20,8 @@ export interface ExchangeRateChartPoint {
 
 export interface ExchangeRateDashboard {
   record_count: number
-  latest_rate: number
+  /** 无汇率数据时为 null */
+  latest_rate: number | null
   latest_time: string | null
   today_high: number | null
   today_low: number | null

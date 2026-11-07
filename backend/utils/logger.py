@@ -10,6 +10,9 @@ _LOG_DIR = "logs"
 _LOG_NAME = "GoldPriceMonitor"
 _MAX_BYTES = 10 * 1024 * 1024
 _BACKUP_COUNT = 5
+#: 默认日志等级 —— DB 未配置 / 读取失败 / 非法值时的兜底。
+#: 只影响「未显式设置过」的环境；设置页保存的等级存进 DB 后优先生效。
+_DEFAULT_LOG_LEVEL = "WARNING"
 _initialized = False
 
 # 运行时引用，避免循环导入
@@ -30,9 +33,9 @@ def _get_log_level_from_db() -> str:
         from service.system_settings_service import SystemSettingsService
 
         cfg = SystemSettingsService().get_log_config()
-        return cfg.get("log_level", "DEBUG")
+        return cfg.get("log_level", _DEFAULT_LOG_LEVEL)
     except ImportError:
-        return "DEBUG"
+        return _DEFAULT_LOG_LEVEL
 
 
 def _init() -> None:
@@ -44,13 +47,15 @@ def _init() -> None:
     os.makedirs(_LOG_DIR, exist_ok=True)
 
     root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
+    root.setLevel(_get_log_level())
 
     # 抑制第三方库的 DEBUG 日志
     for lib in _third_party_libs:
         logging.getLogger(lib).setLevel(logging.WARNING)
 
-    # 文件处理器 — 所有日志写入同一个文件
+    # 文件处理器 — 所有日志写入同一个文件。
+    # 级别保持 DEBUG：root 级别是唯一闸门（DB 配置可随时切回 DEBUG 而无需
+    # 重建 handler）；handler 只负责落盘不重复过滤。
     log_file = os.path.join(_LOG_DIR, f"{_LOG_NAME}.log")
     fh = RotatingFileHandler(
         log_file, maxBytes=_MAX_BYTES, backupCount=_BACKUP_COUNT, encoding="utf-8"
@@ -77,14 +82,22 @@ def _init() -> None:
     )
     root.addHandler(_console_handler)
 
-    # 从 DB 读取日志等级，默认 DEBUG
+    # 从 DB 读取日志等级（未配置时回落到 _DEFAULT_LOG_LEVEL）
     log_level = _get_log_level_from_db()
-    root.setLevel(getattr(logging, log_level, logging.DEBUG))
+    root.setLevel(getattr(logging, log_level, logging.WARNING))
+
+
+def _get_log_level() -> int:
+    """初始化阶段的日志等级：先尝试 DB 配置，失败回落默认"""
+    try:
+        return getattr(logging, _get_log_level_from_db(), logging.WARNING)
+    except Exception:  # noqa: BLE001 — 初始化期间任何异常都不应阻断启动
+        return logging.WARNING
 
 
 def apply_log_level(level: str) -> None:
     root = logging.getLogger()
-    py_level = getattr(logging, level.upper(), logging.DEBUG)
+    py_level = getattr(logging, level.upper(), logging.WARNING)
     root.setLevel(py_level)
     if _console_handler:
         _console_handler.setLevel(py_level)

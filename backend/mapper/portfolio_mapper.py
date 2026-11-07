@@ -3,16 +3,15 @@
 与 `system_settings.db` 分开：那张库里的表都是覆盖式配置（固定 `id=1`），
 而这里是追加式流水。
 
-所有查询都走 `_connect()` 上下文管理器 —— 它退出时提交并必定关闭连接。
+所有查询都走 `_session()` 上下文管理器 —— 它退出时提交并必定关闭连接。
 不要用 `with sqlite3.connect(...) as conn`，那只是事务上下文，不会关闭连接。
 """
 
 import json
 import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
 
 from config import PORTFOLIO_DB_FILE
+from mapper.base import SQLiteMapper
 from utils.logger import get_logger
 from utils.time_utils import now_str
 
@@ -82,34 +81,15 @@ def _pick(data: dict, columns: tuple[str, ...], defaults: dict) -> dict:
     return picked
 
 
-class PortfolioMapper:
+class PortfolioMapper(SQLiteMapper):
     """买入批次 + 购买计划"""
 
     def __init__(self, db_file: str = PORTFOLIO_DB_FILE):
-        self.db_file = db_file
+        super().__init__(db_file, wal=True, row_factory=True)
         self.init_tables()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_file, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
-        """打开连接，退出时提交并**关闭**"""
-        conn = self._get_connection()
-        try:
-            yield conn
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-
     def init_tables(self) -> None:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute("""CREATE TABLE IF NOT EXISTS purchase_lots (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,11 +165,11 @@ class PortfolioMapper:
             sql += " WHERE symbol = ?"
             params = (symbol,)
         sql += " ORDER BY trade_date ASC, id ASC"
-        with self._connect() as conn:
+        with self._session() as conn:
             return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
     def get_lot(self, lot_id: int) -> dict | None:
-        with self._connect() as conn:
+        with self._session() as conn:
             row = conn.execute(
                 "SELECT * FROM purchase_lots WHERE id = ?", (lot_id,)
             ).fetchone()
@@ -200,7 +180,7 @@ class PortfolioMapper:
         payload["created_at"] = now_str()
         columns = ", ".join(payload)
         placeholders = ", ".join(["?"] * len(payload))
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"INSERT INTO purchase_lots ({columns}) VALUES ({placeholders})",
@@ -216,7 +196,7 @@ class PortfolioMapper:
             return self.get_lot(lot_id) is not None
         assignments = ", ".join(f"{key} = ?" for key in fields)
         params = (*fields.values(), lot_id)
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"UPDATE purchase_lots SET {assignments} WHERE id = ?", params
@@ -224,14 +204,14 @@ class PortfolioMapper:
             return c.rowcount > 0
 
     def delete_lot(self, lot_id: int) -> bool:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute("DELETE FROM purchase_lots WHERE id = ?", (lot_id,))
             return c.rowcount > 0
 
     def delete_lots_by_plan(self, plan_id: int) -> int:
         """删除某计划下的所有批次（仅用于测试与级联清理）"""
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute("DELETE FROM purchase_lots WHERE plan_id = ?", (plan_id,))
             return c.rowcount
@@ -246,11 +226,11 @@ class PortfolioMapper:
             sql += " WHERE symbol = ?"
             params = (symbol,)
         sql += " ORDER BY sale_date ASC, id ASC"
-        with self._connect() as conn:
+        with self._session() as conn:
             return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
     def get_sale(self, sale_id: int) -> dict | None:
-        with self._connect() as conn:
+        with self._session() as conn:
             row = conn.execute(
                 "SELECT * FROM sale_records WHERE id = ?", (sale_id,)
             ).fetchone()
@@ -261,7 +241,7 @@ class PortfolioMapper:
         payload["created_at"] = now_str()
         columns = ", ".join(payload)
         placeholders = ", ".join(["?"] * len(payload))
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"INSERT INTO sale_records ({columns}) VALUES ({placeholders})",
@@ -275,13 +255,13 @@ class PortfolioMapper:
             return self.get_sale(sale_id) is not None
         assignments = ", ".join(f"{key} = ?" for key in fields)
         params = (*fields.values(), sale_id)
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(f"UPDATE sale_records SET {assignments} WHERE id = ?", params)
             return c.rowcount > 0
 
     def delete_sale(self, sale_id: int) -> bool:
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute("DELETE FROM sale_records WHERE id = ?", (sale_id,))
             return c.rowcount > 0
@@ -303,11 +283,11 @@ class PortfolioMapper:
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY id DESC"
-        with self._connect() as conn:
+        with self._session() as conn:
             return [self._plan_row(row) for row in conn.execute(sql, params).fetchall()]
 
     def get_plan(self, plan_id: int) -> dict | None:
-        with self._connect() as conn:
+        with self._session() as conn:
             row = conn.execute(
                 "SELECT * FROM purchase_plans WHERE id = ?", (plan_id,)
             ).fetchone()
@@ -323,7 +303,7 @@ class PortfolioMapper:
         payload["updated_at"] = timestamp
         columns = ", ".join(payload)
         placeholders = ", ".join(["?"] * len(payload))
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 f"INSERT INTO purchase_plans ({columns}) VALUES ({placeholders})",
@@ -342,14 +322,14 @@ class PortfolioMapper:
         fields["updated_at"] = now_str()
         assignments = ", ".join(f"{key} = ?" for key in fields)
         params = (*fields.values(), plan_id)
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(f"UPDATE purchase_plans SET {assignments} WHERE id = ?", params)
             return c.rowcount > 0
 
     def delete_plan(self, plan_id: int) -> bool:
         """删除计划，并把关联批次的 `plan_id` 置空（不删买入记录）"""
-        with self._connect() as conn:
+        with self._session() as conn:
             c = conn.cursor()
             c.execute(
                 "UPDATE purchase_lots SET plan_id = NULL WHERE plan_id = ?", (plan_id,)

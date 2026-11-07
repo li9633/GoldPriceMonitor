@@ -12,6 +12,7 @@
 
 from channels.base import AdviceData, AdvicePayload
 from models.advice import (
+    ACTION_ALERT_LEVEL,
     AdviceAction,
     AdviceKind,
     AdviceRecord,
@@ -69,6 +70,8 @@ def make_alert_data(action: AdviceAction = AdviceAction.BUY_PARTIAL) -> AdviceDa
         symbol_name="黄金T+D",
         current_price=909.0,
         extra_info={"london_gold_cny": 531.2, "london_gold_usd": 2300.0},
+        # 与 send_advice 的构造方行为一致：建议类显式携带级别
+        alert_level=ACTION_ALERT_LEVEL.get(action.value, "warning"),
         advice=AdvicePayload(
             action=action.value,
             rationale=record.rationale,

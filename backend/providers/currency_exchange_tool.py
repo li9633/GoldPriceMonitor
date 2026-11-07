@@ -16,6 +16,10 @@ class CurrencyExchangeToolProvider(BaseExchangeRateProvider):
     def provider_name(self) -> str:
         return "currencyexchangetool"
 
+    @property
+    def api_url(self) -> str:
+        return _API_URL
+
     def fetch(
         self, base: str = "USD", symbol: str = "CNY"
     ) -> ExchangeRateResult | None:
