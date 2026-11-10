@@ -13,6 +13,10 @@ import sqlite3
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 
+from utils.logger import get_logger
+
+logger = get_logger("SQLiteMapper")
+
 
 class SQLiteMapper:
     """所有 SQLite mapper 的公共基类"""
@@ -52,3 +56,21 @@ class SQLiteMapper:
             raise
         finally:
             conn.close()
+
+    def optimize(self) -> None:
+        """刷新查询计划统计信息（SQLite 官方推荐的轻量做法）。
+
+        为什么需要：SQLite 的规划器依赖 `sqlite_stat1`。表从空长到几十万行后，
+        统计信息还是建表时的旧值，规划器就可能挑错索引 —— 实测同一句
+        `top_failures`（30 万行、当天只有 481 行）在统计信息陈旧时选了
+        `success=0` 的索引、把 18 万行捞进临时 B 树排序，耗时 62ms；
+        换成正确的 `created_at` 范围索引后是 0.34ms，**差 180 倍**。
+
+        `PRAGMA optimize` 只在必要时才真正跑 ANALYZE，开销很低，
+        适合挂在监控循环的每日定时任务上。
+        """
+        try:
+            with self._session() as conn:
+                conn.execute("PRAGMA optimize")
+        except sqlite3.Error as e:  # 统计信息刷新失败不该影响主流程
+            logger.warning(f"刷新查询统计信息失败（{self.db_file}）：{e}")
