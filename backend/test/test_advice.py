@@ -956,6 +956,56 @@ def test_plan_state_days_since_last_lot() -> None:
     assert states[0].last_lot_price == 900.0
 
 
+# ==================== 上下文复用（性能回归） ====================
+
+
+def _spy_context(engine: AdviceEngine) -> list[int]:
+    """给 build_context 挂计数器，返回调用记录"""
+    calls: list[int] = []
+    real = engine.build_context
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    engine.build_context = counted  # type: ignore[method-assign]
+    return calls
+
+
+def test_compute_reuses_prebuilt_context() -> None:
+    """传了 context 就不该再构建一次 —— 里面有价格快照（实测 10.5ms）"""
+    with temp_db("ctx_reuse.db") as db:
+        engine = make_engine(
+            db,
+            snapshot=make_snapshot(min_3m=898.0),
+            config={"target_grams": 50.0, "enable_llm": False},
+        )
+        ctx = engine.build_context("gds_AUTD", 900.0)
+        calls = _spy_context(engine)
+
+        engine.compute("gds_AUTD", 900.0, use_llm=False, context=ctx)
+
+        assert calls == [], "传入 context 后仍重复构建了上下文"
+
+
+def test_now_builds_context_exactly_once() -> None:
+    """/advice/now 曾把上下文算两遍（generate 一遍、外面又一遍）"""
+    with temp_db("now_once.db") as db:
+        engine = make_engine(
+            db,
+            snapshot=make_snapshot(min_3m=898.0),
+            config={"target_grams": 50.0, "enable_llm": False},
+        )
+        engine.resolve_price = lambda symbol: (900.0, "live")  # type: ignore[method-assign]
+        engine._resolve_london = lambda: (None, None)  # type: ignore[method-assign]
+        calls = _spy_context(engine)
+
+        response = engine.now("gds_AUTD", use_llm=False)
+
+        assert len(calls) == 1, f"上下文被构建了 {len(calls)} 次"
+        assert response.advice.id > 0
+
+
 if __name__ == "__main__":
     tests = [
         (name, obj)

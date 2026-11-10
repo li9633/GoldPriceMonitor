@@ -118,13 +118,13 @@ class NotificationStatsMapper(SQLiteMapper):
             c = conn.cursor()
             where = self._date_where(hours, start_date, end_date)
 
-            c.execute(f"SELECT COUNT(*) FROM notification_send_logs WHERE {where}")
-            total = c.fetchone()[0]
-
+            # 两条 COUNT 合并成一次扫表（success 是 0/1 非空列，SUM 等价于
+            # 「COUNT 满足 success=1 的行」）。
             c.execute(
-                f"SELECT COUNT(*) FROM notification_send_logs WHERE {where} AND success=1"
+                f"SELECT COUNT(*), COALESCE(SUM(success), 0) "
+                f"FROM notification_send_logs WHERE {where}"
             )
-            success = c.fetchone()[0]
+            total, success = c.fetchone()
 
         return {
             "total_sends": total,
@@ -180,21 +180,22 @@ class NotificationStatsMapper(SQLiteMapper):
         with self._session() as conn:
             c = conn.cursor()
             where = self._date_where(hours, start_date, end_date)
+            # 原来同一条 SQL 连跑两遍（第一遍只为算 total_failures），
+            # 30 万行下白付一倍开销；这里取一次结果集复用。
+            #
+            # total_failures 用窗口函数 `SUM(COUNT(*)) OVER ()` 取**真实总数**：
+            # 之前是把 LIMIT 5 之后的五条相加当作总数，只要错误类型超过 5 种，
+            # 百分比就会整体虚高（分母偏小），看起来像「占比加起来超过 100%」。
             c.execute(
                 f"SELECT error_type, COUNT(*) AS fail_count, "
-                f"GROUP_CONCAT(DISTINCT SUBSTR(error_reason, 1, 100)) AS examples "
+                f"GROUP_CONCAT(DISTINCT SUBSTR(error_reason, 1, 100)) AS examples, "
+                f"SUM(COUNT(*)) OVER () AS total_failures "
                 f"FROM notification_send_logs "
                 f"WHERE {where} AND success=0 AND error_type != '' "
                 f"GROUP BY error_type ORDER BY fail_count DESC LIMIT 5"
             )
-            total_failures = sum(r[1] for r in c.fetchall())
-            c.execute(
-                f"SELECT error_type, COUNT(*) AS fail_count, "
-                f"GROUP_CONCAT(DISTINCT SUBSTR(error_reason, 1, 100)) AS examples "
-                f"FROM notification_send_logs "
-                f"WHERE {where} AND success=0 AND error_type != '' "
-                f"GROUP BY error_type ORDER BY fail_count DESC LIMIT 5"
-            )
+            rows = c.fetchall()
+            total_failures = rows[0][3] if rows else 0
             result = [
                 {
                     "error_type": r[0],
@@ -204,7 +205,7 @@ class NotificationStatsMapper(SQLiteMapper):
                     else 0.0,
                     "examples": r[2] or "",
                 }
-                for r in c.fetchall()
+                for r in rows
             ]
         return result
 

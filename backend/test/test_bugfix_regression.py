@@ -25,6 +25,7 @@ from providers.calendar.base import CalendarVerdict
 from providers.calendar.online import OnlineCalendarProvider
 from service.advice.advice_engine import AdviceEngine
 from service.monitor_service import (
+    DB_OPTIMIZE_SECONDS,
     LOG_CLEANUP_SECONDS,
     REVIEW_REFRESH_SECONDS,
     SETTINGS_REFRESH_SECONDS,
@@ -66,6 +67,11 @@ class FakePriceService:
 
 class FakePriceMapper:
     def save_price(self, symbol, price):
+        return None
+
+    def save_prices(self, items):
+        """批量写入接口 —— MonitorService._save_prices 现在走这个（一次事务）。"""
+        self.saved = list(items)
         return None
 
 
@@ -125,7 +131,9 @@ def make_wired_monitor(triggers: list[Trigger]) -> MonitorService:
     monitor._settings_timer = DueTimer("设置刷新", SETTINGS_REFRESH_SECONDS)
     monitor._review_timer = DueTimer("回访价格回填", REVIEW_REFRESH_SECONDS)
     monitor._cleanup_timer = DueTimer("日志清理", LOG_CLEANUP_SECONDS)
-    for timer in (monitor._settings_timer, monitor._review_timer, monitor._cleanup_timer):
+    monitor._optimize_timer = DueTimer("统计信息刷新", DB_OPTIMIZE_SECONDS)
+    for timer in (monitor._settings_timer, monitor._review_timer,
+                  monitor._cleanup_timer, monitor._optimize_timer):
         timer.mark(at)
     return monitor
 

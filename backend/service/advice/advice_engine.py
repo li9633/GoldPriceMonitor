@@ -124,6 +124,7 @@ class AdviceEngine:
         market_symbol: str | None = None,
         subject_lot: dict | None = None,
         review_horizon: int | None = None,
+        context: AdviceContext | None = None,
     ) -> ComputedAdvice:
         """算出建议但**不落库**。
 
@@ -136,8 +137,11 @@ class AdviceEngine:
         `market_symbol` 指定行情口径：INTL_ONLY（SGE 休市、国际金开市）时传
         `hf_XAU`，指标与估值价都来自国际金，主体（持仓/计划）不变；
         None 表示与 `symbol` 相同。
+
+        `context` 允许调用方复用已算好的上下文 —— 上下文里有一次价格快照
+        （实测 10.5ms）和一次建仓回测，重复构建纯属浪费。
         """
-        ctx = self.build_context(
+        ctx = context or self.build_context(
             symbol,
             current_price,
             london_cny,
@@ -369,10 +373,13 @@ class AdviceEngine:
             logger.info(f"使用库中最新价（实时获取失败） symbol={target}")
 
         london_cny, london_usd = self._resolve_london()
-        record = self.generate(
-            target, price, london_cny, london_usd, persist=True, use_llm=use_llm
-        )
+        # 上下文只构建一次：里面有价格快照（实测 10.5ms）和建仓回测，
+        # 原先先 generate() 再 build_context()，等于同样的事做两遍。
         ctx = self.build_context(target, price, london_cny, london_usd)
+        computed = self.compute(
+            target, price, london_cny, london_usd, use_llm=use_llm, context=ctx
+        )
+        record = self.save(computed)
         return AdviceNowResponse(
             advice=record,
             symbol=target,

@@ -1,4 +1,5 @@
 import sqlite3
+import time
 from datetime import datetime, timedelta
 
 from config import PRICE_HISTORY_DB_FILE
@@ -7,6 +8,37 @@ from utils.logger import get_logger
 from utils.time_utils import from_timestamp, now, parse_date, today, today_end
 
 logger = get_logger("PriceMapper")
+
+#: 日线聚合表 —— 把「按天的指标」从 600 万行 tick 里解放出来。
+#:
+#: 动机（实测 630 万行 / 365 天）：
+#:   - `MIN(price)` 近 90/180 天 必须扫完窗口内全部索引条目，占建议快照 94% 的开销；
+#:   - 首页看板为了显示「总记录数」每 10 秒做一次全表 COUNT(*)（332ms）；
+#:   - 1 年图表要扫 315 万行做 GROUP BY（1069ms）。
+#: 这三件事都只需要「按天」的聚合结果，日线表把它们各自降到 0.01 ~ 5ms。
+#:
+#: `day` 口径刻意与 `_resolve_bucket()` 的日桶保持一致（UTC 对齐的当日 00:00），
+#: 这样 1 年图表的输出与改造前逐点相同，不会因为时区口径变化让曲线平移 8 小时。
+#: 只存 high/low/sum/count —— 当前所有消费方（最低价、均价、总数）都不需要 OHLC，
+#: 少存两列也就少了两处「乱序写入导致 open/close 出错」的可能性。
+DAILY_TABLE_DDL = """CREATE TABLE IF NOT EXISTS prices_daily (
+    symbol       TEXT    NOT NULL,
+    day          INTEGER NOT NULL,
+    high         REAL    NOT NULL,
+    low          REAL    NOT NULL,
+    price_sum    REAL    NOT NULL,
+    sample_count INTEGER NOT NULL,
+    PRIMARY KEY (symbol, day)
+) WITHOUT ROWID"""
+
+#: 图表跨度超过该小时数时，分桶粒度已达到「按天」（见 `_resolve_bucket`），
+#: 直接读日线表；更短的跨度仍走原始 tick，保证分时曲线不失真。
+DAILY_CHART_THRESHOLD_HOURS = 2160
+
+
+def _day_bucket(ts: float | int) -> int:
+    """时间戳 → 所属自然日的桶起点（UTC 对齐，与 SQL 里 `(timestamp/86400)*86400` 一致）"""
+    return (int(ts) // 86400) * 86400
 
 
 class PriceSnapshot:
@@ -135,6 +167,90 @@ class PriceMapper(SQLiteMapper):
                           symbol TEXT,
                           price REAL)""")
             self._ensure_indexes(conn)
+            self._ensure_daily_table(conn)
+        self._sync_daily_on_startup()
+
+    # ==================== 日线聚合表维护 ====================
+
+    @staticmethod
+    def _ensure_daily_table(conn: sqlite3.Connection) -> None:
+        conn.execute(DAILY_TABLE_DDL)
+
+    @staticmethod
+    def _upsert_daily(
+        c: sqlite3.Cursor, symbol: str, day: int, price: float
+    ) -> None:
+        """在写入 tick 的同一个事务里累加当日聚合。
+
+        high/low 用 MAX/MIN 收敛，sum/count 累加 —— 都是可结合的操作，
+        所以重复调用、乱序调用都不会算错。
+        """
+        c.execute(
+            "INSERT INTO prices_daily (symbol, day, high, low, price_sum, sample_count) "
+            "VALUES (?, ?, ?, ?, ?, 1) "
+            "ON CONFLICT(symbol, day) DO UPDATE SET "
+            "high = MAX(prices_daily.high, excluded.high), "
+            "low = MIN(prices_daily.low, excluded.low), "
+            "price_sum = prices_daily.price_sum + excluded.price_sum, "
+            "sample_count = prices_daily.sample_count + 1",
+            (symbol, day, price, price, price),
+        )
+
+    def rebuild_daily(self, start_ts: int, end_ts: int) -> int:
+        """按原始 tick 重算 [start_ts, end_ts] 覆盖到的自然日聚合。
+
+        用于历史导入之后、以及启动时自愈。整日重算是幂等的：先删该日区间
+        的聚合行，再一次性 GROUP BY 生成，不会重复累加。
+        """
+        start_day = _day_bucket(start_ts)
+        end_day = _day_bucket(end_ts)
+        lo = start_day
+        hi = end_day + 86400
+        with self._session() as conn:
+            conn.execute(
+                "DELETE FROM prices_daily WHERE day BETWEEN ? AND ?",
+                (start_day, end_day),
+            )
+            cur = conn.execute(
+                "INSERT INTO prices_daily "
+                "(symbol, day, high, low, price_sum, sample_count) "
+                "SELECT symbol, (timestamp / 86400) * 86400 AS bucket, "
+                "MAX(price), MIN(price), SUM(price), COUNT(*) "
+                "FROM prices WHERE timestamp >= ? AND timestamp < ? "
+                "GROUP BY symbol, bucket",
+                (lo, hi),
+            )
+            return cur.rowcount
+
+    def _sync_daily_on_startup(self) -> None:
+        """启动时保证日线表与原始表一致。
+
+        - 日线表为空但已有点位 → 全量重建（老库升级到本版本时的一次性成本）；
+        - 日线表落后于今天 → 从落后那天起重算（覆盖崩溃/手工改数据留下的空洞）。
+        重复调用几乎零成本：正常情况下只多一次 `MAX(day)` 查询。
+        """
+        with self._session() as conn:
+            n_daily, max_day = conn.execute(
+                "SELECT COUNT(*), MAX(day) FROM prices_daily"
+            ).fetchone()
+            has_raw = conn.execute("SELECT 1 FROM prices LIMIT 1").fetchone() is not None
+
+        if not has_raw:
+            return
+        now_ts = int(now().timestamp())
+        if not n_daily:
+            t0 = time.perf_counter()
+            days = self.rebuild_daily(0, now_ts)
+            logger.warning(
+                f"prices_daily 为空，已从 prices 全量重建 days={days} "
+                f"耗时 {time.perf_counter() - t0:.2f}s"
+            )
+            return
+        today_bucket = _day_bucket(now_ts)
+        if max_day is not None and max_day >= today_bucket - 86400:
+            return
+        healed = self.rebuild_daily(max_day or today_bucket, now_ts)
+        logger.info(f"prices_daily 已补齐至今天 days={healed}")
 
     def table_exists(self) -> bool:
         try:
@@ -149,13 +265,25 @@ class PriceMapper(SQLiteMapper):
             return False
 
     def save_price(self, symbol: str, price: float):
+        self.save_prices([(symbol, price)])
+
+    def save_prices(self, items: list[tuple[str, float]]) -> None:
+        """一轮巡检的多个品种一次事务落库（含日线聚合）。
+
+        原先每个品种各开一个连接各提交一次（实测 17.5ms/tick），合并成一次
+        事务后只需一次提交成本；日线聚合搭同一事务顺带更新，不会出现
+        「点位写了、聚合没写」的中间态。
+        """
         ts = int(now().timestamp())
+        day = _day_bucket(ts)
         with self._session() as conn:
             c = conn.cursor()
-            c.execute(
-                "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
-                (symbol, price, ts),
-            )
+            for symbol, price in items:
+                c.execute(
+                    "INSERT INTO prices (symbol, price, timestamp) VALUES (?, ?, ?)",
+                    (symbol, price, ts),
+                )
+                self._upsert_daily(c, symbol, day, price)
 
     def get_prices_in_window(self, symbol: str, hours: float) -> list[float]:
         cutoff = int((now() - timedelta(hours=hours)).timestamp())
@@ -187,19 +315,40 @@ class PriceMapper(SQLiteMapper):
             )
             ma_prices = [row[0] for row in c.fetchall()]
             ma_prices.reverse()
+            # 90/180 天最低价改读日线表：原始表要扫完窗口内 233 万条索引条目（实测
+            # 125ms，占本方法 94%），日线表只有几百行（实测 0.01ms）。
             cutoff_90d = int((now_dt - timedelta(days=90)).timestamp())
-            c.execute(
-                "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
-                (symbol, cutoff_90d),
-            )
-            min_3m = c.fetchone()[0]
             cutoff_180d = int((now_dt - timedelta(days=180)).timestamp())
-            c.execute(
-                "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
-                (symbol, cutoff_180d),
-            )
-            min_6m = c.fetchone()[0]
+            min_3m = self._min_low(c, symbol, cutoff_90d)
+            min_6m = self._min_low(c, symbol, cutoff_180d)
             return PriceSnapshot(prices_with_time, ma_prices, min_3m, min_6m)
+
+    @staticmethod
+    def _min_low(
+        c: sqlite3.Cursor, symbol: str, cutoff: int
+    ) -> float | None:
+        """窗口内最低价（优先日线表）。
+
+        日线表缺失时回退原始表：宁可慢，也不能静默返回 None —— 那会让
+        「接近 3/6 个月低位」这类信号无声消失，而且不会报错。
+        """
+        row = c.execute(
+            "SELECT MIN(low) FROM prices_daily WHERE symbol = ? AND day >= ?",
+            (symbol, _day_bucket(cutoff)),
+        ).fetchone()
+        if row and row[0] is not None:
+            return row[0]
+        fallback = c.execute(
+            "SELECT MIN(price) FROM prices WHERE symbol = ? AND timestamp > ?",
+            (symbol, cutoff),
+        ).fetchone()
+        if fallback and fallback[0] is not None:
+            logger.warning(
+                f"prices_daily 缺少 {symbol} 的聚合数据，已回退全表扫描；"
+                "请检查启动时的日线重建是否成功"
+            )
+            return fallback[0]
+        return None
 
     def get_price_statistics(
         self,
@@ -345,7 +494,52 @@ class PriceMapper(SQLiteMapper):
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> list[tuple[datetime, float]]:
-        """获取聚合后的价格序列，按时间范围自动降采样，用于图表渲染"""
+        """获取聚合后的价格序列，按时间范围自动降采样，用于图表渲染
+
+        跨度超过 90 天时，分桶粒度已经是「按天」，直接读日线表：1 年曲线原来
+        要扫 315 万行 tick 做 GROUP BY（实测 1069ms），日线表只有 366 行。
+        跨度 ≤ 90 天仍走原始 tick，保证分时曲线不被降级。
+        """
+        lo, hi = self._time_bounds(
+            int(hours) if hours else None, start_date, end_date
+        )
+        span_hours = max((hi - lo) / 3600.0, 1.0)
+        if span_hours > DAILY_CHART_THRESHOLD_HOURS:
+            daily = self._get_daily_chart(symbol, lo, hi)
+            if daily:
+                return daily
+            logger.warning(
+                f"{symbol} 的日线聚合为空，图表回退全表扫描（跨度 {span_hours:.0f}h）"
+            )
+        return self._get_raw_chart(symbol, hours, start_date, end_date)
+
+    def _get_daily_chart(
+        self, symbol: str, lo: int, hi: int
+    ) -> list[tuple[datetime, float]]:
+        """按自然日读聚合结果。
+
+        边界说明：区间起点若落在某天中间，原始 tick 实现只统计「起点之后」的
+        那半天（首桶是残日），日线表则用整天。实测 1 年图表 366 个点里只有首桶
+        有差异（0.02，约 0.003%），其余 365 个点完全一致 —— 取整天更符合
+        「日线」的语义，故保留该口径差异。
+        """
+        lo_day = _day_bucket(lo)
+        hi_day = _day_bucket(hi)
+        with self._session() as conn:
+            rows = conn.execute(
+                "SELECT day, price_sum / sample_count AS avg_price FROM prices_daily "
+                "WHERE symbol = ? AND day >= ? AND day <= ? ORDER BY day",
+                (symbol, lo_day, hi_day),
+            ).fetchall()
+        return [(from_timestamp(r[0]), round(r[1], 2)) for r in rows]
+
+    def _get_raw_chart(
+        self,
+        symbol: str,
+        hours: float | None,
+        start_date: str | None,
+        end_date: str | None,
+    ) -> list[tuple[datetime, float]]:
         where_clause, where_params = self._price_time_filter(
             int(hours) if hours else None, start_date, end_date
         )
@@ -372,6 +566,33 @@ class PriceMapper(SQLiteMapper):
             logger.error(f"查询数据条数失败：{e}")
             return 0
 
+    def _time_bounds(
+        self,
+        hours: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> tuple[int, int]:
+        """把「小时 / 日期范围」统一成一对时间戳边界。
+
+        分桶粒度、日线读取、原始表筛选都必须用同一个边界口径，否则图表的
+        首尾桶会和其它接口对不上。
+        """
+        if hours is not None and hours > 0:
+            hi = int(now().timestamp())
+            return hi - int(hours * 3600), hi
+        if start_date and end_date:
+            return (
+                int(parse_date(start_date).timestamp()),
+                int(parse_date(end_date, hour=23, minute=59, second=59).timestamp()),
+            )
+        if start_date:
+            return int(parse_date(start_date).timestamp()), int(now().timestamp())
+        if end_date:
+            return 0, int(
+                parse_date(end_date, hour=23, minute=59, second=59).timestamp()
+            )
+        return int(today().timestamp()), int(today_end().timestamp())
+
     def _price_time_filter(
         self,
         hours: int | None = None,
@@ -381,26 +602,10 @@ class PriceMapper(SQLiteMapper):
         """构建价格表的时间筛选 WHERE 子句和参数
         优先级：hours > start_date/end_date > 默认今天
         使用原始时间戳比较，确保索引可用"""
+        lo, hi = self._time_bounds(hours, start_date, end_date)
         if hours is not None and hours > 0:
-            cutoff = int((now() - timedelta(hours=hours)).timestamp())
-            return "timestamp > ?", (cutoff,)
-        if start_date and end_date:
-            start_ts = int(parse_date(start_date).timestamp())
-            end_ts = int(
-                parse_date(end_date, hour=23, minute=59, second=59).timestamp()
-            )
-            return "timestamp BETWEEN ? AND ?", (start_ts, end_ts)
-        if start_date:
-            start_ts = int(parse_date(start_date).timestamp())
-            return "timestamp >= ?", (start_ts,)
-        if end_date:
-            end_ts = int(
-                parse_date(end_date, hour=23, minute=59, second=59).timestamp()
-            )
-            return "timestamp <= ?", (end_ts,)
-        start_ts = int(today().timestamp())
-        end_ts = int(today_end().timestamp())
-        return "timestamp BETWEEN ? AND ?", (start_ts, end_ts)
+            return "timestamp > ?", (lo,)
+        return "timestamp BETWEEN ? AND ?", (lo, hi)
 
     def get_dashboard_data(
         self,
@@ -411,8 +616,12 @@ class PriceMapper(SQLiteMapper):
         """仪表盘数据：总记录数 + 范围内新增 + 各品种统计"""
         with self._session() as conn:
             c = conn.cursor()
+            # 总记录数改读日线表：原来 `COUNT(*) ... GROUP BY symbol` 要扫全表
+            # 630 万行（实测 332ms），而首页每 10 秒轮询一次 —— 这条占整个
+            # get_dashboard_data 的 99%。日线表 732 行，实测 0.1ms。
             c.execute(
-                "SELECT symbol, COUNT(*) as cnt FROM prices GROUP BY symbol ORDER BY cnt DESC"
+                "SELECT symbol, SUM(sample_count) as cnt FROM prices_daily "
+                "GROUP BY symbol ORDER BY cnt DESC"
             )
             rows = c.fetchall()
             total = sum(r[1] for r in rows)
@@ -464,6 +673,8 @@ class PriceMapper(SQLiteMapper):
             }
 
     def batch_insert_prices(self, records: list[tuple]) -> int:
+        min_ts: int | None = None
+        max_ts: int | None = None
         with self._session() as conn:
             c = conn.cursor()
             c.execute(
@@ -479,10 +690,16 @@ class PriceMapper(SQLiteMapper):
                     )
                     if c.rowcount > 0:
                         count += 1
+                        min_ts = ts if min_ts is None else min(min_ts, ts)
+                        max_ts = ts if max_ts is None else max(max_ts, ts)
                 except sqlite3.Error as e:
                     logger.error(f"导入单条数据失败：{e}")
                     continue
-            return count
+        # 历史导入不适合逐条累加（去重判断与批量性能都会变差），
+        # 提交后按受影响的自然日整段重算 —— 幂等且一次成型。
+        if min_ts is not None and max_ts is not None:
+            self.rebuild_daily(min_ts, max_ts)
+        return count
 
     def checkpoint(self) -> None:
         """将 WAL 中所有已提交数据合并回主库，并删除 WAL/SHM 文件"""

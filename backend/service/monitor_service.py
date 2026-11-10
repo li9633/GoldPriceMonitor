@@ -31,6 +31,9 @@ SETTINGS_REFRESH_SECONDS = 60.0
 REVIEW_REFRESH_SECONDS = 3600.0
 #: 日志清理间隔（秒）
 LOG_CLEANUP_SECONDS = 86400.0
+#: 数据库统计信息刷新间隔（秒）。表持续增长后 sqlite_stat1 会过期，
+#: 规划器可能挑错索引（实测同一查询 0.34ms 与 62ms 的差别）。
+DB_OPTIMIZE_SECONDS = 86400.0
 #: 买入后 T+n 复盘的检查间隔（秒）。触发条件按「买入日期 + N 天」判定，
 #: 所以间隔大小不影响是否会漏 —— 只影响最迟多久被发现。
 FOLLOWUP_REVIEW_SECONDS = 3600.0
@@ -77,6 +80,7 @@ class MonitorService:
         self._settings_timer = DueTimer("设置刷新", SETTINGS_REFRESH_SECONDS)
         self._review_timer = DueTimer("回访价格回填", REVIEW_REFRESH_SECONDS)
         self._cleanup_timer = DueTimer("日志清理", LOG_CLEANUP_SECONDS)
+        self._optimize_timer = DueTimer("统计信息刷新", DB_OPTIMIZE_SECONDS)
 
         self._refresh_settings()
 
@@ -183,6 +187,7 @@ class MonitorService:
         self._handle_outcome(outcome, decision)
         self._refresh_reviews_if_due()
         self._cleanup_logs()
+        self._optimize_databases()
 
         self.check_count += 1
         self.runtime.record_tick(
@@ -193,10 +198,16 @@ class MonitorService:
         )
 
     def _save_prices(self, prices_data: dict, current_price: float) -> None:
-        self.price_mapper.save_price(self.main_symbol, current_price)
+        """一轮巡检的多品种点位一次事务落库。
+
+        原来是每个品种各开连接各提交一次（实测 17.5ms/tick，两次提交的
+        fsync 各付一遍）；合并后一次提交，且顺带更新日线聚合。
+        """
+        items = [(self.main_symbol, current_price)]
         london_data = prices_data.get("hf_XAU")
         if london_data:
-            self.price_mapper.save_price("hf_XAU", london_data["price"])
+            items.append(("hf_XAU", london_data["price"]))
+        self.price_mapper.save_prices(items)
 
     # ==================== 建议 ====================
 
@@ -409,3 +420,25 @@ class MonitorService:
         log_config = self.settings.get_log_config()
         keep_days = log_config.get("keep_days", 30) if log_config else 30
         cleanup_old_logs(keep_days)
+
+    def _optimize_databases(self) -> None:
+        """每日刷新一次 SQLite 统计信息（`PRAGMA optimize`，必要时才真正 ANALYZE）。
+
+        表一直在长，但 `sqlite_stat1` 只在建表时算过一次。统计信息一旦偏离实际，
+        规划器就会挑错索引 —— 实测同一句 30 万行表的统计查询，选对索引 0.34ms、
+        选错 62ms。这里挂在巡检循环里，顺带把三张会持续增长的表都刷一遍。
+        """
+        at = now()
+        if not self._optimize_timer.is_due(at):
+            return
+        self._optimize_timer.mark(at)
+        for mapper, name in (
+            (self.price_mapper, "prices"),
+            (self.advice_engine.advice_mapper, "advice"),
+            (self.advice_engine.portfolio_mapper, "portfolio"),
+        ):
+            try:
+                mapper.optimize()
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(f"刷新 {name} 查询统计信息失败：{exc}")
+        self.logger.info("数据库统计信息刷新完成")
